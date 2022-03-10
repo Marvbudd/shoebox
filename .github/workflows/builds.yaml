@@ -17,8 +17,8 @@ jobs:
     - uses: actions/setup-node@master
       with:
         node-version: 17.3
-    - name: see directory in electron_dist
-      run: ls ./main
+    - name: see directory
+      run: ls
     - name: Install dependencies
       run: yarn install
     - name: Build on MacOS
