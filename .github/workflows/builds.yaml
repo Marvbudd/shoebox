@@ -4,22 +4,38 @@ name: CI
 on:
   push:
     branches:
-    # run on the electron branch
+    # run on the main branch
      - main
 # this is where the magic happens, each job happens in parallel btw
 jobs:
-  # build_on_mac:
-  #   runs-on: macOS-latest
-  #   steps:
-  #   - uses: actions/checkout@master
-  #     with:
-  #       ref: electron
-  #   - uses: actions/setup-node@master
-  #     with:
-  #       node-version: 10.16
-  #   - name: see directory
-  #     run: ls
-build_on_win:
+  build_on_mac:
+    runs-on: macOS-latest
+    steps:
+    - uses: actions/checkout@master
+      with:
+        ref: electron
+    - uses: actions/setup-node@master
+      with:
+        node-version: 17.3
+    - name: see directory in electron_dist
+      run: ls ./electron
+    - name: Install dependencies
+      run: yarn install
+    - name: Build on MacOS
+      run: yarn run dist
+    - name: see directory
+      run: ls
+    - name: see directory in dist
+      run: ls ./dist
+    - uses: Marvbudd/upload-to-release@master
+      with:
+        name: Marvbudd/shoebox
+        path: ./dist
+        action: unpublished
+        release_id: 0.1.3
+        release-repo: Marvbudd/shoebox
+  
+  build_on_win:
     runs-on: windows-2016
     steps:
     - uses: actions/checkout@master
@@ -28,5 +44,26 @@ build_on_win:
     - uses: actions/setup-node@master
       with:
         node-version: 17.3
+    - name: install node tools
+      run: npm install --global --production windows-build-tools@4.0.0
+    - name: install node-gyp
+      run: npm install --global node-gyp@latest
+    - name: Set node config to use python2.7
+      run: npm config set python python2.7
+    - name: Set node config to set msvs_version to 2015
+      run: npm config set msvs_version 2015
+    - name: Work around for Windows Server 2019
+      run: set path=%path%;C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin
+    - name: Install dependencies
+      run: yarn install
+    - name: Build on Windows
+      run: yarn run dist
     - name: see directory
-      run: ls
+      run: ls ./dist
+    - uses: Marvbudd/upload-to-release@master
+      with:
+        name: Marvbudd/shoebox
+        path: ./dist/squirrel-windows
+        action: unpublished
+        release_id: 0.1.3
+        release-repo: Marvbudd/shoebox

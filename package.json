@@ -7,18 +7,36 @@
   "module": "app/main/main.js",
   "build": {
     "appId": "com.gmail.marvbudd.shoebox",
+    "dmg": {
+      "background": null,
+      "backgroundColor": "#ffffff",
+      "window": {
+        "width": "400",
+        "height": "300"
+      },
+      "contents": [
+        {
+          "x": 100,
+          "y": 100
+        },
+        {
+          "x": 300,
+          "y": 100,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
     "mac": {
-      "category": "com.marvbudd.media.shoebox",
-      "icon": "app/resource/icons/icon.icns"
+      "target": "dmg",
+      "category": "com.marvbudd.media.shoebox"
     },
     "win": {
-      "target": "portable",
-      "icon": "app/resource/icons/icon.png"
+      "target": "portable"
     },
     "linux": {
       "target": "AppImage",
-      "category": "Utility",
-      "icon": "app/resource/icons/1024x1024.png"
+      "category": "Utility"
     }
   },
   "scripts": {
@@ -28,9 +46,16 @@
     "dist:dir": "yarn dist --dir -c.compression=store -c.mac.identity=null",
     "cert": "electron-builder create-self-signed-cert"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Marvbudd/shoebox"
+  },
   "postinstall": "electron-builder install-app-deps",
   "keywords": [],
-  "author": "Marvin E Budd <marvbudd@gmail.com>",
+  "author": {
+    "name": "Marvin E Budd",
+    "email": "marvbudd@gmail.com"
+  },
   "license": "MIT",
   "copyright": "Copyright © 2001-2022 ${author}",
   "dependencies": {
