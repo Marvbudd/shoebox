@@ -1,0 +1,131 @@
+A:link {
+  color: Navy;
+}
+A:visited {
+  color: Navy;
+}
+#detailDiv {
+  font-size: smaller;
+  font-family: Arial, helvetica, sans-serif;
+}
+#prevData .detailCol1 {
+  column-width: 100px;
+}
+#prevData .detailCol2 {
+  column-width: 1000px;
+}
+/* https://www.w3docs.com/snippets/css/how-to-auto-resize-an-image-to-fit-an-html-container.html */
+#previewDiv {
+  height: 75%;
+  width: 100%;
+}
+#previewImg {
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+}
+#prevData {
+  width: 100%;
+  vertical-align: bottom;
+}
+#prevData caption {
+  font-weight: bold;
+}
+/* #prevData .detail { display: none; } */
+#prevData .copyright {
+  color: Red;
+  font-weight: normal;
+  font-size: x-small;
+}
+.date {
+  width: 8%; }
+.dateData {
+  text-align:right; }
+.descData {
+  word-wrap:normal; }
+.photo {
+  background: #ddddff;
+}
+.photoInput {
+  background: #ddddff;
+}
+.tape {
+  background: #f1e6c2;
+}
+.tapeInput {
+  background: #f1e6c2;
+}
+.video {
+  background: #fab2b8;
+}
+.videoInput {
+  background: #fab2b8;
+}
+.emphasize {
+  font-weight: bold;
+}
+.firstRow { 
+  height: 20px;
+  font-weight: bolder;
+ }
+
+.container {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+.header {
+  position: absolute;
+  height: 20px;
+  width: 100%;
+  text-align: center;
+  font-weight: bold;
+  background: #aabbff;
+}
+.hidden { display: none; }
+#tableDiv table {
+  color: Black;
+  font-size: smaller;
+  font-family: Arial, helvetica, sans-serif;
+  border-spacing: 0;
+}
+#tableDiv table tr {
+  text-align: left;
+}
+.notCategory {
+  color: greenyellow;
+}
+.contentLeft {
+  position: absolute;
+  top: 20px;
+  bottom: 20px;
+  left: 0;
+  width: 30%;
+  overflow: auto;   
+  background: #CCCCFF;
+}
+.contentRight {
+  position: absolute;
+  top: 20px;
+  bottom: 20px;
+  right: 0;
+  width: 70%;
+  overflow: auto;
+  background: #ddddff;
+}
+.bottomLeft {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  height: 20px;
+  background: #aabbff;
+}
+.player {
+  position: fixed;
+  bottom: 0;
+  height: 20px;
+  background: #aabbff;
+  width: fit-content;
+}

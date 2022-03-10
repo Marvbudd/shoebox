@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+	<xs:simpleType name="LastNameType">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="married" />
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:complexType name="lastType">
+		<xs:simpleContent>
+			<xs:extension base="xs:string">
+				<xs:attribute name="type" use="optional" type="LastNameType" />
+			</xs:extension>
+		</xs:simpleContent>
+	</xs:complexType>
+	<xs:element name="first" type="xs:string" />
+	<xs:element name="last" type="lastType" />
+	<xs:element name="position" type="xs:string" />
+	<xs:complexType name="personType">
+		<xs:sequence>
+			<xs:element ref="first" />
+			<xs:element ref="last" maxOccurs="unbounded" />
+			<xs:element ref="position" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="sourceType">
+		<xs:all>
+			<xs:element name="person" type="personType" />
+			<xs:element name="received" type="dateType" />
+		</xs:all>
+	</xs:complexType>
+	<xs:element name="accession" type="xs:string" />
+	<xs:element name="link" type="xs:string" />
+	<xs:complexType name="entryType">
+		<xs:sequence>
+			<xs:element name="ref" type="xs:string" />
+			<xs:element name="starttime" type="xs:string" minOccurs="0" />
+			<xs:element name="duration" type="xs:string" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="playlistType">
+		<xs:sequence>
+			<xs:element name="entry" type="entryType" minOccurs="1" maxOccurs="unbounded" />
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="locationType">
+		<xs:sequence>
+			<xs:element name="detail" type="xs:string" minOccurs="0" maxOccurs="3" />
+			<xs:element name="city" type="xs:string" minOccurs="0" />
+			<xs:element name="state" type="xs:string" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+	<xs:element name="location" type="locationType" />
+	<xs:element name="year" type="xs:gYear" />
+	<xs:element name="month">
+		<xs:simpleType>
+			<xs:restriction base="xs:string">
+				<xs:enumeration value="Jan" />
+				<xs:enumeration value="Feb" />
+				<xs:enumeration value="Mar" />
+				<xs:enumeration value="Apr" />
+				<xs:enumeration value="May" />
+				<xs:enumeration value="Jun" />
+				<xs:enumeration value="Jul" />
+				<xs:enumeration value="Aug" />
+				<xs:enumeration value="Sep" />
+				<xs:enumeration value="Oct" />
+				<xs:enumeration value="Nov" />
+				<xs:enumeration value="Dec" />
+			</xs:restriction>
+		</xs:simpleType>
+	</xs:element>
+	<xs:element name="day" type="xs:string" />
+	<xs:complexType name="dateType">
+		<xs:all>
+			<xs:element ref="year" />
+			<xs:element ref="month" minOccurs="0" />
+			<xs:element ref="day" minOccurs="0" />
+		</xs:all>
+	</xs:complexType>
+	<xs:element name="description" type="xs:string" />
+	<xs:element name="type">
+		<xs:simpleType>
+			<xs:restriction base="xs:string">
+				<xs:enumeration value="photo" />
+				<xs:enumeration value="tape" />
+				<xs:enumeration value="video" />
+			</xs:restriction>
+		</xs:simpleType>
+	</xs:element>
+	<xs:complexType name="itemType">
+		<xs:sequence>
+			<xs:element ref="link" />
+			<xs:element name="person" type="personType" maxOccurs="unbounded" />
+			<xs:element ref="description" />
+			<xs:element ref="accession" />
+			<xs:element ref="type" />
+			<xs:element name="date" type="dateType" />
+			<xs:element ref="location" minOccurs="0" maxOccurs="2"/>
+			<xs:element name="playlist" type="playlistType" minOccurs="0" />
+			<xs:element name="source" type="sourceType" maxOccurs="unbounded" />
+		</xs:sequence>
+		<xs:attribute name="categories" type="xs:string" use="required" />
+	</xs:complexType>
+	<!--the root element-->
+	<xs:element name="accessions">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="item" type="itemType" maxOccurs="unbounded" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+</xs:schema>

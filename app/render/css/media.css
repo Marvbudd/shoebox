@@ -1,0 +1,64 @@
+A:link {
+  color: Navy;
+}
+A:visited {
+  color: Navy;
+}
+#detailDiv {
+  font-size: smaller;
+  font-family: Arial, helvetica, sans-serif;
+}
+#previewDiv {
+  width: 100%;
+}
+#previewVideo {
+  height: 100%;
+  width: 100%;
+}
+#prevData {
+  width: 100%;
+  vertical-align: bottom;
+}
+#prevData .detailCol2 {
+  column-width: 1000px;
+}
+#prevData caption {
+  font-weight: bold;
+}
+/* #prevData .detail { display: none; } */
+#prevData .copyright {
+  color: Red;
+  font-weight: normal;
+  font-size: x-small;
+}
+.date {
+  width: 8%; }
+.dateData {
+  text-align:right; }
+.descData {
+  word-wrap:normal; }
+.tape {
+  background: #f1e6c2;
+}
+.tapeInput {
+  background: #f1e6c2;
+}
+.video {
+  background: #fab2b8;
+}
+.videoInput {
+  background: #fab2b8;
+}
+.emphasize {
+  font-weight: bold;
+}
+.hidden { display: none; }
+.contentRight {
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  right: 0;
+  width: 100%;
+  overflow: auto;
+  background: #ddddff;
+}
