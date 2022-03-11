@@ -22,7 +22,9 @@ jobs:
     - name: Install dependencies
       run: yarn install
     - name: Build on MacOS
-      run: yarn run dist
+      run: yarn run dist --publish=never
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: see directory
       run: ls
     - name: see directory in dist
