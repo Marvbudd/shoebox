@@ -22,7 +22,7 @@ jobs:
     - name: Install dependencies
       run: yarn install
     - name: Build on MacOS
-      run: yarn run dist
+      run: yarn run dist --publish=never
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         DEBUG: electron-builder
@@ -30,43 +30,35 @@ jobs:
       run: ls -l ./dist
     - uses: actions/upload-artifact@v3
       with:
-        name: my-artifact
+        name: my-macos-artifact
         path: dist/shoebox*.dmg
-    - name: Upload the artifacts
-      uses: skx/github-action-publish-binaries@master
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        args: './dist/shoebox*'
   
-  # build_on_win:
-  #   runs-on: windows-2016
-  #   steps:
-  #   - uses: actions/checkout@master
-  #     with:
-  #       ref: main        
-  #   - uses: actions/setup-node@master
-  #     with:
-  #       node-version: 17.3
-  #   - name: install node tools
-  #     run: npm install --global --production windows-build-tools@4.0.0
-  #   - name: install node-gyp
-  #     run: npm install --global node-gyp@latest
-  #   - name: Set node config to use python2.7
-  #     run: npm config set python python2.7
-  #   - name: Set node config to set msvs_version to 2015
-  #     run: npm config set msvs_version 2015
-  #   - name: Work around for Windows Server 2019
-  #     run: set path=%path%;C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin
-  #   - name: Install dependencies
-  #     run: yarn install
-  #   - name: Build on Windows
-  #     run: yarn run dist
-  #   - name: see directory
-  #     run: ls ./dist
-  #   - name: Upload the artifacts
-  #     uses: skx/github-action-publish-binaries@master
-  #     env:
-  #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #     with:
-  #       args: './dist/shoebox*'
+  build_on_win:
+    runs-on: windows-2016
+    steps:
+    - uses: actions/checkout@master
+      with:
+        ref: main        
+    - uses: actions/setup-node@master
+      with:
+        node-version: 17.3
+    - name: install node tools
+      run: npm install --global --production windows-build-tools@4.0.0
+    - name: install node-gyp
+      run: npm install --global node-gyp@latest
+    - name: Set node config to use python2.7
+      run: npm config set python python2.7
+    - name: Set node config to set msvs_version to 2015
+      run: npm config set msvs_version 2015
+    - name: Work around for Windows Server 2019
+      run: set path=%path%;C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin
+    - name: Install dependencies
+      run: yarn install
+    - name: Build on Windows
+      run: yarn run dist --publish=never
+    - name: see directory
+      run: ls ./dist
+    - uses: actions/upload-artifact@v3
+      with:
+        name: my-windows-artifact
+        path: dist/shoebox*.exe
