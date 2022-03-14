@@ -19,7 +19,7 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
       '<tr class="detail"><td>Playlist:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
       '{{/entry}}' +
       '{{/playlist}}' +
-      '<caption>Media Description: Double click to toggle details.</caption>' +
+      '<caption>Media Description.</caption>' +
       '</table>' +
       '<p class="copyright">Copyright (c) 2001-2022 ' +
       '<a href="mailto:marvbudd@gmail.com">Marvin E Budd.</a> ' +

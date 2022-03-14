@@ -8,30 +8,62 @@ on:
      - main
 # this is where the magic happens, each job happens in parallel btw
 jobs:
-  # build_on_mac:
-  #   runs-on: macOS-latest
-  #   steps:
-  #   - uses: actions/checkout@master
-  #     with:
-  #       ref: main
-  #   - uses: actions/setup-node@master
-  #     with:
-  #       node-version: 17.3
-  #   - name: see directory
-  #     run: ls
-  #   - name: Install dependencies
-  #     run: yarn install
-  #   - name: Build on MacOS
-  #     run: yarn run dist --publish=never
-  #     env:
-  #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #       DEBUG: electron-builder
-  #   - name: see directory in dist
-  #     run: ls -l ./dist
-  #   - uses: actions/upload-artifact@v3
-  #     with:
-  #       name: my-macos-artifact
-  #       path: dist/shoebox*.dmg
+  build_on_mac:
+    runs-on: macOS-latest
+    steps:
+    - uses: actions/checkout@master
+      with:
+        ref: main
+    - uses: actions/setup-node@master
+      with:
+        node-version: 17.3
+    - name: see directory
+      run: ls
+    - name: Install dependencies
+      run: yarn install
+    - name: Build on MacOS
+      run: yarn run dist --publish=never
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DEBUG: electron-builder
+    - name: see directory in dist
+      run: ls -l ./dist
+    - uses: actions/upload-artifact@v3
+      with:
+        name: my-macos-artifact
+        path: dist/shoebox*.dmg
+  
+  build_on_linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+      with:
+        ref: main
+    - uses: actions/setup-node@master
+      with:
+        node-version: 17.3
+    - name: see directory
+      run: ls
+    - name: Install dependencies
+      run: yarn install
+    - name: Build on linux
+      run: yarn run dist --publish=never
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DEBUG: electron-builder
+    - name: see directory in dist
+      run: ls -l ./dist
+    - uses: actions/upload-artifact@v3
+      with:
+        name: my-linux-artifact
+        REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        file: dist/shoebox*AppImage
+    - name: Upload the artifacts
+        uses: skx/github-action-publish-binaries@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: 'dist/shoebox*AppImage'
   
   build_on_win:
     runs-on: windows-2016

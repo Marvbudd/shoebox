@@ -1,6 +1,7 @@
-const { app, electron, BrowserWindow, dialog, ipcMain, shell, Menu } = require( 'electron' )
+const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require( 'electron' )
 const path = require( 'path' );
-const nconf = require('nconf');
+const nconf = require( 'nconf' );
+import url from 'url'
 import * as fs from 'fs';
 import { showNodeDescription } from '../main/utils/detailView.js'
 import { AccessionClass } from '../main/utils/AccessionClass.js'
@@ -134,7 +135,7 @@ const createWindow = () => {
           } else {
             // itemObject.mediaTag = '<img id="previewImg" src="' + mediaPath + '" >'
             const imgEncoded = data.toString('base64');
-            resObject.mediaTag = `<a target="newWindow" href="${mediaPath}"><img id="previewImg" alt="The Photo" src="data:image/jpg;base64,${imgEncoded}" /></a>`
+            resObject.mediaTag = `<a target="_blank" href="${mediaPath}"><img id="previewImg" alt="The Photo" src="data:image/jpg;base64,${imgEncoded}" /></a>`
           }
           resObject.descDetail = showNodeDescription(itemObject)
           event.sender.send('item:detail', JSON.stringify(resObject))
@@ -183,10 +184,8 @@ const createWindow = () => {
       if (itemObject.type == 'tape') {
         const mediaPath = path.resolve( nconf.get('media:tape'), itemObject.link )
         // console.log('audioPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
-        let timeArray = playObject.start.split(':')
-        playObject.startSeconds = parseInt(timeArray[0]) * 3600 + parseInt(timeArray[1]) * 60 + parseInt(timeArray[2])
-        timeArray = playObject.duration.split(':')
-        playObject.durationSeconds = parseInt(timeArray[0]) * 3600 + parseInt(timeArray[1]) * 60 + parseInt(timeArray[2])
+        playObject.startSeconds = hmsToSeconds( playObject.start )
+        playObject.durationSeconds = hmsToSeconds( playObject.duration )
         resObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`
         resObject.descDetail = showNodeDescription(itemObject)
         resObject.entry = playObject
@@ -196,10 +195,8 @@ const createWindow = () => {
       if (itemObject.type == 'video') {
         const mediaPath = path.resolve( nconf.get('media:video'), itemObject.link )
         // console.log('videoPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
-        let timeArray = playObject.start.split(':')
-        playObject.startSeconds = parseInt(timeArray[0]) * 3600 + parseInt(timeArray[1]) * 60 + parseInt(timeArray[2])
-        timeArray = playObject.duration.split(':')
-        playObject.durationSeconds = parseInt(timeArray[0]) * 3600 + parseInt(timeArray[1]) * 60 + parseInt(timeArray[2])
+        playObject.startSeconds = hmsToSeconds( playObject.start )
+        playObject.durationSeconds = hmsToSeconds( playObject.duration )
         resObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`
         resObject.descDetail = showNodeDescription(itemObject)
         resObject.entry = playObject
@@ -247,7 +244,7 @@ app.on('ready', () => {
           label: '&Build Category',
           click: buildCategory
         },
-        { role: 'exit'}
+        { role: 'quit'}
       ],
     },
     {
@@ -264,8 +261,22 @@ app.on('ready', () => {
       ]
     },
     {
+      label: '&Window',
+      submenu: [
+        { label: 'Family &Tree',
+          click: createTreeWindow
+        }
+      ]
+    },
+    {
       label: '&Help',
-      click: createHelpWindow
+      submenu: [
+        { 
+          label: '&Info',
+          click: createHelpWindow
+        },
+        { role: 'about' }
+      ]
     }
   ]
   Menu.setApplicationMenu( Menu.buildFromTemplate(template) )
@@ -287,6 +298,11 @@ app.on('activate', () => {
     createWindow();
   }
 });
+
+function hmsToSeconds( hms ) {
+  let a = hms.split(':')
+  return parseInt(a[0]) * 3600 + parseInt(a[1]) * 60 + parseInt(a[2])
+}
 
 function chooseAccessionsPath() {
   dialog.showOpenDialog(mainWindow, {
@@ -420,4 +436,9 @@ async function buildCategory() {
       console.log('error creating commands - error - ' + error)
     }
   });
+}
+
+function createTreeWindow() {
+  let treeURL = url.pathToFileURL( path.resolve( path.dirname( nconf.get('db:accessionsPath') ), 'website', 'index.htm' ) ).href
+  shell.openExternal( treeURL );
 }
