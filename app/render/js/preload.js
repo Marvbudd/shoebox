@@ -27,8 +27,5 @@ contextBridge.exposeInMainWorld('BURRITO', {
     sendToMain: (message, args) => {
         // console.log('sendToMain', message, args)
         return ipcRenderer.send(message, args)
-    },
-    openHelpWindow: () => {
-        return ipcRenderer.send(BURRITO.req.HELPOPEN)
     }
 })

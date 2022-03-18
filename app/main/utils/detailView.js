@@ -1,30 +1,35 @@
 const Handlebars = require('handlebars')
-const fs = require( 'fs' )
-const path = require( 'path' );
+const fs = require('fs')
+const path = require('path');
 const { version } = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json')))
 // const version = process.env.npm_package_version
 
 const detailTemplate = '<table id="prevData" summary="preview data">' +
-      '<tr><td class="detailCol1">Desc:</td><td class="detailCol2" id="desc">{{description}}</td></tr>' +
-      '<tr><td>People:</td><td id="people">{{peopleDisplay}}</td></tr>' +
-      '<tr><td>Date:</td><td id="date">{{dateDisplay}}</td></tr>' +
-      '<tr><td>Location:</td><td id="locatn"><a target="newWindow" href="https://maps.google.com/maps/search/{{locationDisplay}}">{{locationDisplay}}</a></td></tr>' +
-      '<tr class="detail"><td>Categories: </td><td id="categ">{{$/categories}}</td></tr>' +
-      '<tr class="detail"><td>Accession:</td><td id="acsn">{{accession}}</td></tr>' +
-      '<tr class="detail"><td>Source:</td><td id="itemSource">{{sourceDisplay}}</td></tr>' +
-      '<tr class="detail"><td>Received:</td><td id="received">{{receivedDisplay}}</td></tr>' +
-      '<tr class="detail"><td>Link:</td><td id="link">{{link}}</td></tr>' +
-      '{{#playlist}}' +
-      "{{#entry}}" +
-      '<tr class="detail"><td>Playlist:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
-      '{{/entry}}' +
-      '{{/playlist}}' +
-      '<caption>Media Description.</caption>' +
-      '</table>' +
-      '<p class="copyright">Copyright (c) 2001-2022 ' +
-      '<a href="mailto:marvbudd@gmail.com">Marvin E Budd.</a> ' +
-      'Version {{version}}' +
-      '</p>'
+  '<tr><td class="detailCol1">Desc:</td><td class="detailCol2" id="desc">{{description}}</td></tr>' +
+  '<tr><td>People:</td><td id="people">{{peopleDisplay}}</td></tr>' +
+  '<tr><td>Date:</td><td id="date">{{dateDisplay}}</td></tr>' +
+  '<tr><td>Location:</td><td id="locatn"><a target="newWindow" href="https://maps.google.com/maps/search/{{locationDisplay}}">{{locationDisplay}}</a></td></tr>' +
+  '<tr class="detail"><td>Categories: </td><td id="categ">{{$/categories}}</td></tr>' +
+  '<tr class="detail"><td>Accession:</td><td id="acsn">{{accession}}</td></tr>' +
+  '<tr class="detail"><td>Source:</td><td id="itemSource">{{sourceDisplay}}</td></tr>' +
+  '<tr class="detail"><td>Received:</td><td id="received">{{receivedDisplay}}</td></tr>' +
+  '<tr class="detail"><td>Link:</td><td id="link">{{link}}</td></tr>' +
+  '{{#playlist}}' +
+  '{{#entry}}' +
+  '<tr class="detail"><td>Playlist:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
+  '{{/entry}}' +
+  '{{/playlist}}' +
+  '{{#reflist}}' +
+  '{{#entry}}' +
+  '<tr class="detail"><td>Reflist:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
+  '{{/entry}}' +
+  '{{/reflist}}' +
+  '<caption>Media Description.</caption>' +
+  '</table>' +
+  '<p class="copyright">Copyright (c) 2001-2022 ' +
+  '<a href="mailto:marvbudd@gmail.com">Marvin E Budd.</a> ' +
+  'Version {{version}}' +
+  '</p>'
 const detailCompiled = Handlebars.compile(detailTemplate)
 
 function dateText(oneNode) {
@@ -54,32 +59,54 @@ function dateText(oneNode) {
   return dText;
 } //dateText
 
-function lastName( lastObj ) {
-  let last = '';  
-  if ( Array.isArray(lastObj) ) {
-    for ( var i = 0; i < lastObj.length; i++ ) {
-      if ( lastObj[i].$ ) {
-        if (lastObj[i]) {
-          if (last == '') {
-            last = lastObj[i]._
-          } else {
-            last = last + ' ' + lastObj[i]._
+class LastStr {
+  constructor() {
+    this.last = ''
+  }
+  add = (str) => {
+    if (this.last == '') {
+      this.last = str
+    } else {
+      this.last = this.last + ' ' + str
+    }
+  }
+  string = () => {
+    return this.last
+  }
+}
+
+function lastName(lastObj) {
+  let lastStr = new LastStr
+  if (Array.isArray(lastObj)) {
+    for (var i = 0; i < lastObj.length; i++) {
+      if (typeof (lastObj[i]) === 'object') {
+        if (lastObj[i].$.type === 'married') {
+          if (lastObj[i]._) {
+            lastStr.add(lastObj[i]._)
           }
+        } else {
+          console.log('unknown last name type: ' + lastObj[i].$.type)
         }
       } else {
         if (lastObj[i]) {
-          if (last == '') {
-            last = "(" + lastObj[i] + ")"
-          } else {
-            last = last + " (" + lastObj[i] + ")";
-          }
+          lastStr.add('(' + lastObj[i] + ')')
         }
       }
     }
   } else {
-    last = lastObj;
+    if (typeof (lastObj) === 'object') {
+      if (lastObj.$.type === 'married') {
+        if (lastObj._) {
+          lastStr.add(lastObj._)
+        }
+      } else {
+        console.log('unknown last name type: ' + lastObj.$.type)
+      }
+    } else {
+      lastStr.add(lastObj)
+    }
   }
-  return last;
+  return lastStr.string();
 } // If name is not type="married" and there is an array then nonmarried names are in parenthesis.
 
 function personText(oneNode) {
@@ -103,7 +130,7 @@ function personText(oneNode) {
     first = position + " " + first;
   }
   if (lastNodes) {
-    last = lastName( lastNodes )
+    last = lastName(lastNodes)
   }
   people = first + " " + last;
   return people;
@@ -113,7 +140,7 @@ function peopleList(itemNode) {
   var people = '';
   var personNodes = itemNode.person;
 
-  if ( Array.isArray( personNodes ) ) {
+  if (Array.isArray(personNodes)) {
     var personLen = personNodes.length;
     for (var i = 0; i < personLen; i++) {
       if (people != '')
@@ -160,10 +187,10 @@ function locationText(oneNode) {
   return lText;
 } // locationText
 
-export function showNodeDescription( itemObject ) {
+export function showNodeDescription(itemObject) {
   var sourceText = '';
   var receivedText = '';
-  if ( Array.isArray(itemObject.source) ) {
+  if (Array.isArray(itemObject.source)) {
     var len = itemObject.source.length;
     for (var i = 0; i < len; i++) {
       var itemSource = itemObject.source[i];
@@ -174,9 +201,9 @@ export function showNodeDescription( itemObject ) {
           sourceText += ", " + personText(itemSource.person);
         }
         if (receivedText == '') {
-          receivedText = dateText( itemSource.received )
+          receivedText = dateText(itemSource.received)
         } else {
-          receivedText += ', ' + dateText( itemSource.received );
+          receivedText += ', ' + dateText(itemSource.received);
         }
       }
     }
@@ -186,9 +213,9 @@ export function showNodeDescription( itemObject ) {
   }
 
   let dataObject = {
-    peopleDisplay: peopleList( itemObject ),
-    dateDisplay: dateText( itemObject.date ),
-    locationDisplay: itemObject.location ? locationText( itemObject.location ) : '',
+    peopleDisplay: peopleList(itemObject),
+    dateDisplay: dateText(itemObject.date),
+    locationDisplay: itemObject.location ? locationText(itemObject.location) : '',
     sourceDisplay: sourceText,
     receivedDisplay: receivedText,
     // version: process.env.npm_package_version,

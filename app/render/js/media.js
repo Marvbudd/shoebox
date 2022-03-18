@@ -14,6 +14,31 @@ $prevDataDiv.addEventListener('dblclick', (e) => {
   a = a == 0 ? 1 : 0
 })
 
+function playEntry () {
+  const windowEvent = window.event
+  if (windowEvent) {
+    var rowElement = windowEvent.currentTarget.closest('tr')
+    if (rowElement) {
+      const entry = {
+        ref: rowElement.querySelector('#playlink').innerText,
+        start: rowElement.querySelector('#playstart').innerText,
+        duration: rowElement.querySelector('#playduration').innerText,
+      }
+      TACO.sendToMain(TACO.req.ITEMPLAY, JSON.stringify(entry))
+    }
+  }
+}
+
+function setPlaylistListener() {
+  // mouseover on playlist entries
+  const tdElements = $prevDataDiv.getElementsByClassName('playEntry')
+  if (tdElements.length > 0) {
+    for (var i = 0; i < tdElements.length; i++) {
+      tdElements[i].setAttribute('onmouseover', 'playEntry()')
+    }
+  }
+}
+
 function mediaContent(itemString) {
   const itemObject = JSON.parse(itemString)
   $prevDataDiv.innerHTML = itemObject.descDetail
@@ -33,5 +58,6 @@ function mediaContent(itemString) {
     }
   }
   a = 0
+  setPlaylistListener()
 }
 TACO.onMediaDisplay(mediaContent)

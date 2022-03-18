@@ -28,7 +28,8 @@ export class AccessionClass {
     }
   }
   transform(xslPath, mapObj) {
-    let xslData = this.replaceAll( 
+    // replaceAll substitutes for parameters in xsl
+    let xslData = this.replaceAll(
       fs.readFileSync(xslPath).toString(),
       mapObj )
     try {
@@ -61,5 +62,49 @@ export class AccessionClass {
       console.log('getJSONForLInk: ' + items.length + ' items for link: ' + link)
     }
     callback(items[0])
+  }
+  getJSONReferencesForLink(link) {
+    // get a list of items in playlist entries that refer to this link
+    // enables showing the photo while the audio or video is playing
+    let oneItem
+    let refs = []
+    if (this.accessionJSON.item) {
+      this.accessionJSON.item.forEach(item => {
+        // playlist can be an array if > 1
+        if (item.playlist) {
+          if (Array.isArray(item.playlist.entry)) {
+            item.playlist.entry.forEach(entry => {
+              if (entry.ref === link) {
+                refs.push({
+                  entry: {
+                    ref: item.link,
+                    starttime: entry.starttime,
+                    duration: entry.duration
+                  }
+                })
+              }
+            })
+          } else {
+            let entry = item.playlist.entry
+            if (entry.ref === link) {
+              refs.push({
+                entry: {
+                  ref: item.link,
+                  starttime: entry.starttime,
+                  duration: entry.duration
+                }
+              })
+            }
+          }
+        }
+      })
+      refs.sort((a, b) => {
+        let rv = 0
+        if (a.entry.starttime < b.entry.starttime) { rv = -1 }
+        if (a.entry.starttime > b.entry.starttime) { rv = 1 }
+        return rv
+      })
+    }
+    return refs
   }
 }

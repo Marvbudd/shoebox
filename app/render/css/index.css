@@ -8,14 +8,9 @@ A:visited {
   font-size: smaller;
   font-family: Arial, helvetica, sans-serif;
 }
-#prevData .detailCol1 {
-  column-width: 100px;
-}
-#prevData .detailCol2 {
-  column-width: 1000px;
-}
 /* https://www.w3docs.com/snippets/css/how-to-auto-resize-an-image-to-fit-an-html-container.html */
 #previewDiv {
+  position: sticky;
   height: 75%;
   width: 100%;
 }
@@ -24,9 +19,20 @@ A:visited {
   width: 100%;
   object-fit: contain;
 }
+#previewVideo {
+  height: 100%;
+  width: 100%;
+}
+#prevDataDiv {
+  overflow-y: auto;
+  height: 25%;
+}
 #prevData {
   width: 100%;
   vertical-align: bottom;
+}
+#prevData .detailCol2 {
+  column-width: 1000px;
 }
 #prevData caption {
   font-weight: bold;
@@ -94,9 +100,6 @@ A:visited {
 #tableDiv table tr {
   text-align: left;
 }
-.notCategory {
-  color: greenyellow;
-}
 .contentLeft {
   position: absolute;
   top: 20px;
@@ -115,17 +118,19 @@ A:visited {
   overflow: auto;
   background: #ddddff;
 }
+.mediaContentRight {
+  position: absolute;
+  top: 0px;
+  bottom: 0px;
+  right: 0;
+  width: 100%;
+  overflow: auto;
+  background: #ddddff;
+}
 .bottomLeft {
   position: fixed;
   bottom: 0;
   left: 0;
   height: 20px;
   background: #aabbff;
-}
-.player {
-  position: fixed;
-  bottom: 0;
-  height: 20px;
-  background: #aabbff;
-  width: fit-content;
 }

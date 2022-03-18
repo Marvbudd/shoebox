@@ -163,8 +163,8 @@ function renderItems(tableString) {
   $photo.checked = listObject.photoChecked
   $tape.checked = listObject.tapeChecked
   $video.checked = listObject.videoChecked
-  $selectCategoryLabel.hidden = listObject.categoryDisplay
-  $selectSort.options[6].hidden = listObject.categoryDisplay
+  $selectCategoryLabel.hidden = !listObject.categoryDisplay
+  $selectSort.options[6].hidden = !listObject.categoryDisplay
   $tableDiv.innerHTML = listObject.tableBody
   const tdElements = $tableDiv.getElementsByTagName('td')
   if (tdElements.length > 0) {

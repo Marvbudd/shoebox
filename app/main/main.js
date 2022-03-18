@@ -90,6 +90,7 @@ const createWindow = () => {
       mediaWindow.close()
     }
     nconf.save( 'user' )
+    mainWindow = null
   })
 
   ipcMain.on('items:getList', (event, requestParams) => {
@@ -115,45 +116,49 @@ const createWindow = () => {
   })
 
   ipcMain.on('item:getDetail', (event, requestNum) => {
+    // This fires when requesting any item from the left-hand list
     if (!accessionClass) {
       accessionClass = new AccessionClass( nconf.get('db:accessionsPath') )
     }
-    // This fires when requesting any item from the left-hand list
     accessionClass.getJSONItem( requestNum, (itemObject) => {
-      let resObject = {
-        link: itemObject.link
-      }
-      if (itemObject.type == 'photo') {
-        const mediaPath = path.resolve( nconf.get('media:photo'), itemObject.link )
-        fs.readFile(mediaPath, (err, data) => {
-          // TODO could I resize the photos to an appropriate size to avoid large transfers?
-          // See https://www.npmjs.com/package/sharp picture processing library from the task manager project
-          // https://www.quora.com/How-do-I-embed-images-into-HTML?share=1
-          // https://www.base64encoder.io/node-js/
-          if (err) {
-            resObject.imgTag = 'An error occurred reading the photo. ' + err
-          } else {
-            // itemObject.mediaTag = '<img id="previewImg" src="' + mediaPath + '" >'
-            const imgEncoded = data.toString('base64');
-            resObject.mediaTag = `<a target="_blank" href="${mediaPath}"><img id="previewImg" alt="The Photo" src="data:image/jpg;base64,${imgEncoded}" /></a>`
-          }
+      if (itemObject) {
+        let resObject = {
+          link: itemObject.link
+        }
+        if (itemObject.type == 'photo') {
+          const mediaPath = path.resolve( nconf.get('media:photo'), itemObject.link )
+          fs.readFile(mediaPath, (err, data) => {
+            // TODO could I resize the photos to an appropriate size to avoid large transfers?
+            // See https://www.npmjs.com/package/sharp picture processing library from the task manager project
+            // https://www.quora.com/How-do-I-embed-images-into-HTML?share=1
+            // https://www.base64encoder.io/node-js/
+            if (err) {
+              resObject.imgTag = 'An error occurred reading the photo. ' + err
+            } else {
+              // itemObject.mediaTag = '<img id="previewImg" src="' + mediaPath + '" >'
+              const imgEncoded = data.toString('base64');
+              resObject.mediaTag = `<a target="_blank" href="${mediaPath}"><img id="previewImg" alt="The Photo" src="data:image/jpg;base64,${imgEncoded}" /></a>`
+            }
+            resObject.descDetail = showNodeDescription(itemObject)
+            if (mainWindow) {
+              mainWindow.send('item:detail', JSON.stringify(resObject))
+            }
+          });
+        } else
+        if (itemObject.type == 'tape') {
+          const mediaPath = path.resolve( nconf.get('media:tape'), itemObject.link )
+          resObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`
+          itemObject.reflist = accessionClass.getJSONReferencesForLink(itemObject.link)
           resObject.descDetail = showNodeDescription(itemObject)
-          event.sender.send('item:detail', JSON.stringify(resObject))
-        });
-      } else
-      if (itemObject.type == 'tape') {
-        const mediaPath = path.resolve( nconf.get('media:tape'), itemObject.link )
-        resObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`
-        resObject.descDetail = showNodeDescription(itemObject)
-        event.sender.send('item:detail')
-        createMediaWindow(JSON.stringify(resObject));
-      } else
-      if (itemObject.type == 'video') {
-        const mediaPath = path.resolve( nconf.get('media:video'), itemObject.link )
-        resObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`
-        resObject.descDetail = showNodeDescription(itemObject)
-        event.sender.send('item:detail')
-        createMediaWindow(JSON.stringify(resObject))
+          createMediaWindow(JSON.stringify(resObject));
+        } else
+        if (itemObject.type == 'video') {
+          const mediaPath = path.resolve( nconf.get('media:video'), itemObject.link )
+          resObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`
+          itemObject.reflist = accessionClass.getJSONReferencesForLink(itemObject.link)
+          resObject.descDetail = showNodeDescription(itemObject)
+          createMediaWindow(JSON.stringify(resObject))
+        }  
       }
     })
   })
@@ -164,44 +169,44 @@ const createWindow = () => {
     // This fires when requesting AV for a filename attached to a photo
     const playObject = JSON.parse(playString)
     accessionClass.getJSONForLink( playObject.ref, (itemObject) => {
-      let resObject = {
-        link: itemObject.link
-      }
-      if (itemObject.type == 'photo') {
-        const mediaPath = path.resolve( nconf.get('media:photo'), itemObject.link )
-        // console.log('photoPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
-        fs.readFile(mediaPath, (err, data) => {
-          if (err) {
-            resObject.imgTag = 'An error occurred reading the photo. ' + err
-          } else {
-            // playObject.mediaTag = '<img id="previewImg" src="' + mediaPath + '" >'
-            resObject.mediaTag = `<img id="previewImg" alt="The Photo" src="data:image/jpg;base64,${data.toString('base64')}" />`
-          }
+      if (itemObject) {
+        let resObject = {
+          link: itemObject.link
+        }
+        if (itemObject.type == 'photo') {
+          const mediaPath = path.resolve( nconf.get('media:photo'), itemObject.link )
+          // console.log('photoPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
+          fs.readFile(mediaPath, (err, data) => {
+            if (err) {
+              resObject.imgTag = 'An error occurred reading the photo. ' + err
+            } else {
+              // playObject.mediaTag = '<img id="previewImg" src="' + mediaPath + '" >'
+              resObject.mediaTag = `<img id="previewImg" alt="The Photo" src="data:image/jpg;base64,${data.toString('base64')}" />`
+            }
+            resObject.descDetail = showNodeDescription(itemObject)
+            mainWindow.send('item:detail', JSON.stringify(resObject))
+          });
+        } else
+        if (itemObject.type == 'tape') {
+          const mediaPath = path.resolve( nconf.get('media:tape'), itemObject.link )
+          // console.log('audioPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
+          playObject.startSeconds = hmsToSeconds( playObject.start )
+          playObject.durationSeconds = hmsToSeconds( playObject.duration )
+          resObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`
           resObject.descDetail = showNodeDescription(itemObject)
-          event.sender.send('item:detail', JSON.stringify(resObject))
-        });
-      } else
-      if (itemObject.type == 'tape') {
-        const mediaPath = path.resolve( nconf.get('media:tape'), itemObject.link )
-        // console.log('audioPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
-        playObject.startSeconds = hmsToSeconds( playObject.start )
-        playObject.durationSeconds = hmsToSeconds( playObject.duration )
-        resObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`
-        resObject.descDetail = showNodeDescription(itemObject)
-        resObject.entry = playObject
-        event.sender.send('item:detail')
-        createMediaWindow(JSON.stringify(resObject));
-      } else
-      if (itemObject.type == 'video') {
-        const mediaPath = path.resolve( nconf.get('media:video'), itemObject.link )
-        // console.log('videoPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
-        playObject.startSeconds = hmsToSeconds( playObject.start )
-        playObject.durationSeconds = hmsToSeconds( playObject.duration )
-        resObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`
-        resObject.descDetail = showNodeDescription(itemObject)
-        resObject.entry = playObject
-        event.sender.send('item:detail')
-        createMediaWindow(JSON.stringify(resObject))
+          resObject.entry = playObject
+          createMediaWindow(JSON.stringify(resObject));
+        } else
+        if (itemObject.type == 'video') {
+          const mediaPath = path.resolve( nconf.get('media:video'), itemObject.link )
+          // console.log('videoPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
+          playObject.startSeconds = hmsToSeconds( playObject.start )
+          playObject.durationSeconds = hmsToSeconds( playObject.duration )
+          resObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`
+          resObject.descDetail = showNodeDescription(itemObject)
+          resObject.entry = playObject
+          createMediaWindow(JSON.stringify(resObject))
+        }  
       }
     })
   })
@@ -221,7 +226,7 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
   createWindow()
-
+  const isCategory = nconf.get('controls:categoryDisplay')
   const template = [
     {
       label: '&File',
@@ -230,20 +235,11 @@ app.on('ready', () => {
           label: 'Choose &Accessions.xml file',
           click: chooseAccessionsPath
         },
-        {
-          label: 'Toggle &Category',
-          click: () => {
-            if ( nconf.get('controls:categoryDisplay') ) {
-              nconf.set('controls:categoryDisplay', false)
-            } else {
-              nconf.set('controls:categoryDisplay', true)
-            }
-          }
-        },
-        {
-          label: '&Build Category',
-          click: buildCategory
-        },
+        (isCategory ? {
+             label: '&Build Category',
+             click: buildCategory
+           }
+        : { type: 'separator' } ),
         { role: 'quit'}
       ],
     },
