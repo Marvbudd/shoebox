@@ -99,7 +99,7 @@
 			<xs:element name="playlist" type="playlistType" minOccurs="0" />
 			<xs:element name="source" type="sourceType" maxOccurs="unbounded" />
 		</xs:sequence>
-		<xs:attribute name="categories" type="xs:string" use="required" />
+		<xs:attribute name="categories" type="xs:string" use="optional" />
 	</xs:complexType>
 	<!--the root element-->
 	<xs:element name="accessions">
