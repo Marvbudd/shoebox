@@ -22,7 +22,7 @@ jobs:
     - name: Install dependencies
       run: yarn install
     - name: Build on MacOS
-      run: yarn run dist --publish=never
+      run: yarn run dist
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         DEBUG: electron-builder
@@ -56,14 +56,13 @@ jobs:
     - uses: actions/upload-artifact@v3
       with:
         name: my-linux-artifact
-        REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        file: dist/shoebox*AppImage
-    - name: Upload the artifacts
-        uses: skx/github-action-publish-binaries@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: 'dist/shoebox*AppImage'
+        path: dist/shoebox*AppImage
+    # - name: Upload the artifacts
+    #     uses: skx/github-action-publish-binaries@master
+    #     env:
+    #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    #     with:
+    #       args: 'dist/shoebox*AppImage'
   
   build_on_win:
     runs-on: windows-2016
