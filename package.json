@@ -32,12 +32,13 @@
       "category": "com.marvbudd.media.shoebox"
     },
     "win": {
-      "target": "portable"
+      "target": "nsis"
     },
     "linux": {
       "target": "AppImage",
       "category": "Utility"
-    }
+    },
+    "publish": ["github"]
   },
   "scripts": {
     "start": "electron app/main/index.js",
@@ -51,7 +52,7 @@
     "url": "git+https://github.com/Marvbudd/shoebox-releases"
   },
   "postinstall": "electron-builder install-app-deps",
-  "keywords": [],
+  "keywords": ["genealogy", "media", "video", "audio", "photo"],
   "author": {
     "name": "Marvin E Budd",
     "email": "marvbudd@gmail.com"

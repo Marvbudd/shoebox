@@ -47,7 +47,7 @@ jobs:
     - name: Install dependencies
       run: yarn install
     - name: Build on linux
-      run: yarn run dist --publish=never
+      run: yarn run dist
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         DEBUG: electron-builder
@@ -73,20 +73,17 @@ jobs:
     - uses: actions/setup-node@master
       with:
         node-version: 17.3
-    - name: install node tools
-      run: npm install --global --production windows-build-tools@4.0.0
-    - name: install node-gyp
-      run: npm install --global node-gyp@latest
-    # - name: Set node config to use python2.7
-    #   run: npm config set python python2.7
-    # - name: Set node config to set msvs_version to 2015
-    #   run: npm config set msvs_version 2015
-    # - name: Work around for Windows Server 2019
-    #   run: set path=%path%;C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin
+    # - name: install node tools
+    #   run: yarn global add windows-build-tools
+    # - name: install node-gyp
+    #   run: yarn global add node-gyp
     - name: Install dependencies
       run: yarn install
     - name: Build on Windows
-      run: yarn run dist --publish=never
+      run: yarn run dist
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DEBUG: electron-builder
     - name: see directory
       run: ls ./dist
     - uses: actions/upload-artifact@v3
