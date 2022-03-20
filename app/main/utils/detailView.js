@@ -1,6 +1,8 @@
 const Handlebars = require('handlebars')
 const fs = require('fs')
 const path = require('path');
+const nconf = require( 'nconf' );
+import url from 'url'
 const { version } = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json')))
 // const version = process.env.npm_package_version
 
@@ -21,10 +23,10 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
   '{{/playlist}}' +
   '{{#reflist}}' +
   '{{#entry}}' +
-  '<tr class="detail"><td>Reflist:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
+  '<tr class="detail"><td>References:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
   '{{/entry}}' +
   '{{/reflist}}' +
-  '<caption>Media Description.</caption>' +
+  '<caption><a href="{{ssURL}}" target="_blank">Second Site</a>  Media Description.</caption>' +
   '</table>' +
   '<p class="copyright">Copyright (c) 2001-2022 ' +
   '<a href="mailto:marvbudd@gmail.com">Marvin E Budd.</a> ' +
@@ -33,7 +35,6 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
 const detailCompiled = Handlebars.compile(detailTemplate)
 
 function dateText(oneNode) {
-  var dText = '';
   var month;
   var day;
   var year;
@@ -55,19 +56,19 @@ function dateText(oneNode) {
   else
     year = '';
 
-  dText = day + month + year;
-  return dText;
+  return day + month + year;
 } //dateText
 
-class LastStr {
-  constructor() {
+class AppendString {
+  constructor(separator) {
     this.last = ''
+    this.separator = separator
   }
   add = (str) => {
     if (this.last == '') {
       this.last = str
     } else {
-      this.last = this.last + ' ' + str
+      this.last = this.last + this.separator + str
     }
   }
   string = () => {
@@ -76,7 +77,7 @@ class LastStr {
 }
 
 function lastName(lastObj) {
-  let lastStr = new LastStr
+  let lastStr = new AppendString(' ')
   if (Array.isArray(lastObj)) {
     for (var i = 0; i < lastObj.length; i++) {
       if (typeof (lastObj[i]) === 'object') {
@@ -109,48 +110,54 @@ function lastName(lastObj) {
   return lastStr.string();
 } // If name is not type="married" and there is an array then nonmarried names are in parenthesis.
 
+// https://groups.google.com/g/ss-l/c/Mgx-4Ko_OH8
+// John Cardinal
+// Jan 30, 2022, 11:22:30 PM
+// to ss...@googlegroups.com
+// Neil,
+// IF you leave some important properties in the Pages.Page Sizes section at their default values, 
+// people's URLs will not change when you update your TMG data or change who is included in the site.
+// 1 – Leave People per Page at the default value, which is 30. This isn't necessary for static URLs, 
+//     but it's a good idea You can use a slightly lower number if you want, say 25. 
+//     Also, set the One Person Script to checked, the default.
+// 2 – Leave Person Page Sequence set to "By TMG ID"
+// 3 – Leave the Static Page Assignments checkbox checked.
+// 4 – Leave the Use Person Page Groups checkbox checked.
+// Once you set these values and then publish your site, don't change them. For example, don't change 
+// People per Page to some other number. That will move people. The subsequent URLs will be static 
+// (they won't change based adding or removing people), but they won't be the same as they were.
+// The default settings are not an accident. They were chosen for several reasons, one of which is 
+// to produce static URLs.
+// John Cardinal
+
 function personText(oneNode) {
-  var people = '';
-  var first;
+  var first = '';
   var last = '';
-  var lastNodes;
-  var position;
-  var married;
-
-  first = oneNode.first
-  position = oneNode.position
-  lastNodes = oneNode.last
-
-  if (first) {
-    first = first;
-  } else {
-    first = '';
+  if (oneNode.first) {
+    first = oneNode.first;
   }
-  if (position) {
-    first = position + " " + first;
+  if (oneNode.position) {
+    first = oneNode.position + " " + first;
   }
-  if (lastNodes) {
-    last = lastName(lastNodes)
+  if (oneNode.last) {
+    last = lastName(oneNode.last)
   }
-  people = first + " " + last;
-  return people;
+  return first + " " + last;
 }
 
 function peopleList(itemNode) {
-  var people = '';
+  var people = new AppendString(', ');
   var personNodes = itemNode.person;
 
   if (Array.isArray(personNodes)) {
     var personLen = personNodes.length;
     for (var i = 0; i < personLen; i++) {
-      if (people != '')
-        people = people + ", ";
-      people = people + personText(personNodes[i]);
+      people.add( personText(personNodes[i]) )
     }
   } else {
-    people = personText(personNodes)
+    people.add( personText(personNodes) )
   }
-  return people;
+  return people.string()
 }
 
 function locationText(oneNode) {
@@ -188,38 +195,30 @@ function locationText(oneNode) {
 } // locationText
 
 export function showNodeDescription(itemObject) {
-  var sourceText = '';
-  var receivedText = '';
+  var sourceText = new AppendString(', ')
+  var receivedText = new AppendString(', ')
   if (Array.isArray(itemObject.source)) {
     var len = itemObject.source.length;
     for (var i = 0; i < len; i++) {
       var itemSource = itemObject.source[i];
       if (itemSource) {
-        if (sourceText == '') {
-          sourceText = personText(itemSource.person);
-        } else {
-          sourceText += ", " + personText(itemSource.person);
-        }
-        if (receivedText == '') {
-          receivedText = dateText(itemSource.received)
-        } else {
-          receivedText += ', ' + dateText(itemSource.received);
-        }
+        sourceText.add( personText(itemSource.person) )
+        receivedText.add( dateText(itemSource.received) )
       }
     }
   } else {
-    sourceText = personText(itemObject.source.person)
-    receivedText = dateText(itemObject.source.received)
+    sourceText.add( personText(itemObject.source.person) )
+    receivedText.add( dateText(itemObject.source.received) )
   }
 
   let dataObject = {
     peopleDisplay: peopleList(itemObject),
     dateDisplay: dateText(itemObject.date),
     locationDisplay: itemObject.location ? locationText(itemObject.location) : '',
-    sourceDisplay: sourceText,
-    receivedDisplay: receivedText,
-    // version: process.env.npm_package_version,
+    sourceDisplay: sourceText.string(),
+    receivedDisplay: receivedText.string(),
     version: version,
+    ssURL: url.pathToFileURL( path.resolve( path.dirname( nconf.get('db:accessionsPath') ), 'website', 'index.htm' ) ).href,
     ...itemObject
   }
   return detailCompiled(dataObject)

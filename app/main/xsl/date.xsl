@@ -26,6 +26,7 @@
           <!-- <xsl:sort select="string-length(substring-before('JanFebMarAprMayJunJulAugSepOctNovDec', month)) div 3 + 1" /> -->
           <xsl:sort select="date/month" />
           <xsl:sort select="date/day" />
+          <xsl:sort select="accession" />
           <xsl:sort select="person/last" />
           <xsl:sort select="person/first" />
         </xsl:apply-templates>
