@@ -11,7 +11,7 @@ A:visited {
 /* https://www.w3docs.com/snippets/css/how-to-auto-resize-an-image-to-fit-an-html-container.html */
 #previewDiv {
   position: sticky;
-  height: 75%;
+  height: 70%;
   width: 100%;
 }
 #previewImg {
@@ -25,7 +25,7 @@ A:visited {
 }
 #prevDataDiv {
   overflow-y: auto;
-  height: 25%;
+  height: 30%;
 }
 #prevData {
   width: 100%;
