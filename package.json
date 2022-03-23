@@ -40,7 +40,9 @@
     },
     "publish": [
         {
-          "provider": "github"
+          "provider": "github",
+          "vPrefixedTagName": true,
+          "publishAutoUpdate": true
         }
     ]
   },
