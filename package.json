@@ -51,7 +51,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Marvbudd/shoebox-releases"
+    "url": "https://github.com/Marvbudd/shoebox-releases"
   },
   "postinstall": "electron-builder install-app-deps",
   "keywords": [
