@@ -22,7 +22,7 @@ jobs:
     - name: Install dependencies
       run: yarn install
     - name: Build on MacOS
-      run: yarn run dist
+      run: yarn run dist -p
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         DEBUG: electron-builder
@@ -47,7 +47,7 @@ jobs:
     - name: Install dependencies
       run: yarn install
     - name: Build on linux
-      run: yarn run dist
+      run: yarn run dist -p
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         DEBUG: electron-builder
@@ -80,7 +80,7 @@ jobs:
     - name: Install dependencies
       run: yarn install
     - name: Build on Windows
-      run: yarn run dist
+      run: yarn run dist -p
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         DEBUG: electron-builder

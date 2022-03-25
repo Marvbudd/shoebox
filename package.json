@@ -41,6 +41,7 @@
     "publish": [
       {
         "provider": "github",
+        "owner": "Marvbudd",
         "vPrefixedTagName": true,
         "publishAutoUpdate": true
       }
