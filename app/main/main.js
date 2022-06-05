@@ -49,6 +49,10 @@ nconf.argv()
       "accessionsPath": path.resolve(__dirname, "../resource/accessions.xml")
     },
     "ui": {
+      "main": {
+        "width": 800,
+        "height": 600
+      },
       "mediaPlayer": {
         "width": 400,
         "height": 300
@@ -67,8 +71,8 @@ let selectedCategory = ''
 const createWindow = () => {
   // Create the browser window.
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: nconf.get('ui:main:width'),
+    height: nconf.get('ui:main:height'),
     autoHideMenuBar: true,
     preloadWindow: true,
     webPreferences: {
@@ -77,11 +81,16 @@ const createWindow = () => {
       nodeIntegration: false,
       contextIsolation: true
     }
-  });
-
+  })
   // and load the index.html of the app.
   mainWindow.loadFile( path.resolve(__dirname + '/../render/html/index.html') );
-
+  mainWindow.on('close', (e) => {
+    if (mainWindow) {
+      const mainWindowSize = mainWindow.getSize()
+      nconf.set('ui:main:width', mainWindowSize[0])
+      nconf.set('ui:main:height', mainWindowSize[1])
+    }
+  })
   mainWindow.webContents.on('destroyed', () => {
     if (helpWindow) {
       helpWindow.close();
@@ -92,7 +101,6 @@ const createWindow = () => {
     nconf.save( 'user' )
     mainWindow = null
   })
-
   ipcMain.on('items:getList', (event, requestParams) => {
     // console.log('items:getList received in main type=', requestParams)
     const selectFiles = [ 'date.xsl', 'person.xsl', 'location.xsl', 'file.xsl', 'source.xsl', 'accession.xsl', 'categsel.xsl' ]
@@ -193,6 +201,7 @@ const createWindow = () => {
           playObject.startSeconds = hmsToSeconds( playObject.start )
           playObject.durationSeconds = hmsToSeconds( playObject.duration )
           resObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`
+          itemObject.reflist = accessionClass.getJSONReferencesForLink(itemObject.link)
           resObject.descDetail = showNodeDescription(itemObject)
           resObject.entry = playObject
           createMediaWindow(JSON.stringify(resObject));
@@ -203,6 +212,7 @@ const createWindow = () => {
           playObject.startSeconds = hmsToSeconds( playObject.start )
           playObject.durationSeconds = hmsToSeconds( playObject.duration )
           resObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`
+          itemObject.reflist = accessionClass.getJSONReferencesForLink(itemObject.link)
           resObject.descDetail = showNodeDescription(itemObject)
           resObject.entry = playObject
           createMediaWindow(JSON.stringify(resObject))

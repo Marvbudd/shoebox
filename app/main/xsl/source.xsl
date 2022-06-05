@@ -22,9 +22,9 @@
         <xsl:apply-templates select="*/source/person" mode="main">
           <xsl:sort select="last" />
           <xsl:sort select="first" />
-          <xsl:sort select="../../date/year" />
-          <xsl:sort select="../../date/month" />
-          <xsl:sort select="../../date/day" />
+          <xsl:sort select="../received/year" />
+          <xsl:sort select="../received/month" />
+          <xsl:sort select="../received/day" />
           <xsl:sort select="../../accession" />
         </xsl:apply-templates>
       </tbody>
@@ -49,11 +49,11 @@
           <xsl:value-of select="last" />
         </div>
       </td>
-      <td><div class="dateData"><xsl:apply-templates select="../../date" /></div></td>
+      <td><div class="dateData"><xsl:apply-templates select="../received" /></div></td>
     </tr>
   </xsl:template>
 
-  <xsl:template match="date">
+  <xsl:template match="received">
     <xsl:value-of select="day" />
     <xsl:text> </xsl:text>
     <xsl:value-of select="month" />
