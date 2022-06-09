@@ -29,7 +29,7 @@ jobs:
         prerelease: true
     - name: set output
       id: set_output
-      run: echo "::set-output name=upload_url::$upload_url"
+      run: echo "::set-output name=upload_url::${{ steps.create_release.outputs.upload_url }}
 
   build_on_mac:
     needs: create_release

@@ -4,7 +4,7 @@ on:
   push:
     branches:
     # run on the develop branch
-     - develop
+     - main
 # this is where the magic happens, each job happens in parallel btw
 jobs:
   build_on_mac:
