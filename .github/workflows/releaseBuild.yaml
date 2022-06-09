@@ -11,7 +11,7 @@ jobs:
   create_release:
     runs-on: ubuntu-latest
     outputs:
-      build_id: ${{ steps.create_release.outputs.upload_url }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
     - name: Create Release
       id: create_release
@@ -27,8 +27,7 @@ jobs:
           - Second Change
         draft: true
         prerelease: true
-      outputs:
-        upload_url: ${{ outputs.upload_url }}
+      run: echo "::set-output name=upload_url::$upload_url"
 
   build_on_mac:
     needs: create_release
