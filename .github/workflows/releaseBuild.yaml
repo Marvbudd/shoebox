@@ -2,8 +2,8 @@ name: releaseBuild
 # this will help you specify where to run 
 on:
   push:
-    tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+    branches:
+      - 'main' # Push events to matching v*, i.e. v1.0, v20.15.10
 # this is where the magic happens, 
 # each job happens in parallel after create_release
 # each job uses upload_url from the create_release dependency
