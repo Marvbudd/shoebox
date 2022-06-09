@@ -1,7 +1,7 @@
 {
-  "name": "shoebox",
+  "name": "@Marvbudd/shoebox",
   "productName": "shoebox",
-  "version": "1.1.18",
+  "version": "1.1.19",
   "description": "Multimedia browser",
   "main": "app/main/index.js",
   "module": "app/main/main.js",
