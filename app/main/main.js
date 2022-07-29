@@ -387,9 +387,10 @@ function createMediaWindow( mediaInfo ) {
       }
     })
   } else {
-    if (!mediaWindow.isVisible() || !mediaWindow.isFocused()) {
-      mediaWindow.show();
-    }
+    // On Mac this may cause an unwanted focus change to the media window
+    // if (!mediaWindow.isVisible() || !mediaWindow.isFocused()) {
+    //  mediaWindow.show();
+    // }
     mediaWindow.send('mediaDisplay', mediaInfo)
   }
 }
