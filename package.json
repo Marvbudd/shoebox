@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "1.1.26",
+  "version": "1.1.27",
   "description": "Multimedia browser",
   "main": "app/main/index.js",
   "module": "app/main/main.js",
@@ -50,6 +50,7 @@
   "scripts": {
     "start": "electron app/main/index.js",
     "pack": "electron-builder --dir",
+    "dist": "electron-builder",
     "electron-builder": "electron-builder",
     "dist:dir": "yarn dist --dir -c.compression=store -c.mac.identity=null",
     "cert": "electron-builder create-self-signed-cert"
