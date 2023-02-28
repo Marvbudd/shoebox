@@ -15,15 +15,15 @@ jobs:
 
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v1
+        uses: actions/checkout@latest
 
       - name: Install Node.js, NPM and Yarn
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@latest
         with:
           node-version: 16
 
       - name: Build/release Electron app
-        uses: paneron/action-electron-builder@v1.8.1
+        uses: paneron/action-electron-builder@latest
         with:
           # GitHub token, automatically provided to the action
           # (No need to define this secret in the repo settings)
