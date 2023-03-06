@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "1.1.30",
+  "version": "1.1.31",
   "description": "Multimedia browser",
   "main": "app/main/index.js",
   "module": "app/main/main.js",
@@ -25,57 +25,34 @@
           "type": "link",
           "path": "/Applications"
         }
-      ],
-      "publish": [
-        {
-          "provider": "github",
-          "owner": "Marvbudd",
-          "vPrefixedTagName": true,
-          "publishAutoUpdate": true
-        }
       ]
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Marvbudd",
+        "repo": "shoebox",
+        "vPrefixedTagName": true,
+        "publishAutoUpdate": true
+      }
+    ],
     "mac": {
       "target": "dmg",
-      "category": "com.marvbudd.media.shoebox",
-      "publish": [
-        {
-          "provider": "github",
-          "owner": "Marvbudd",
-          "vPrefixedTagName": true,
-          "publishAutoUpdate": true
-        }
-      ]
+      "category": "com.marvbudd.media.shoebox"
     },
     "win": {
-      "target": "nsis",
-      "publish": [
-        {
-          "provider": "github",
-          "owner": "Marvbudd",
-          "vPrefixedTagName": true,
-          "publishAutoUpdate": true
-        }
-      ]
+      "target": "nsis"
     },
     "linux": {
       "target": "AppImage",
-      "category": "Utility",
-      "publish": [
-        {
-          "provider": "github",
-          "owner": "Marvbudd",
-          "vPrefixedTagName": true,
-          "publishAutoUpdate": true
-        }
-      ]
+      "category": "Utility"
     }
   },
   "scripts": {
     "start": "electron app/main/index.js",
     "pack": "electron-builder --dir",
     "electron-builder": "electron-builder",
-    "dist": "electron-builder",
+    "dist": "electron-builder --publish always",
     "dist:dir": "yarn dist --dir -c.compression=store -c.mac.identity=null",
     "cert": "electron-builder create-self-signed-cert",
     "postinstall": "electron-builder install-app-deps",
