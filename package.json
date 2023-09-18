@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "1.1.31",
+  "version": "1.1.32",
   "description": "Multimedia browser",
   "main": "app/main/index.js",
   "module": "app/main/main.js",
@@ -52,6 +52,8 @@
     "start": "electron app/main/index.js",
     "pack": "electron-builder --dir",
     "electron-builder": "electron-builder",
+    "build": "electron-builder build --publish never",
+    "deploy": "electron-builder build --publish always",
     "dist": "electron-builder --publish always",
     "dist:dir": "yarn dist --dir -c.compression=store -c.mac.identity=null",
     "cert": "electron-builder create-self-signed-cert",
@@ -60,7 +62,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Marvbudd/shoebox"
+    "url": "https://github.com/Marvbudd/shoebox.git"
   },
   "postinstall": "electron-builder install-app-deps",
   "keywords": [
