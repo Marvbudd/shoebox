@@ -46,7 +46,7 @@ nconf.argv()
       "categoryDisplay": false
     },
     "db": {
-      "accessionsPath": path.resolve(__dirname, "../resource/accessions.xml")
+      "accessionsPath": path.resolve(__dirname, "../resource/accessions.json")
     },
     "ui": {
       "main": {
@@ -103,24 +103,25 @@ const createWindow = () => {
   })
   ipcMain.on('items:getList', (event, requestParams) => {
     // console.log('items:getList received in main type=', requestParams)
-    const selectFiles = [ 'date.xsl', 'person.xsl', 'location.xsl', 'file.xsl', 'source.xsl', 'accession.xsl', 'categsel.xsl' ]
-  
-    // table of selectSort values and associated xsl file name
-    const xslPath = path.resolve( __dirname + '/../main/xsl/' + selectFiles[requestParams.sort - 1] )
-    const mapObj = new Map([
-      ["${category}", selectedCategory]
-    ])
-    
     if (!accessionClass) {
       accessionClass = new AccessionClass( nconf.get('db:accessionsPath') )
     }
+    let transformedObject = [ ]
     let listObject = {}
-    listObject.tableBody = accessionClass.transform(xslPath, mapObj)
+    transformedObject = accessionClass.transformToHtml(requestParams.sort - 1, selectedCategory)
+    listObject.tableBody = transformedObject.tableBody
+    listObject.navHeader = transformedObject.navHeader
+    listObject.categories = accessionClass.getCategories()
+    listObject.accessionTitle = accessionClass.getTitle()
+    nconf.set('controls:categoryDisplay', listObject.categories.length > 0)
+    nconf.save( 'user' )
+    listObject.selectedCategory = selectedCategory // tracks the previous category selection
     listObject.photoChecked = nconf.get('controls:photoChecked')
     listObject.tapeChecked = nconf.get('controls:tapeChecked')
     listObject.videoChecked = nconf.get('controls:videoChecked')
     listObject.categoryDisplay = nconf.get('controls:categoryDisplay')
     event.sender.send('items:render', JSON.stringify(listObject))
+    createMenu() // update the menu to show/hide the category build option
   })
 
   ipcMain.on('item:getDetail', (event, requestNum) => {
@@ -221,7 +222,7 @@ const createWindow = () => {
     })
   })
   ipcMain.on('items:reload', (event, itemsString) => {
-    // reload on main window causes a reload of accessions.xml. It changed?
+    // reload on main window causes a reload of accessions in case it changed.
     accessionClass = undefined
     let itemsObject = JSON.parse(itemsString)
     nconf.set( 'controls:photoChecked', itemsObject.photoChecked)
@@ -236,56 +237,7 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
   createWindow()
-  const isCategory = nconf.get('controls:categoryDisplay')
-  const template = [
-    {
-      label: '&File',
-      submenu: [
-        {
-          label: 'Choose &Accessions.xml file',
-          click: chooseAccessionsPath
-        },
-        (isCategory ? {
-             label: '&Build Category',
-             click: buildCategory
-           }
-        : { type: 'separator' } ),
-        { role: 'quit'}
-      ],
-    },
-    {
-      label: '&View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' }
-      ]
-    },
-    {
-      label: '&Window',
-      submenu: [
-        { label: 'Family &Tree',
-          click: createTreeWindow
-        }
-      ]
-    },
-    {
-      label: '&Help',
-      submenu: [
-        { 
-          label: '&Info',
-          click: createHelpWindow
-        },
-        { role: 'about' }
-      ]
-    }
-  ]
-  Menu.setApplicationMenu( Menu.buildFromTemplate(template) )
+  createMenu();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -305,6 +257,60 @@ app.on('activate', () => {
   }
 });
 
+function createMenu() {
+  const isCategory = nconf.get('controls:categoryDisplay');
+  const template = [
+    {
+      label: '&File',
+      submenu: [
+        {
+          label: 'Choose &Accessions.json file',
+          click: chooseAccessionsPath
+        },
+        (isCategory ? {
+          label: '&Build Category',
+          click: buildCategory
+        }
+          : { type: 'separator' }),
+        { role: 'quit' }
+      ],
+    },
+    {
+      label: '&View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: '&Window',
+      submenu: [
+        {
+          label: 'Family &Tree',
+          click: createTreeWindow
+        }
+      ]
+    },
+    {
+      label: '&Help',
+      submenu: [
+        {
+          label: '&Info',
+          click: createHelpWindow
+        },
+        { role: 'about' }
+      ]
+    }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function hmsToSeconds( hms ) {
   let a = hms.split(':')
   return parseInt(a[0]) * 3600 + parseInt(a[1]) * 60 + parseInt(a[2])
@@ -312,8 +318,8 @@ function hmsToSeconds( hms ) {
 
 function chooseAccessionsPath() {
   dialog.showOpenDialog(mainWindow, {
-    filters: [{ name: 'xml', extensions: 'xml' }],
-    title: 'Select accessions.xml file with "audio", "video", "photo" folders in same folder.',
+    filters: [{ name: 'json', extensions: 'json' }],
+    title: 'Select accessions.json file with "audio", "video", "photo" folders in same folder.',
     defaultPath: nconf.get('db.accessionsPath'),
     // properties: ['openDirectory', 'createDirectory']
   }).then(mediaDirectory => {
@@ -331,7 +337,7 @@ function chooseAccessionsPath() {
       nconf.save('user');
       accessionClass = undefined
       mainWindow.loadFile(path.resolve(__dirname + '/../render/html/index.html'));
-    }
+  }
   }).catch((e) => {
     console.log('error in showOpenDialog: ', e);
   });
@@ -396,13 +402,7 @@ function createMediaWindow( mediaInfo ) {
 }
 
 async function buildCategory() {
-  let xslPath = path.resolve( __dirname + '/../main/xsl/copycmds.xsl' )
   let categoryDir = path.resolve( path.dirname( nconf.get('db:accessionsPath') ), '../', selectedCategory )
-  const mapObj = new Map([
-    ["${category}", selectedCategory],
-    ["${sourceDir}", path.dirname( nconf.get('db:accessionsPath') )],
-    ["${destDir}", categoryDir]
-  ])
   // Getting information for a directory
   fs.stat(categoryDir, (error, stats) => {
     if (error) {
@@ -423,28 +423,28 @@ async function buildCategory() {
       accessionClass = new AccessionClass( nconf.get('db:accessionsPath') )
     }
     let commandsPath = path.resolve( categoryDir, 'commands')
-    xslPath = path.resolve( __dirname + '/../main/xsl/copycmds.xsl' )
     try {
-      let commandsFile = accessionClass.transform(xslPath, mapObj)
-      console.log(`Writing ${commandsPath}`)
+      const sourceDir= path.dirname( nconf.get('db:accessionsPath') )
+      let commandsFile = accessionClass.getCommands(sourceDir, categoryDir, selectedCategory)
       fs.writeFileSync( commandsPath, commandsFile.split("\r\n").join("\n") )
-    }
-    catch (error) {
-      console.log('error creating accessions.xml - error - ' + error)
-    }
-    let accessionsPath = path.resolve( categoryDir, 'accessions.xml')
-    xslPath = path.resolve( __dirname + '/../main/xsl/copyxml.xsl' )
-    try {
-      let accessionsFile = accessionClass.transform(xslPath, mapObj)
-      console.log(`Writing ${accessionsPath}`)
-      fs.writeFileSync( accessionsPath, accessionsFile.split("\r\n").join("\n") )  
+      console.log(`Created ${commandsPath}`)
     }
     catch (error) {
       console.log('error creating commands - error - ' + error)
     }
+    let accessionsPath = path.resolve( categoryDir, 'accessions.json')
+    try {
+      let accessionsFile = accessionClass.getAccessions(selectedCategory)
+      fs.writeFileSync(accessionsPath, JSON.stringify(accessionsFile));
+      console.log(`Created ${accessionsPath}`)
+    }
+    catch (error) {
+      console.log('error creating accessions.json - error - ' + error)
+    }
   });
 }
 
+// create a window to display the family tree website from SecondSite
 function createTreeWindow() {
   let treeURL = url.pathToFileURL( path.resolve( path.dirname( nconf.get('db:accessionsPath') ), 'website', 'index.htm' ) ).href
   shell.openExternal( treeURL );

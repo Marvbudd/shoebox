@@ -4,8 +4,9 @@ const $selectSort = document.querySelector('#selectSort')
 const $selectCategoryLabel = document.querySelector('#selectCategoryLabel')
 const $selectCategory = document.querySelector('#selectCategory')
 
+const $navHeader = document.querySelector('#navHeader')
 const $previewDiv = document.querySelector('#previewDiv')
-const $prevDataDiv = document.getElementById("prevDataDiv")
+const $prevDataDiv = document.getElementById('prevDataDiv')
 
 const $photo = document.getElementById('photo')
 const $tape = document.getElementById('tape')
@@ -92,6 +93,7 @@ function mediaContent(itemString) {
 }
 BURRITO.whenItemDetail(mediaContent)
 
+// The left column text is green if the item is in the selected category
 $selectCategory.addEventListener('change', highlightCategory)
 function highlightCategory() {
   if (!$selectCategoryLabel.hidden) {
@@ -99,7 +101,7 @@ function highlightCategory() {
     let detailElements = $tableDiv.getElementsByTagName('tr')
     for (i = 0; i < detailElements.length; i++) {
       if (detailElements[i].attributes.categories) {
-        if (detailElements[i].attributes.categories.value.includes(selectedCategory)) {
+        if (detailElements[i].attributes.categories.value.split(',').some(category => category === selectedCategory)) {
           detailElements[i].firstChild.style.color = 'green'
         } else {
           detailElements[i].firstChild.style.color = ''
@@ -160,11 +162,40 @@ function saveCheckbox() {
 
 function renderItems(tableString) {
   const listObject = JSON.parse(tableString)
+  document.title = listObject.accessionTitle
+  // debugger;
   $photo.checked = listObject.photoChecked
   $tape.checked = listObject.tapeChecked
   $video.checked = listObject.videoChecked
-  $selectCategoryLabel.hidden = !listObject.categoryDisplay
-  $selectSort.options[6].hidden = !listObject.categoryDisplay
+  // If there are no categories, hide the selectCategoryLabel and selectCategory from the sort options
+  if (listObject.categories.length === 0) {
+    $selectCategoryLabel.hidden = true
+    $selectSort.options[6].hidden = true
+  }
+  // remove all options from selectCategory before adding new ones
+  while ($selectCategory.options.length > 0) {
+    $selectCategory.remove(0);
+  }
+  {
+    const option = document.createElement('option')
+    option.value = '*'
+    option.text = 'All'
+    if (!listObject.selectedCategory || listObject.selectedCategory === '*') {
+      option.selected = true
+    }
+    $selectCategory.appendChild(option)
+  }
+  listObject.categories.forEach(category => {
+    const option = document.createElement('option')
+    option.value = category.value
+    option.text = category.text
+    if (listObject.selectedCategory === category.value) {
+      option.selected = true
+    }
+
+    $selectCategory.appendChild(option)
+  })
+  $navHeader.innerHTML = listObject.navHeader
   $tableDiv.innerHTML = listObject.tableBody
   const tdElements = $tableDiv.getElementsByTagName('td')
   if (tdElements.length > 0) {

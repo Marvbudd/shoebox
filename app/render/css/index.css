@@ -45,6 +45,9 @@ A:visited {
 }
 .date {
   width: 8%; }
+.dateRight {
+    width: 8%;
+    float: right; }
 .dateData {
   text-align:right; }
 .descData {
@@ -97,8 +100,22 @@ A:visited {
   font-family: Arial, helvetica, sans-serif;
   border-spacing: 0;
 }
-#tableDiv table tr {
-  text-align: left;
+.maintable {
+  width: 100%;
+}
+#navHeader {
+  float: left;
+  width: 30%;
+}
+#column1 {
+  float: left;
+}
+#column2 {
+  margin-right: 20px;
+}
+#previewHeader {
+  float: right;
+  width: 70%;
 }
 .contentLeft {
   position: absolute;

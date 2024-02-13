@@ -17,7 +17,7 @@ jobs:
     - name: Setup node
       uses: actions/setup-node@master
       with:
-        node-version: 17.3
+        node-version: 20.6
     - name: see directory
       run: ls
     - name: Install dependencies
@@ -45,7 +45,7 @@ jobs:
     - name: Setup node
       uses: actions/setup-node@master
       with:
-        node-version: 17.3
+        node-version: 20.6
     - name: Install dependencies
       run: yarn install
     - name: Build on linux
@@ -76,7 +76,7 @@ jobs:
     - name: Setup node
       uses: actions/setup-node@master
       with:
-        node-version: 17.3
+        node-version: 20.6
     # - name: install node tools
     #   run: yarn global add windows-build-tools
     # - name: install node-gyp
