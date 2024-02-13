@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "1.1.32",
+  "version": "2.0.0",
   "description": "Multimedia browser",
   "main": "app/main/index.js",
   "module": "app/main/main.js",
@@ -77,13 +77,13 @@
     "email": "marvbudd@gmail.com"
   },
   "license": "MIT",
-  "copyright": "Copyright © 2001-2023 ${author}",
+  "copyright": "Copyright © 2001-2024",
   "dependencies": {
     "esm": "^3.2.25",
     "handlebars": "^4.7.7",
     "nconf": "^0.12.0",
-    "xml2js": "^0.4.23",
-    "xslt-processor": "^0.11.7"
+    "xml2js": "^0.6.2",
+    "xslt-processor": "^2.0.0"
   },
   "devDependencies": {
     "electron": "^23.1.1",
