@@ -11,13 +11,13 @@ jobs:
     runs-on: macOS-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@master
+      uses: actions/checkout@v4
       with:
         ref: main
     - name: Setup node
-      uses: actions/setup-node@master
+      uses: actions/setup-node@v4
       with:
-        node-version: 20.6
+        node-version: 20
     - name: see directory
       run: ls
     - name: Install dependencies
@@ -30,7 +30,7 @@ jobs:
     - name: see directory in dist
       run: ls -l ./dist
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: my-macos-artifact
         path: dist/shoebox*.dmg
@@ -39,13 +39,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@master
+      uses: actions/checkout@v4
       with:
         ref: main
     - name: Setup node
-      uses: actions/setup-node@master
+      uses: actions/setup-node@v4
       with:
-        node-version: 20.6
+        node-version: 20
     - name: Install dependencies
       run: yarn install
     - name: Build on linux
@@ -55,7 +55,7 @@ jobs:
         DEBUG: electron-builder
     - name: see directory in dist
       run: ls -l ./dist
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: my-linux-artifact
         path: dist/shoebox*AppImage
@@ -70,13 +70,13 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@master
+      uses: actions/checkout@v4
       with:
         ref: main        
     - name: Setup node
-      uses: actions/setup-node@master
+      uses: actions/setup-node@v4
       with:
-        node-version: 20.6
+        node-version: 20
     # - name: install node tools
     #   run: yarn global add windows-build-tools
     # - name: install node-gyp
@@ -90,7 +90,7 @@ jobs:
         DEBUG: electron-builder
     - name: see directory
       run: ls ./dist
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: my-windows-artifact
         path: dist/shoebox*.exe

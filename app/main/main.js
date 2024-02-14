@@ -42,8 +42,7 @@ nconf.argv()
     "controls": {
       "photoChecked": true,
       "tapeChecked": true,
-      "videoChecked": true,
-      "categoryDisplay": false
+      "videoChecked": true
     },
     "db": {
       "accessionsPath": path.resolve(__dirname, "../resource/accessions.json")
@@ -59,6 +58,13 @@ nconf.argv()
       }
     }
   })
+// if the accessionsPath is an xml file (old version) change to default
+if (nconf.get('db:accessionsPath').includes('.xml')) {
+  nconf.set('db:accessionsPath', path.resolve(__dirname, "../resource/accessions.json"));
+  nconf.save('user');
+  console.log('Changed accessionsPath to default');
+}
+accessionClass = new AccessionClass(nconf.get('db:accessionsPath'));
 process.on('warning', e => console.warn(e.stack));
 process.on('uncaughtException - ', e => console.log('***** uncaughtException with error=', e) )
 let accessionClass = undefined
@@ -112,14 +118,12 @@ const createWindow = () => {
     listObject.tableBody = transformedObject.tableBody
     listObject.navHeader = transformedObject.navHeader
     listObject.categories = accessionClass.getCategories()
-    listObject.accessionTitle = accessionClass.getTitle()
-    nconf.set('controls:categoryDisplay', listObject.categories.length > 0)
-    nconf.save( 'user' )
+    selectedCategory = listObject.categories.length > 0 ? '*' : ''
     listObject.selectedCategory = selectedCategory // tracks the previous category selection
+    listObject.accessionTitle = accessionClass.getTitle()
     listObject.photoChecked = nconf.get('controls:photoChecked')
     listObject.tapeChecked = nconf.get('controls:tapeChecked')
     listObject.videoChecked = nconf.get('controls:videoChecked')
-    listObject.categoryDisplay = nconf.get('controls:categoryDisplay')
     event.sender.send('items:render', JSON.stringify(listObject))
     createMenu() // update the menu to show/hide the category build option
   })

@@ -15,12 +15,18 @@ jobs:
 
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v3.3.0
+        uses: actions/checkout@v4
 
       - name: Install Node.js, NPM and Yarn
-        uses: actions/setup-node@v3.0.0
+        uses: actions/setup-node@v4
         with:
-          node-version: 20.6
+          node-version: 20
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Install electron-builder
+        run: yarn global add electron-builder
 
       - name: Build/release Electron app
         uses: paneron/action-electron-builder@v1.8.1
