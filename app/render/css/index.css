@@ -53,22 +53,25 @@ A:visited {
 .descData {
   word-wrap:normal; }
 .photo {
-  background: #ddddff;
+  background: #eeeeff;
 }
-.photoInput {
-  background: #ddddff;
+.bottomLeft .photoInput {
+  background: #eeeeff;
+  accent-color: #eeeeff;
 }
 .tape {
   background: #f1e6c2;
 }
-.tapeInput {
+.bottomLeft .tapeInput {
   background: #f1e6c2;
+  accent-color: #f1e6c2;
 }
 .video {
   background: #fab2b8;
 }
-.videoInput {
+.bottomLeft .videoInput {
   background: #fab2b8;
+  accent-color: #fab2b8;
 }
 .emphasize {
   font-weight: bold;
@@ -133,7 +136,7 @@ A:visited {
   right: 0;
   width: 70%;
   overflow: auto;
-  background: #ddddff;
+  background: #eeeeff;
 }
 .mediaContentRight {
   position: absolute;
@@ -142,7 +145,7 @@ A:visited {
   right: 0;
   width: 100%;
   overflow: auto;
-  background: #ddddff;
+  background: #eeeeff;
 }
 .bottomLeft {
   position: fixed;

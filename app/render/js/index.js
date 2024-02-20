@@ -1,8 +1,8 @@
 // Elements
 const $tableDiv = document.querySelector('#tableDiv')
 const $selectSort = document.querySelector('#selectSort')
-const $selectCategoryLabel = document.querySelector('#selectCategoryLabel')
-const $selectCategory = document.querySelector('#selectCategory')
+const $selectCollectionLabel = document.querySelector('#selectCollectionLabel')
+const $selectCollection = document.querySelector('#selectCollection')
 
 const $navHeader = document.querySelector('#navHeader')
 const $previewDiv = document.querySelector('#previewDiv')
@@ -11,6 +11,8 @@ const $prevDataDiv = document.getElementById('prevDataDiv')
 const $photo = document.getElementById('photo')
 const $tape = document.getElementById('tape')
 const $video = document.getElementById('video')
+const $restrictLabel = document.getElementById('restrictLabel')
+const $restrict = document.getElementById('restrict')
 
 //  selectDiv     detailDiv
 // +----------+---------------------+
@@ -40,35 +42,20 @@ $prevDataDiv.addEventListener('dblclick', (e) => {
   a = a == 0 ? 1 : 0
 })
 
-$photo.addEventListener('change', mediaTypeChange)
-$tape.addEventListener('change', mediaTypeChange)
-$video.addEventListener('change', mediaTypeChange)
-function mediaTypeChange() {
-  // We call this for unchecked boxes after selectionChanged
-  let element = this
-  let detailElements = document.getElementsByClassName(element.name)
-  const showClass = element.checked === true
-  for (var i = 0; i < detailElements.length; i++) {
-    if (showClass) {
-      detailElements[i].hidden = false
-    } else {
-      detailElements[i].hidden = true
-    }
-  }
-}
+$photo.addEventListener('change', hideHighlightFilter)
+$tape.addEventListener('change', hideHighlightFilter)
+$video.addEventListener('change', hideHighlightFilter)
+$restrict.addEventListener('change', hideHighlightFilter)
 
-function playEntry () {
-  const windowEvent = window.event
-  if (windowEvent) {
-    var rowElement = windowEvent.currentTarget.closest('tr')
-    if (rowElement) {
-      const entry = {
-        ref: rowElement.querySelector('#playlink').innerText,
-        start: rowElement.querySelector('#playstart').innerText,
-        duration: rowElement.querySelector('#playduration').innerText,
-      }
-      BURRITO.sendToMain(BURRITO.req.ITEMPLAY, JSON.stringify(entry))
+function playEntry (windowEvent) {
+  var rowElement = windowEvent.currentTarget.closest('tr')
+  if (rowElement) {
+    const entry = {
+      ref: rowElement.querySelector('#playlink').innerText,
+      start: rowElement.querySelector('#playstart').innerText,
+      duration: rowElement.querySelector('#playduration').innerText,
     }
+    BURRITO.sendToMain(BURRITO.req.ITEMPLAY, JSON.stringify(entry))
   }
 }
 
@@ -77,7 +64,7 @@ function setPlaylistListener() {
   const tdElements = $prevDataDiv.getElementsByClassName('playEntry')
   if (tdElements.length > 0) {
     for (var i = 0; i < tdElements.length; i++) {
-      tdElements[i].setAttribute('onmouseover', 'playEntry()')
+      tdElements[i].addEventListener('mouseover', playEntry)
     }
   }
 }
@@ -93,48 +80,86 @@ function mediaContent(itemString) {
 }
 BURRITO.whenItemDetail(mediaContent)
 
-// The left column text is green if the item is in the selected category
-$selectCategory.addEventListener('change', highlightCategory)
-function highlightCategory() {
-  if (!$selectCategoryLabel.hidden) {
-    const selectedCategory = $selectCategory.value
-    let detailElements = $tableDiv.getElementsByTagName('tr')
-    for (i = 0; i < detailElements.length; i++) {
-      if (detailElements[i].attributes.categories) {
-        if (detailElements[i].attributes.categories.value.split(',').some(category => category === selectedCategory)) {
-          detailElements[i].firstChild.style.color = 'green'
-        } else {
-          detailElements[i].firstChild.style.color = ''
-        }
-      }
-    }
+$selectCollection.addEventListener('change', collectionChanged)
+function collectionChanged() {
+  if (!$selectCollectionLabel.hidden) {
+    hideHighlightFilter()
     try {
-      BURRITO.sendToMain(BURRITO.req.ITEMSCATEGORY, selectedCategory)
+      BURRITO.sendToMain(BURRITO.req.ITEMSCOLLECTION, $selectCollection.value)
     } 
     catch (error) {
-      console.log('Error in highlightCategory: ', error)
+      console.log('Error in collectionChanged: ', error)
     }
   }
 }
 
-function showThumb() {
-  var windowEvent = window.event
-  if (windowEvent) {
-    // Find nearest parent that is a tr element
-    var rowElement = windowEvent.currentTarget.closest('tr')
-    if (rowElement) {
-      // Find first child and then it's first child innerText which is the hidden value
-      try {
-        var itemOrdinal = rowElement.attributes.accession.nodeValue
-        // console.log('showThumb ran for this: ', itemOrdinal)
-        BURRITO.sendToMain(BURRITO.req.ITEMGETDETAIL, itemOrdinal)
+// The left column text is green if the item is in the selected collection
+// The left column text is black if the item is not in the selected collection
+// Items are hidden if their media type is not selected
+//  or if the restrict checkbox is checked and the item is not in the selected collection
+function hideHighlightFilter() {
+  let selectedCollection = '';
+  let restrict = false;
+  if (!$selectCollectionLabel.hidden) {
+    selectedCollection = $selectCollection.value;
+    restrict = $restrict.checked;
+  }
+  const showClassArray = [
+    { class: "photo", show: $photo.checked === true },
+    { class: "tape", show: $tape.checked === true },
+    { class: "video", show: $video.checked === true }
+  ];
+
+  let detailElements = $tableDiv.getElementsByTagName('tr');
+  for (let i = 0; i < detailElements.length; i++) {
+    const detailElementClass = detailElements[i].attributes.class.value;
+    const showClass = showClassArray.find(showClass => showClass.class === detailElementClass)?.show;
+    if (selectedCollection && detailElements[i].attributes.collections) {
+      const collections = detailElements[i].attributes.collections.value.split(',');
+      // Compare the entire string with selectedCollection
+      if (collections.some(collection => collection === selectedCollection)) {
+        detailElements[i].firstChild.style.color = 'green';
+        detailElements[i].hidden = !showClass;
+      } else {
+        detailElements[i].firstChild.style.color = '';
+        detailElements[i].hidden = restrict || !showClass;
       }
-      catch (error) {
-        console.log('Error in showThumb: ', error)
-      }
+    } else {
+      detailElements[i].hidden = !showClass;
     }
-  } else {
-    console.log('showThumb window.event was null!!!')
+  }
+}
+
+// Toggle item in the selected collection on double click
+// A forced reload of the items list is done to update the collection column
+function collectionSelect(windowEvent) {
+  // Find nearest parent that is a tr element
+  var rowElement = windowEvent.currentTarget.closest('tr')
+  if (rowElement) {
+    // Find first child and then it's first child innerText which is the hidden value
+    try {
+      var accession = rowElement.attributes.accession.nodeValue
+      BURRITO.sendToMain(BURRITO.req.ITEMSETCOLLECTION, accession)
+    }
+    catch (error) {
+      alert('Error modifying the collection in collectionSelect: ' + error)
+    }
+    getItemsList()
+  }
+}
+
+function showThumb(windowEvent) {
+  // Find nearest parent that is a tr element
+  var rowElement = windowEvent.currentTarget.closest('tr')
+  if (rowElement) {
+    // Find first child and then it's first child innerText which is the hidden value
+    try {
+      var accession = rowElement.attributes.accession.nodeValue
+      BURRITO.sendToMain(BURRITO.req.ITEMGETDETAIL, accession)
+    }
+    catch (error) {
+      console.log('Error in showThumb: ', error)
+    }
   }
 }
 
@@ -143,10 +168,11 @@ $selectSort.addEventListener('change', () => {
   saveCheckbox()
   getItemsList()
 })
+
 function getItemsList() {
   let requestParams = {
     sort: $selectSort.value,
-    category: $selectCategory.value
+    collection: $selectCollection.value
   }
   BURRITO.sendToMain(BURRITO.req.ITEMSGETLIST, requestParams)
 }
@@ -157,6 +183,7 @@ function saveCheckbox() {
   itemsObject.photoChecked = $photo.checked
   itemsObject.tapeChecked = $tape.checked
   itemsObject.videoChecked = $video.checked
+  itemsObject.restrictChecked = $restrict.checked
   BURRITO.sendToMain( BURRITO.req.ITEMSRELOAD, JSON.stringify(itemsObject) )
 }
 
@@ -167,34 +194,27 @@ function renderItems(tableString) {
   $photo.checked = listObject.photoChecked
   $tape.checked = listObject.tapeChecked
   $video.checked = listObject.videoChecked
-  // If there are no categories, hide the selectCategoryLabel and selectCategory from the sort options
-  if (listObject.categories.length === 0) {
-    $selectCategoryLabel.hidden = true
-    $selectSort.options[6].hidden = true
-  }
-  // remove all options from selectCategory before adding new ones
-  while ($selectCategory.options.length > 0) {
-    $selectCategory.remove(0);
-  }
-  {
-    const option = document.createElement('option')
-    option.value = '*'
-    option.text = 'All'
-    if (!listObject.selectedCategory || listObject.selectedCategory === '*') {
-      option.selected = true
-    }
-    $selectCategory.appendChild(option)
-  }
-  listObject.categories.forEach(category => {
-    const option = document.createElement('option')
-    option.value = category.value
-    option.text = category.text
-    if (listObject.selectedCategory === category.value) {
-      option.selected = true
+  $restrict.checked = listObject.restrictChecked
+  // If there are no collections, hide the selectCollectionLabel and selectCollection from the sort options
+  if (listObject.collections.length === 0) {
+    $selectCollectionLabel.hidden = true
+    $restrictLabel.hidden = true
+  } else {
+    // remove all options from selectCollection before adding new ones
+    while ($selectCollection.options.length > 0) {
+      $selectCollection.remove(0);
     }
 
-    $selectCategory.appendChild(option)
-  })
+    listObject.collections.forEach(collection => {
+      const option = document.createElement('option')
+      option.value = collection.value
+      option.text = collection.text
+      if (listObject.selectedCollection === collection.value) {
+        option.selected = true
+      }
+      $selectCollection.appendChild(option)
+    })
+  }
   $navHeader.innerHTML = listObject.navHeader
   $tableDiv.innerHTML = listObject.tableBody
   const tdElements = $tableDiv.getElementsByTagName('td')
@@ -202,20 +222,11 @@ function renderItems(tableString) {
     for (var i = 0; i < tdElements.length; i++) {
       var tde = tdElements[i].childNodes[0]
       if (tde && tde.nodeName === "DIV") {
-        tde.setAttribute('onmouseover', 'showThumb()')
+        tde.addEventListener('mouseover', showThumb)
+        tde.addEventListener('dblclick', collectionSelect) // Add event listener for dblclick
       }
     }
   }
-  if (!$photo.checked === true) {
-    $photo.dispatchEvent(new CustomEvent("change"))
-  }
-  if (!$tape.checked === true) {
-    $tape.dispatchEvent(new CustomEvent("change"))
-  }
-  if (!$video.checked === true) {
-    $video.dispatchEvent(new CustomEvent("change"))
-  }
-  // highlight selected category entries
-  highlightCategory()
+  hideHighlightFilter()
 }
 BURRITO.whenItemsRender(renderItems)

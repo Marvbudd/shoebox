@@ -42,7 +42,8 @@ nconf.argv()
     "controls": {
       "photoChecked": true,
       "tapeChecked": true,
-      "videoChecked": true
+      "videoChecked": true,
+      "restrictChecked": false
     },
     "db": {
       "accessionsPath": path.resolve(__dirname, "../resource/accessions.json")
@@ -64,15 +65,15 @@ if (nconf.get('db:accessionsPath').includes('.xml')) {
   nconf.save('user');
   console.log('Changed accessionsPath to default');
 }
-accessionClass = new AccessionClass(nconf.get('db:accessionsPath'));
 process.on('warning', e => console.warn(e.stack));
 process.on('uncaughtException - ', e => console.log('***** uncaughtException with error=', e) )
 let accessionClass = undefined
 let mainWindow = null;
 let helpWindow = null;
 let mediaWindow = null;
-// tracks the renderer drop-down selection via 'items:category' message
-let selectedCategory = ''
+// tracks the renderer drop-down selection via 'items:collection' message
+let selectedCollection = ''
+let showCollection = false
 
 const createWindow = () => {
   // Create the browser window.
@@ -108,24 +109,27 @@ const createWindow = () => {
     mainWindow = null
   })
   ipcMain.on('items:getList', (event, requestParams) => {
-    // console.log('items:getList received in main type=', requestParams)
     if (!accessionClass) {
       accessionClass = new AccessionClass( nconf.get('db:accessionsPath') )
     }
     let transformedObject = [ ]
     let listObject = {}
-    transformedObject = accessionClass.transformToHtml(requestParams.sort - 1, selectedCategory)
+    transformedObject = accessionClass.transformToHtml(requestParams.sort - 1)
     listObject.tableBody = transformedObject.tableBody
     listObject.navHeader = transformedObject.navHeader
-    listObject.categories = accessionClass.getCategories()
-    selectedCategory = listObject.categories.length > 0 ? '*' : ''
-    listObject.selectedCategory = selectedCategory // tracks the previous category selection
+    listObject.collections = accessionClass.getCollections()
+    showCollection = listObject.collections.length > 0
+    if (showCollection) {
+      selectedCollection = listObject.collections[0].value
+    }      
+    listObject.selectedCollection = selectedCollection
     listObject.accessionTitle = accessionClass.getTitle()
     listObject.photoChecked = nconf.get('controls:photoChecked')
     listObject.tapeChecked = nconf.get('controls:tapeChecked')
     listObject.videoChecked = nconf.get('controls:videoChecked')
+    listObject.restrictChecked = nconf.get('controls:restrictChecked')
     event.sender.send('items:render', JSON.stringify(listObject))
-    createMenu() // update the menu to show/hide the category build option
+    createMenu() // update the menu to show/hide the collection build option
   })
 
   ipcMain.on('item:getDetail', (event, requestNum) => {
@@ -175,8 +179,11 @@ const createWindow = () => {
       }
     })
   })
-  ipcMain.on('items:category', (event, category) => {
-    selectedCategory = category
+  ipcMain.on('items:collection', (event, collection) => {
+    selectedCollection = collection
+  })
+  ipcMain.on('item:setCategory', (event, accession) => {
+    accessionClass.toggleItemInCollection( selectedCollection, accession )
   })
   ipcMain.on('item:Play', (event, playString) => {
     // This fires when requesting AV for a filename attached to a photo
@@ -227,11 +234,15 @@ const createWindow = () => {
   })
   ipcMain.on('items:reload', (event, itemsString) => {
     // reload on main window causes a reload of accessions in case it changed.
+    if (accessionClass) {
+        accessionClass.saveAccessions();
+    }
     accessionClass = undefined
     let itemsObject = JSON.parse(itemsString)
     nconf.set( 'controls:photoChecked', itemsObject.photoChecked)
     nconf.set( 'controls:tapeChecked', itemsObject.tapeChecked)
     nconf.set( 'controls:videoChecked', itemsObject.videoChecked)
+    nconf.set( 'controls:restrictChecked', itemsObject.restrictChecked)
     nconf.save( 'user' )
   })
 };
@@ -262,7 +273,6 @@ app.on('activate', () => {
 });
 
 function createMenu() {
-  const isCategory = nconf.get('controls:categoryDisplay');
   const template = [
     {
       label: '&File',
@@ -271,9 +281,9 @@ function createMenu() {
           label: 'Choose &Accessions.json file',
           click: chooseAccessionsPath
         },
-        (isCategory ? {
-          label: '&Build Category',
-          click: buildCategory
+        (showCollection ? {
+          label: '&Build Collection',
+          click: buildCollection
         }
           : { type: 'separator' }),
         { role: 'quit' }
@@ -339,6 +349,9 @@ function chooseAccessionsPath() {
       nconf.set('media:tape', path.resolve(pathParse, 'audio'));
       nconf.set('media:video', path.resolve(pathParse, 'video'));
       nconf.save('user');
+      if (accessionClass) {
+        accessionClass.saveAccessions();
+      }
       accessionClass = undefined
       mainWindow.loadFile(path.resolve(__dirname + '/../render/html/index.html'));
   }
@@ -405,40 +418,40 @@ function createMediaWindow( mediaInfo ) {
   }
 }
 
-async function buildCategory() {
-  let categoryDir = path.resolve( path.dirname( nconf.get('db:accessionsPath') ), '../', selectedCategory )
+async function buildCollection() {
+  let collectionDir = path.resolve( path.dirname( nconf.get('db:accessionsPath') ), '../', selectedCollection )
   // Getting information for a directory
-  fs.stat(categoryDir, (error, stats) => {
+  fs.stat(collectionDir, (error, stats) => {
     if (error) {
       if (error.code === 'ENOENT') {
-        console.log(`Creating Directory ${categoryDir} for category ${selectedCategory}.`)
-        fs.mkdirSync(categoryDir)  
+        console.log(`Creating Directory ${collectionDir} for collection ${selectedCollection}.`)
+        fs.mkdirSync(collectionDir)  
       } else {
-        console.log('buildCategory Directory error ' + error);
+        console.log('buildCollection Directory error ' + error);
         return
       }
     } else {
       if (!stats.isDirectory()) {
-        console.log(`${categoryDir} is not a directory!!!`)
+        console.log(`${collectionDir} is not a directory!!!`)
         return
       }
     }
     if (!accessionClass) {
       accessionClass = new AccessionClass( nconf.get('db:accessionsPath') )
     }
-    let commandsPath = path.resolve( categoryDir, 'commands')
+    let commandsPath = path.resolve( collectionDir, 'commands')
     try {
       const sourceDir= path.dirname( nconf.get('db:accessionsPath') )
-      let commandsFile = accessionClass.getCommands(sourceDir, categoryDir, selectedCategory)
+      let commandsFile = accessionClass.getCommands(sourceDir, collectionDir, selectedCollection)
       fs.writeFileSync( commandsPath, commandsFile.split("\r\n").join("\n") )
       console.log(`Created ${commandsPath}`)
     }
     catch (error) {
       console.log('error creating commands - error - ' + error)
     }
-    let accessionsPath = path.resolve( categoryDir, 'accessions.json')
+    let accessionsPath = path.resolve( collectionDir, 'accessions.json')
     try {
-      let accessionsFile = accessionClass.getAccessions(selectedCategory)
+      let accessionsFile = accessionClass.getAccessions(selectedCollection)
       fs.writeFileSync(accessionsPath, JSON.stringify(accessionsFile));
       console.log(`Created ${accessionsPath}`)
     }

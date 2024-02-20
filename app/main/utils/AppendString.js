@@ -14,3 +14,4 @@ export class AppendString {
     return this.last
   }
 }
+module.exports = AppendString;

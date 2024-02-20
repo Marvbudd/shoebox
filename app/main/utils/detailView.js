@@ -12,7 +12,7 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
   '<tr><td>People:</td><td id="people">{{peopleDisplay}}</td></tr>' +
   '<tr><td>Date:</td><td id="date">{{dateDisplay}}</td></tr>' +
   '<tr><td>Location:</td><td id="locatn"><a target="newWindow" href="https://maps.google.com/maps/search/{{locationDisplay}}">{{locationDisplay}}</a></td></tr>' +
-  '<tr class="detail"><td>Categories: </td><td id="categ">{{#each categories}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}</td></tr>' +
+  '<tr class="detail"><td>Collections: </td><td id="collections">{{collections}}</td></tr>' +
   '<tr class="detail"><td>Accession:</td><td id="acsn">{{accession}}</td></tr>' +
   '<tr class="detail"><td>Source:</td><td id="itemSource">{{sourceDisplay}}</td></tr>' +
   '<tr class="detail"><td>Received:</td><td id="received">{{receivedDisplay}}</td></tr>' +
@@ -83,13 +83,13 @@ export function lastName(lastObj) {
   return lastStr.string();
 } // If name is not type="married" and there is an array then nonmarried names are in parenthesis.
 
-export function personText(oneNode) {
+export function personText(oneNode, includePosition = true) {
   var first = '';
   var last = '';
   if (oneNode.first) {
     first = oneNode.first;
   }
-  if (oneNode.position) {
+  if (includePosition && oneNode.position) {
     first = oneNode.position + " " + first;
   }
   if (oneNode.last) {

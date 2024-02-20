@@ -1,45 +1,40 @@
-import { format } from 'path'
-import { dateText, lastName, personText, peopleList, locationText } from './detailView.js'
+const path = require( 'path' );
+import { dateText, personText, peopleList, locationText } from './detailView.js'
 const fs = require('fs')
+const CollectionsClass = require('./CollectionsClass.js')
 
 // AccessionClass is a class that reads an accession JSON file and provides methods to access the data
 export class AccessionClass {
   constructor(accessionFilename) {
     this.accessionFilename = accessionFilename
     this.accessionJSON = JSON.parse(fs.readFileSync(this.accessionFilename).toString())
-    this.categories = null;
+    this.collections = new CollectionsClass(path.dirname(accessionFilename))
+    this.collections.readCollections()
+  }
+
+  // Call the persistence methods here before the class is destroyed
+  saveAccessions() {
+    this.collections.saveCollections();
   }
   
-  // getCategories returns an array of unique categories the accessionJSON
-  getCategories() {
-    const oldCategories = [
-      { value: "demoSet", text: "Demo Media", title: "Demonstration Data Set" },
-      { value: "buddc", text: "Chester Budd", title: "The Budd Family" },
-      { value: "buddMarv", text: "Marvin Budd", title: "Everything Marvin Budd" },
-      { value: "zntDeHart", text: "Zintz DeHart", title: "The Zintz and DeHart Family Collection" },
-      { value: "hicks", text: "Hicks", title: "The Hicks Family" },
-      { value: "brkErma", text: "Erma Barker", title: "The Erma Barker Collection" },
-      { value: "barkerG", text: "George Barker", title: "The George Barker Collection" }
-    ]
-    if (!this.categories) {
-      this.categories = [];
-      // fill the categories array with unique categories from the accessionJSON
-      // if the new category is in the oldCategories array use the value and text from oldCategories
-      // otherwise add it to the categories array with the value and text the same
-      this.accessionJSON.accessions.item.forEach(item => {
-        item.categories.forEach(category => {
-          if (category !== '' && !this.categories.some(c => c.value === category)) {
-            const foundCategory = oldCategories.find(c => c.value === category);
-            if (foundCategory) {
-              this.categories.push(foundCategory);
-            } else {
-              this.categories.push({ value: category, text: category, title: category });
-            }
-          }
-        });
-      });
+  // adds or remove an item from a collection - called on double click
+  toggleItemInCollection(collectionKey, accession) {
+    const collection = this.collections.getCollection(collectionKey)
+    if (collection) {
+      let item = this.getItem(accession)
+      collection.getItem(accession) ? collection.removeAccession(accession) : collection.addItem(accession, item.link)
+    } else {
+      console.log('AccessionClass:toggleItemIncollection - Collection not found: ' + collectionKey)
     }
-    return this.categories
+  }
+  
+  // getcollections returns an array of unique collections the accessionJSON
+  getCollections() {
+    let collections = [];
+    this.collections.collections.forEach(collection => {
+      collections.push({value: collection.key, text: collection.text});
+    })
+    return collections
   }
 
   // getTitle returns accessionJSON title
@@ -48,14 +43,13 @@ export class AccessionClass {
   }
   
   /**
-   * Transforms the data into HTML format for the left hand pane based on the specified sorting criteria.
+   * Transforms the data into HTML for the left hand pane based on the selection criteria.
    * 
-   * @param {number} sortBy - The sorting criteria. 0 for sorting by date, 1 for sorting by person and date, 2 for sorting by location, 3 for sorting by file, 4 for sorting by source.
-   * @param {string} selectedCategory - The selected category (for some sortBy values-6 selectCategory is used).
-   * @returns {string} The HTML output.
+   * sortBy - The sorting criteria. 0 for sorting by date, 1 for sorting by person and date, 2 for sorting by location, 3 for sorting by file, 4 for sorting by source.
+   * returns {string} The HTML output.
    */
     // prior to Jan2024 a transform method was used to create the HTML from xml/xslt but that was unreliable
-transformToHtml(sortBy, selectedCategory) {
+  transformToHtml(sortBy) {
     try {
       let htmlOutput = `
         <table class="maintable">
@@ -82,14 +76,18 @@ transformToHtml(sortBy, selectedCategory) {
             );
 
             return {
-              ...item,
+              type: item.type,
+              accession: item.accession,
+              person: item.person,
+              date: item.date,
               dateSort
             };
           }).sort((a, b) => a.dateSort - b.dateSort);
 
           // Build the HTML output using map and join
           sortedItems.forEach(item => {
-            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + '" categories="' + item.categories + '">' +
+            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
+              '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
               '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
               '<td><div class="descData">' + peopleList(item.person) + '</div></td>' +
               '</tr>';
@@ -103,11 +101,7 @@ transformToHtml(sortBy, selectedCategory) {
           `;
           sortedItems = this.accessionJSON.accessions.item.flatMap(item => {
             return item.person.flatMap(person => {
-              const lastNames = person.last.filter(lastName => {
-                return !lastName.type || lastName.type !== "married";
-              });
-
-              return lastNames.map(lastName => {
+              return person.last.map(lastName => {
                 const { year, month, day } = item.date;
 
                 // Handle missing components by providing default values
@@ -122,14 +116,13 @@ transformToHtml(sortBy, selectedCategory) {
                   lastName: lastName.last,
                   date: item.date,
                   accession: item.accession,
-                  categories: item.categories,
                   type: item.type,
                   dateSort
                 };
               });
             });
           }).sort((a, b) => {
-            // Compare by person.last, person.first, and then date
+            // Compare by last, first, and then date
             const lastComparison = a.lastName.localeCompare(b.lastName);
             if (lastComparison !== 0) {
               return lastComparison;
@@ -144,8 +137,9 @@ transformToHtml(sortBy, selectedCategory) {
           });
           // Iterate over sorted items and build the HTML output
           sortedItems.forEach(item => {
-            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + '" categories="' + item.categories + '">' +
-              '<td><div class="descData">' + personText(item.person) + '</div></td>' +
+            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
+              '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
+              '<td><div class="descData">' + personText(item.person, false) + '</div></td>' +
               '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
               '</tr>';
           });
@@ -158,6 +152,15 @@ transformToHtml(sortBy, selectedCategory) {
           `;
           sortedItems = this.accessionJSON.accessions.item.flatMap(item => {
             return item.location.flatMap(location => {
+              const { year, month, day } = item.date;
+
+              // Handle missing components by providing default values
+              const dateSort = new Date(
+                year || 0,
+                (month && month.length == 3) ? this.getMonthNumber(month) - 1 : 0,
+                day || 1
+              );
+
               const { state, city, detail } = location;
 
               return {
@@ -168,7 +171,7 @@ transformToHtml(sortBy, selectedCategory) {
                 date: item.date,
                 accession: item.accession,
                 type: item.type,
-                categories: item.categories
+                dateSort
               };
             });
           }).sort((a, b) => {
@@ -190,29 +193,13 @@ transformToHtml(sortBy, selectedCategory) {
               return detailComparison;
             }
 
-            // Compare by date
-            const { year: yearA, month: monthA, day: dayA } = a.date;
-            const { year: yearB, month: monthB, day: dayB } = b.date;
-
-            // Handle missing components by providing default values
-            const dateA = new Date(
-              yearA || 0,
-              (monthA && monthA.length == 3) ? this.getMonthNumber(monthA) - 1 : 0,
-              dayA || 1
-            );
-
-            const dateB = new Date(
-              yearB || 0,
-              (monthB && monthB.length == 3) ? this.getMonthNumber(monthB) - 1 : 0,
-              dayB || 1
-            );
-
-            return dateA - dateB;
+            return a.dateSort - b.dateSort;
           });
 
           // Iterate over sorted items and build the HTML output
           sortedItems.forEach(item => {
-            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + '" categories="' + item.categories + '">' +
+            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
+              '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
               '<td><div class="fileData">' + locationText(item.location) + '</div></td>' +
               '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
               '</tr>';
@@ -225,33 +212,15 @@ transformToHtml(sortBy, selectedCategory) {
             <div id="column2" class="dateRight">Date</div>
           `;
           sortedItems = this.accessionJSON.accessions.item.sort((a, b) => {
-            // Compare by file and then date
+            // Compare by link
             const fileComparison = (a.link || '').localeCompare(b.link || '');
-            if (fileComparison !== 0) {
-              return fileComparison;
-            }
-            const { year: yearA, month: monthA, day: dayA } = a.date;
-            const { year: yearB, month: monthB, day: dayB } = b.date;
-
-            // Handle missing components by providing default values
-            const dateA = new Date(
-              yearA || 0,
-              (monthA && monthA.length == 3) ? this.getMonthNumber(monthA) - 1 : 0,
-              dayA || 1
-            );
-
-            const dateB = new Date(
-              yearB || 0,
-              (monthB && monthB.length == 3) ? this.getMonthNumber(monthB) - 1 : 0,
-              dayB || 1
-            );
-
-            return dateA - dateB;
+            return fileComparison;
           });
 
           // Iterate over sorted items and build the HTML output
           sortedItems.forEach(item => {
-            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + '" categories="' + item.categories + '">' +
+            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
+              '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
               '<td><div class="fileData">' + item.link + '</div></td>' +
               '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
               '</tr>';
@@ -285,7 +254,6 @@ transformToHtml(sortBy, selectedCategory) {
                   lastName: lastName.last,
                   received: person.received,
                   accession: item.accession,
-                  categories: item.categories,
                   type: item.type,
                   dateSort
                 };
@@ -307,110 +275,41 @@ transformToHtml(sortBy, selectedCategory) {
           });
           // Iterate over sorted items and build the HTML output
           sortedItems.forEach(item => {
-            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + '" categories="' + item.categories + '">' +
-              '<td><div class="descData">' + personText(item.person) + '</div></td>' +
+            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
+              '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
+              '<td><div class="descData">' + personText(item.person, false) + '</div></td>' +
               '<td><div class="dateData">' + dateText(item.received) + '</div></td>' +
               '</tr>';
           });
           break;
         case 5:
-          // Sort by Accession - show Accession number and ? in the navigation table
+          // Sort by Accession - show Accession number and date in the navigation table
           navHeader = `
             <div id="column1">Accession</div>
             <div id="column2" class="dateRight">Date</div>
           `;
           sortedItems = this.accessionJSON.accessions.item.sort((a, b) => {
-            // Compare by accession left padded to 6 characters
-            const paddedAccessionA = ('    ' + a.accession).substring(a.accession.length, a.accession.length + 6);
-            const paddedAccessionB = ('    ' + b.accession).substring(b.accession.length, b.accession.length + 6);
+            // Extract the numeric part of the accession
+            const numericPartA = parseInt(a.accession.match(/\d+/)[0]);
+            const numericPartB = parseInt(b.accession.match(/\d+/)[0]);
 
-            return paddedAccessionA.localeCompare(paddedAccessionB);
+            // Compare the numeric part
+            if (numericPartA !== numericPartB) {
+              return numericPartA - numericPartB;
+            }
 
-            // Compare by date
-            const { year: yearA, month: monthA, day: dayA } = a.date;
-            const { year: yearB, month: monthB, day: dayB } = b.date;
+            // Compare the alpha characters part
+            const alphaPartA = a.accession.replace(/\d+/g, '');
+            const alphaPartB = b.accession.replace(/\d+/g, '');
 
-            // Handle missing components by providing default values
-            const dateA = new Date(
-              yearA || 0,
-              (monthA && monthA.length == 3) ? this.getMonthNumber(monthA) - 1 : 0,
-              dayA || 1
-            );
-
-            const dateB = new Date(
-              yearB || 0,
-              (monthB && monthB.length == 3) ? this.getMonthNumber(monthB) - 1 : 0,
-              dayB || 1
-            );
-
-            return dateA - dateB;
+            return alphaPartA.localeCompare(alphaPartB);
           });
 
           // Iterate over sorted items and build the HTML output
           sortedItems.forEach(item => {
-            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + '" categories="' + item.categories + '">' +
+            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
+              '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
               '<td><div class="fileData">' + item.accession + '</div></td>' +
-              '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
-              '</tr>';
-          });
-          break;
-        case 6:
-          // Sort by Category - show Category and Date in the navigation table
-          // Sort by Person (last, first) and date - show Name and Date in the navigation table
-          navHeader = `
-            <div id="column1">Person</div>
-            <div id="column2" class="dateRight">Date</div>
-          `;
-          // This is a copy of case 1 with the addition of a filter by selectedCategory
-          sortedItems = this.accessionJSON.accessions.item
-            // Filter by selectedCategory
-            .filter(item => item.categories.includes(selectedCategory))
-            .flatMap(item => {
-              return item.person.flatMap(person => {
-                const lastNames = person.last.filter(lastName => {
-                  return !lastName.type || lastName.type !== "married";
-                });
-
-                return lastNames.map(lastName => {
-                  const { year, month, day } = item.date;
-
-                  // Handle missing components by providing default values
-                  const dateSort = new Date(
-                    year || 0,
-                    (month && month.length == 3) ? this.getMonthNumber(month) - 1 : 0,
-                    day || 1
-                  );
-
-                  return {
-                    person: { ...person },
-                    lastName: lastName.last,
-                    date: item.date,
-                    accession: item.accession,
-                    categories: item.categories,
-                    type: item.type,
-                    dateSort
-                  };
-                });
-              });
-            })
-            .sort((a, b) => {
-            // Compare by person.last, person.first, and then date
-            const lastComparison = a.lastName.localeCompare(b.lastName);
-            if (lastComparison !== 0) {
-              return lastComparison;
-            }
-
-            const firstComparison = (a.person.first || '').localeCompare(b.person.first || '');
-            if (firstComparison !== 0) {
-              return firstComparison;
-            }
-
-            return a.dateSort - b.dateSort;
-          });
-          // Iterate over sorted items and build the HTML output
-          sortedItems.forEach(item => {
-            htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + '" categories="' + item.categories + '">' +
-              '<td><div class="descData">' + personText(item.person) + '</div></td>' +
               '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
               '</tr>';
           });
@@ -427,22 +326,21 @@ transformToHtml(sortBy, selectedCategory) {
     }
   } // transformToHtml
 
-  getCommands(sourceDir, destDir, selectedCategory) {
+  getCommands(sourceDir, destDir, selectedCollection) {
     let commandOutput = `
     mkdir ${destDir}/audio
     mkdir ${destDir}/photo
     mkdir ${destDir}/video
     `;
     var sortedItems = '';
-    sortedItems = this.accessionJSON.accessions.item
-      // Filter by selectedCategory if it is not '*'
-      .filter(item => selectedCategory === '*' || item.categories.includes(selectedCategory))
-      .map(item => {
-        return {
-          type: item.type,
-          link: item.link
-        };
-      })
+    let collection = this.collections.getCollection(selectedCollection)
+    sortedItems = collection.itemKeys.map(itemKey => {
+      const item = this.getItem(itemKey.accession, itemKey.link);
+      return {
+        type: item.type,
+        link: item.link
+      };
+    })
       .sort((a, b) => {
         if (a.type !== b.type) {
           return a.type.localeCompare(b.type);
@@ -470,24 +368,17 @@ transformToHtml(sortBy, selectedCategory) {
     return commandOutput;
   }
 
-  getAccessions(selectedCategory) {
+  getAccessions(selectedCollection) {
     let accessionsOutput = {accessions: {item: []}};
     var sortedItems = '';
-    // The category is used to filter the accessions, and to provide a title for the output
-    const foundCategory = this.categories.find(c => c.value === selectedCategory);
-    if (!foundCategory) {
-      console.log('getAccessions: category not found: ' + selectedCategory)
-      return accessionsOutput;
-    }
-    accessionsOutput.accessions.title = foundCategory.title
-    sortedItems = this.accessionJSON.accessions.item
-      // Filter by selectedCategory if it is not '*'
-      .filter(item => selectedCategory === '*' || item.categories.includes(selectedCategory))
-      .map(item => {
-        return {
-          ...item
-        };
-      })
+    let collection = this.collections.getCollection(selectedCollection)
+    accessionsOutput.accessions.title = collection.title
+    sortedItems = collection.itemKeys.map(itemKey => {
+      const item = this.getItem(itemKey.accession, itemKey.link);
+      return {
+        ...item
+      };
+    })
       .sort((a, b) => {
         if (a.type !== b.type) {
           return a.type.localeCompare(b.type);
@@ -497,8 +388,7 @@ transformToHtml(sortBy, selectedCategory) {
       });
     // Iterate over sorted items and build the command output
     sortedItems.forEach(item => {
-        item.categories = []
-        accessionsOutput.accessions.item.push(item)
+      accessionsOutput.accessions.item.push(item)
     });
     return accessionsOutput;
   }
@@ -508,32 +398,42 @@ transformToHtml(sortBy, selectedCategory) {
     return months.indexOf(monthAbbreviation) + 1;
   }
 
+  getItem(accession, link) {
+    let item = this.accessionJSON.accessions.item.find(item => item.accession === accession);
+    if (!item) {
+      console.log('getItem: item not found: ' + accession)
+    }
+    if (link && item.link !== link) {
+      console.log('AccessionClass getItem: item.link mismatch with collection. accession: ' + accession + ', collection link: ' + link + ', item: ' + item.link)
+    }
+    return item;
+  }
+
   getJSONItem(itemNumber, callback) {
-    let oneItem
     let items = this.accessionJSON.accessions.item.filter(item => {
       return item.accession === itemNumber
     })
     if (items.length > 1) {
       console.log('getJSONItem: ' + items.length + ' items for accession: ' + itemNumber)
     }
+    items[0].collections = this.collections.getCollectionKeys(itemNumber)
     callback(items[0])
   }
 
   getJSONForLink(link, callback) {
-    let oneItem
     let items = this.accessionJSON.accessions.item.filter(item => {
       return item.link === link
     })
     if (items.length > 1) {
       console.log('getJSONForLInk: ' + items.length + ' items for link: ' + link)
     }
+    items[0].collections = this.collections.getCollectionKeys(items[0].accession)
     callback(items[0])
   }
 
   getJSONReferencesForLink(link) {
     // get a list of items in playlist entries that refer to this link
     // enables showing the photo while the audio or video is playing
-    let oneItem
     let refs = []
     if (this.accessionJSON.accessions.item) {
       this.accessionJSON.accessions.item.forEach(item => {
@@ -562,3 +462,4 @@ transformToHtml(sortBy, selectedCategory) {
     return refs
   }
 }
+module.exports = AccessionClass;
