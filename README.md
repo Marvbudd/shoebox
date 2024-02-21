@@ -13,7 +13,7 @@ To Install: First look for the installer appropriate for your operating system. 
 
 After the install completes the software can be run and only a sample set of files is installed. You can then either copy the files to an empty directory on your computer, or direct shoebox to open the accessions.json file directly. To select the location press <ALT>F for Windows/Linux or <CMD>F for Mac to access the menu. Then select "Choose Accessions.json file" from the menu. Use the dialog to find and double click on the accessions.xml file on your computer or on the DVD as needed. Now the full set of media can be viewed. The last selection is retained for future use by shoebox.
 
-The github.com:Marvbudd/shoebox.git is the current project repository. Please email me with your needs and ideas. I'm looking for collaborators.
+The github.com:Marvbudd/shoebox.git is the current project repository. Please email me with your needs and ideas. I'm looking for collaborators - or even someone to take over the project as long as I can use it for free.
 
 As I release version 2.0.0 which abandons xml in favor of json I have a small node.js app that I'll email anyone who asks. It converts accessions.xml to accessions.json.
 
@@ -38,9 +38,9 @@ Some improvements I'm hoping for:
         // The default settings are not an accident. They were chosen for several reasons, one of which is 
         // to produce static URLs.
         // John Cardinal
-  2. Remove the categories property from accessios.json and have a set of category/list.json files instead. Support ad hoc list.json creation within shoebox.
+  2. Support ad hoc list.json creation within shoebox. Only needs to prompt for key, and title properties and create a new collection. At present creating a starter file in the collections subdirectory does this.
   3. An app to ingest select media directories and build an accessions.json file automatically for them, looking for internal metadata. This would be better than hand coding accessions.json. Then an entry editor form would be nice to complete each entry.
-  4. Each person's face in a picture should be identified like social media tags. Automatic facial recognition??
+  4. Each person's face in a picture should be identified like social media tags. Is a facial recognition toolkit available?
 
 Marvin E Budd
 marvbudd@gmail.com

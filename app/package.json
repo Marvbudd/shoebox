@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Multimedia browser",
   "main": "main/index.js",
   "module": "main/main.js",
@@ -15,7 +15,7 @@
   "copyright": "Copyright © 2001-2024",
   "dependencies": {
     "esm": "^3.2.25",
-    "handlebars": "^4.7.7",
+    "handlebars": "^4.7.8",
     "nconf": "^0.12.0"
   }
 }
