@@ -700,10 +700,24 @@ electron-publish@24.9.4:
     lazy-val "^1.0.5"
     mime "^2.5.2"
 
+electron-updater@^6.1.8:
+  version "6.1.8"
+  resolved "https://registry.yarnpkg.com/electron-updater/-/electron-updater-6.1.8.tgz#17637bca165322f4e526b13c99165f43e6f697d8"
+  integrity sha512-hhOTfaFAd6wRHAfUaBhnAOYc+ymSGCWJLtFkw4xJqOvtpHmIdNHnXDV9m1MHC+A6q08Abx4Ykgyz/R5DGKNAMQ==
+  dependencies:
+    builder-util-runtime "9.2.3"
+    fs-extra "^10.1.0"
+    js-yaml "^4.1.0"
+    lazy-val "^1.0.5"
+    lodash.escaperegexp "^4.1.2"
+    lodash.isequal "^4.5.0"
+    semver "^7.3.8"
+    tiny-typed-emitter "^2.1.0"
+
 electron@^27.0.0:
-  version "27.3.2"
-  resolved "https://registry.yarnpkg.com/electron/-/electron-27.3.2.tgz#ff2caa6d09e013ec32bae3185c790d712cd02f54"
-  integrity sha512-FoLdHj2ON0jE8S0YntgNT4ABaHgK4oR4dqXixPQXnTK0JvXgrrrW5W7ls+c7oiFBGN/f9bm0Mabq8iKH+7wMYQ==
+  version "27.3.3"
+  resolved "https://registry.yarnpkg.com/electron/-/electron-27.3.3.tgz#10c5dab764f68cc007856575a770fe1be4abe56f"
+  integrity sha512-tl50Cy82Qr+2KK+cPMjfAdM4lvgUkA3L2uLEpgA9/wgtdCfo5xTnDupl+wImo9jzNdFm66HvLl6uoQ/gjDDq5g==
   dependencies:
     "@electron/get" "^2.0.0"
     "@types/node" "^18.11.18"
@@ -762,11 +776,6 @@ escape-string-regexp@^4.0.0:
   version "4.0.0"
   resolved "https://registry.yarnpkg.com/escape-string-regexp/-/escape-string-regexp-4.0.0.tgz#14ba83a5d373e3d311e5afca29cf5bfad965bf34"
   integrity sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==
-
-esm@^3.2.25:
-  version "3.2.25"
-  resolved "https://registry.yarnpkg.com/esm/-/esm-3.2.25.tgz#342c18c29d56157688ba5ce31f8431fbb795cc10"
-  integrity sha512-U1suiZ2oDVWv4zPO56S0NcR5QriEahGtdN2OR6FiOG4WJvcjBVFB0qI4+eKoWFH483PKGuLuu6V8Z4T5g63UVA==
 
 extract-zip@^2.0.1:
   version "2.0.1"
@@ -1180,6 +1189,16 @@ lazy-val@^1.0.4, lazy-val@^1.0.5:
   version "1.0.5"
   resolved "https://registry.yarnpkg.com/lazy-val/-/lazy-val-1.0.5.tgz#6cf3b9f5bc31cee7ee3e369c0832b7583dcd923d"
   integrity sha512-0/BnGCCfyUMkBpeDgWihanIAF9JmZhHBgUhEqzvf+adhNGLoP6TaiI5oF8oyb3I45P+PcnrqihSf01M0l0G5+Q==
+
+lodash.escaperegexp@^4.1.2:
+  version "4.1.2"
+  resolved "https://registry.yarnpkg.com/lodash.escaperegexp/-/lodash.escaperegexp-4.1.2.tgz#64762c48618082518ac3df4ccf5d5886dae20347"
+  integrity sha512-TM9YBvyC84ZxE3rgfefxUWiQKLilstD6k7PTGt6wfbtXF8ixIJLOL3VYyV/z+ZiPLsVxAsKAFVwWlWeb2Y8Yyw==
+
+lodash.isequal@^4.5.0:
+  version "4.5.0"
+  resolved "https://registry.yarnpkg.com/lodash.isequal/-/lodash.isequal-4.5.0.tgz#415c4478f2bcc30120c22ce10ed3226f7d3e18e0"
+  integrity sha512-pDo3lu8Jhfjqls6GkMgpahsF9kCyayhgykjyLMNFTKWrpVdAQtYyB4muAMWozBB4ig/dtWAmsMxLEI8wuz+DYQ==
 
 lodash@^4.17.15:
   version "4.17.21"
@@ -1628,6 +1647,11 @@ temp-file@^3.4.0:
   dependencies:
     async-exit-hook "^2.0.1"
     fs-extra "^10.0.0"
+
+tiny-typed-emitter@^2.1.0:
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/tiny-typed-emitter/-/tiny-typed-emitter-2.1.0.tgz#b3b027fdd389ff81a152c8e847ee2f5be9fad7b5"
+  integrity sha512-qVtvMxeXbVej0cQWKqVSSAHmKZEHAvxdF8HEUBFWts8h+xEo5m/lEiPakuyZ3BnCBjOD8i24kzNOiOLLgsSxhA==
 
 tmp-promise@^3.0.2:
   version "3.0.3"

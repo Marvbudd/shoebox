@@ -10,29 +10,34 @@ class CollectionClass {
       this.text = text;
       // title is a more human readable description of the collection
       this.title = title;
-      this.collectionChanged = true; // set to true if the collection has been changed
+      // set to true if the collection has been changed
+      this.collectionChanged = true;
   }
-  // itemKeys is an array of objects that are part of the collection
+  // itemKeys is an array of objects that compose the collection
   //  each object points to accession items in the accessions.json file.
   //  the object has the accession, and the link to the accession.
   //  these duplicate each other, but lend some redundancy if the link is broken.
+  //  They also help detect duplicate uses of the same accession.
   itemKeys = [];
   collectionChanged = false; // set to true if the collection has been changed
   
   // create a collection from a file
+  // the filename is the key with a .json extension. Previous key is ignored.
+  // force collectionChanged to false
   static fromFile(filePath) {
     const fileContent = fs.readFileSync(filePath, 'utf8');
     const json = JSON.parse(fileContent);
-    const collection = new CollectionClass(json.key, json.text, json.title);
+    const collection = new CollectionClass(path.basename(filePath, '.json'), json.text, json.title);
     collection.itemKeys = json.itemKeys;
-    console.log(`Collection ${collection instanceof CollectionClass ? 'CollectionClass' : typeof collection} ${collection.key} read from file: ${filePath}`);
-    collection.collectionChanged = false;
+    console.log(`${collection instanceof CollectionClass ? 'CollectionClass' : typeof collection} ${collection.key} read from file: ${filePath}`);
+    collection.collectionChanged = false; // false because it was just read from file
     return collection;
   }
 
   // save the collection to a file
   tofile(filePath) {
     // Convert the collection object to JSON string
+    delete this.collectionChanged;
     const collectionJson = JSON.stringify(this);
 
     // Write the JSON string to the file

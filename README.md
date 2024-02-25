@@ -13,9 +13,25 @@ To Install: First look for the installer appropriate for your operating system. 
 
 After the install completes the software can be run and only a sample set of files is installed. You can then either copy the files to an empty directory on your computer, or direct shoebox to open the accessions.json file directly. To select the location press <ALT>F for Windows/Linux or <CMD>F for Mac to access the menu. Then select "Choose Accessions.json file" from the menu. Use the dialog to find and double click on the accessions.xml file on your computer or on the DVD as needed. Now the full set of media can be viewed. The last selection is retained for future use by shoebox.
 
-The github.com:Marvbudd/shoebox.git is the current project repository. Please email me with your needs and ideas. I'm looking for collaborators - or even someone to take over the project as long as I can use it for free.
+https://github.com:Marvbudd/shoebox.git is the current project repository. I'm looking for collaborators.
 
 As I release version 2.0.0 which abandons xml in favor of json I have a small node.js app that I'll email anyone who asks. It converts accessions.xml to accessions.json.
+
+Here is the assumed directory structure for the accessions.json file and the media.
+
+accessions.json
+./photo - jpg files here
+./video - mp4 files here
+./audio - mp3 files here
+./collections - optional - key.json files for lists
+./website/index.htm - Second Site
+
+To create a Collection, save the following in the ./collections subdirectory. Name it mycoll.json (keep it short) and edit the text and title as appropriate. After this, open shoebox and use the dropdown and Filter controls. Toggle whether an item is in the collection by double clicking on the left hand column. Green text means it is in the selected collection. ALT-F opens a menu to write the collection to a subdirectory.
+{
+  "itemKeys": [ ],
+  "text": "Short description",
+  "title": "A New Collection - appears in the title bar of the collection page"
+}
 
 Some improvements I'm hoping for:
   1. Ability to click on a name in shoebox and a link opens to the Second Site entry for that person. Requires entering the TMG ID for each person in accessions.json and code changes. Second Site already supports this.
@@ -38,7 +54,9 @@ Some improvements I'm hoping for:
         // The default settings are not an accident. They were chosen for several reasons, one of which is 
         // to produce static URLs.
         // John Cardinal
-  2. Support ad hoc list.json creation within shoebox. Only needs to prompt for key, and title properties and create a new collection. At present creating a starter file in the collections subdirectory does this.
+  2. Support ad hoc list.json creation within shoebox. Only needs to prompt for text and title properties to create a new collection. For now a sample newfile.json is included. Put this in the collections subdirectory and edit the text and title.
+  A Collection dropdown will appear with a Filter checkbox allowing restricting the left column to only items in the collection.
+  When Filter is unchecked double click on the left column to toggle items into (Green) the collection.
   3. An app to ingest select media directories and build an accessions.json file automatically for them, looking for internal metadata. This would be better than hand coding accessions.json. Then an entry editor form would be nice to complete each entry.
   4. Each person's face in a picture should be identified like social media tags. Is a facial recognition toolkit available?
 

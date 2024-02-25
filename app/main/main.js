@@ -5,6 +5,9 @@ import url from 'url'
 import * as fs from 'fs';
 import { showNodeDescription } from '../main/utils/detailView.js'
 import { AccessionClass } from '../main/utils/AccessionClass.js'
+import { autoUpdater } from 'electron-updater';
+console.log('main.js starting')
+autoUpdater.checkForUpdatesAndNotify()
 // Setup nconf to use (in-order):
 //   1. Command-line arguments
 //   2. Environment variables
@@ -12,6 +15,7 @@ import { AccessionClass } from '../main/utils/AccessionClass.js'
 //   4. Defaults in the object below
 // The first in the list to have a value takes precedence
 // Chosen values are stored to config/config.json
+
 const configDir = app.getPath('userData')
 const configFile = path.resolve(configDir, 'shoeboxConfig.json')
 fs.stat(configDir, (error, stats) => {
@@ -251,6 +255,7 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
+  console.log('app ready')
   createWindow()
   createMenu();
 });

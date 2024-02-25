@@ -5,7 +5,7 @@
   "description": "Multimedia browser",
   "main": "app/main/index.js",
   "module": "app/main/main.js",
-  "build": {
+    "build": {
     "appId": "com.gmail.marvbudd.shoebox",
     "dmg": {
       "background": null,
@@ -79,7 +79,7 @@
   "license": "MIT",
   "copyright": "Copyright © 2001-2024",
   "dependencies": {
-    "esm": "^3.2.25",
+    "electron-updater": "^6.1.8",
     "handlebars": "^4.7.8",
     "nconf": "^0.12.0"
   },
