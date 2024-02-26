@@ -3,10 +3,9 @@ const path = require( 'path' );
 const nconf = require( 'nconf' );
 import url from 'url'
 import * as fs from 'fs';
-import { showNodeDescription } from '../main/utils/detailView.js'
 import { AccessionClass } from '../main/utils/AccessionClass.js'
 import { autoUpdater } from 'electron-updater';
-console.log('main.js starting')
+
 autoUpdater.checkForUpdatesAndNotify()
 // Setup nconf to use (in-order):
 //   1. Command-line arguments
@@ -136,105 +135,46 @@ const createWindow = () => {
     createMenu() // update the menu to show/hide the collection build option
   })
 
-  ipcMain.on('item:getDetail', (event, requestNum) => {
+  ipcMain.on('item:getDetail', async (_, accession) => {
     // This fires when requesting any item from the left-hand list
     if (!accessionClass) {
-      accessionClass = new AccessionClass( nconf.get('db:accessionsPath') )
+      accessionClass = new AccessionClass(nconf.get('db:accessionsPath'))
     }
-    accessionClass.getJSONItem( requestNum, (itemObject) => {
-      if (itemObject) {
-        let resObject = {
-          link: itemObject.link
+    let itemView = accessionClass.getItemView(accession);
+    if (itemView) {
+      itemView.getViewObject((viewObject) => {
+        if (itemView.getType() === 'photo') {
+          mainWindow.send('item:detail', JSON.stringify(viewObject));
+        } else {
+          createMediaWindow(JSON.stringify(viewObject));
         }
-        if (itemObject.type == 'photo') {
-          const mediaPath = path.resolve( nconf.get('media:photo'), itemObject.link )
-          fs.readFile(mediaPath, (err, data) => {
-            // TODO could I resize the photos to an appropriate size to avoid large transfers?
-            // See https://www.npmjs.com/package/sharp picture processing library from the task manager project
-            // https://www.quora.com/How-do-I-embed-images-into-HTML?share=1
-            // https://www.base64encoder.io/node-js/
-            if (err) {
-              resObject.imgTag = 'An error occurred reading the photo. ' + err
-            } else {
-              // itemObject.mediaTag = '<img id="previewImg" src="' + mediaPath + '" >'
-              const imgEncoded = data.toString('base64');
-              resObject.mediaTag = `<a target="_blank" href="${mediaPath}"><img id="previewImg" alt="The Photo" src="data:image/jpg;base64,${imgEncoded}" /></a>`
-            }
-            resObject.descDetail = showNodeDescription(itemObject)
-            if (mainWindow) {
-              mainWindow.send('item:detail', JSON.stringify(resObject))
-            }
-          });
-        } else
-        if (itemObject.type == 'tape') {
-          const mediaPath = path.resolve( nconf.get('media:tape'), itemObject.link )
-          resObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`
-          itemObject.reflist = accessionClass.getJSONReferencesForLink(itemObject.link)
-          resObject.descDetail = showNodeDescription(itemObject)
-          createMediaWindow(JSON.stringify(resObject));
-        } else
-        if (itemObject.type == 'video') {
-          const mediaPath = path.resolve( nconf.get('media:video'), itemObject.link )
-          resObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`
-          itemObject.reflist = accessionClass.getJSONReferencesForLink(itemObject.link)
-          resObject.descDetail = showNodeDescription(itemObject)
-          createMediaWindow(JSON.stringify(resObject))
-        }  
-      }
-    })
+      })
+    };
   })
-  ipcMain.on('items:collection', (event, collection) => {
+  ipcMain.on('items:collection', (_, collection) => {
     selectedCollection = collection
   })
-  ipcMain.on('item:setCategory', (event, accession) => {
+  ipcMain.on('item:setCategory', (_, accession) => {
     accessionClass.toggleItemInCollection( selectedCollection, accession )
   })
-  ipcMain.on('item:Play', (event, playString) => {
+  ipcMain.on('item:Play', (_, playString) => {
     // This fires when requesting AV for a filename attached to a photo
     const playObject = JSON.parse(playString)
-    accessionClass.getJSONForLink( playObject.ref, (itemObject) => {
-      if (itemObject) {
-        let resObject = {
-          link: itemObject.link
-        }
-        if (itemObject.type == 'photo') {
-          const mediaPath = path.resolve( nconf.get('media:photo'), itemObject.link )
-          // console.log('photoPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
-          fs.readFile(mediaPath, (err, data) => {
-            if (err) {
-              resObject.imgTag = 'An error occurred reading the photo. ' + err
-            } else {
-              // playObject.mediaTag = '<img id="previewImg" src="' + mediaPath + '" >'
-              resObject.mediaTag = `<img id="previewImg" alt="The Photo" src="data:image/jpg;base64,${data.toString('base64')}" />`
-            }
-            resObject.descDetail = showNodeDescription(itemObject)
-            mainWindow.send('item:detail', JSON.stringify(resObject))
-          });
-        } else
-        if (itemObject.type == 'tape') {
-          const mediaPath = path.resolve( nconf.get('media:tape'), itemObject.link )
+    let itemView = accessionClass.getItemView(null, playObject.ref);
+    if (itemView) {
+      itemView.getViewObject((viewObject) => {
+        if (itemView.getType() === 'photo') {
+          mainWindow.send('item:detail', JSON.stringify(viewObject))
+        } else {
           // console.log('audioPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
-          playObject.startSeconds = hmsToSeconds( playObject.start )
-          playObject.durationSeconds = hmsToSeconds( playObject.duration )
-          resObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`
-          itemObject.reflist = accessionClass.getJSONReferencesForLink(itemObject.link)
-          resObject.descDetail = showNodeDescription(itemObject)
-          resObject.entry = playObject
-          createMediaWindow(JSON.stringify(resObject));
-        } else
-        if (itemObject.type == 'video') {
-          const mediaPath = path.resolve( nconf.get('media:video'), itemObject.link )
-          // console.log('videoPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
-          playObject.startSeconds = hmsToSeconds( playObject.start )
-          playObject.durationSeconds = hmsToSeconds( playObject.duration )
-          resObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`
-          itemObject.reflist = accessionClass.getJSONReferencesForLink(itemObject.link)
-          resObject.descDetail = showNodeDescription(itemObject)
-          resObject.entry = playObject
-          createMediaWindow(JSON.stringify(resObject))
-        }  
-      }
-    })
+          viewObject.entry = {
+            startSeconds: hmsToSeconds(playObject.start),
+            durationSeconds: hmsToSeconds(playObject.duration)
+          }
+          createMediaWindow(JSON.stringify(viewObject));
+        }
+      })
+    }
   })
   ipcMain.on('items:reload', (event, itemsString) => {
     // reload on main window causes a reload of accessions in case it changed.
@@ -255,7 +195,6 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
-  console.log('app ready')
   createWindow()
   createMenu();
 });

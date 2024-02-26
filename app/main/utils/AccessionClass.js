@@ -1,6 +1,6 @@
 const path = require( 'path' );
-import { dateText, personText, peopleList, locationText } from './detailView.js'
 const fs = require('fs')
+const ItemViewClass = require( './ItemViewClass.js' )
 const CollectionsClass = require('./CollectionsClass.js')
 
 // AccessionClass is a class that reads an accession JSON file and provides methods to access the data
@@ -10,23 +10,23 @@ export class AccessionClass {
     this.accessionJSON = JSON.parse(fs.readFileSync(this.accessionFilename).toString())
     this.collections = new CollectionsClass(path.dirname(accessionFilename))
     this.collections.readCollections()
-  }
+  } // constructor
 
   // Call the persistence methods here before the class is destroyed
   saveAccessions() {
     this.collections.saveCollections();
-  }
+  } // saveAccessions
   
   // adds or remove an item from a collection - called on double click
   toggleItemInCollection(collectionKey, accession) {
     const collection = this.collections.getCollection(collectionKey)
     if (collection) {
-      let item = this.getItem(accession)
-      collection.getItem(accession) ? collection.removeAccession(accession) : collection.addItem(accession, item.link)
+      let itemView = this.getItemView(accession)
+      collection.getItem(accession) ? collection.removeAccession(accession) : collection.addItem(accession, itemView.getLink())
     } else {
       console.log('AccessionClass:toggleItemIncollection - Collection not found: ' + collectionKey)
     }
-  }
+  } // toggleItemInCollection
   
   // getcollections returns an array of unique collections the accessionJSON
   getCollections() {
@@ -35,12 +35,12 @@ export class AccessionClass {
       collections.push({value: collection.key, text: collection.text});
     })
     return collections
-  }
+  } // getCollections
 
   // getTitle returns accessionJSON title
   getTitle() {
     return this.accessionJSON.accessions.title
-  }
+  } // getTitle
   
   /**
    * Transforms the data into HTML for the left hand pane based on the selection criteria.
@@ -88,8 +88,8 @@ export class AccessionClass {
           sortedItems.forEach(item => {
             htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
               '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
-              '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
-              '<td><div class="descData">' + peopleList(item.person) + '</div></td>' +
+              '<td><div class="dateData">' + ItemViewClass.dateText(item.date) + '</div></td>' +
+              '<td><div class="descData">' + ItemViewClass.peopleList(item.person) + '</div></td>' +
               '</tr>';
           });
           break;
@@ -139,8 +139,8 @@ export class AccessionClass {
           sortedItems.forEach(item => {
             htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
               '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
-              '<td><div class="descData">' + personText(item.person, false) + '</div></td>' +
-              '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
+              '<td><div class="descData">' + ItemViewClass.personText(item.person, false) + '</div></td>' +
+              '<td><div class="dateData">' + ItemViewClass.dateText(item.date) + '</div></td>' +
               '</tr>';
           });
           break;
@@ -200,8 +200,8 @@ export class AccessionClass {
           sortedItems.forEach(item => {
             htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
               '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
-              '<td><div class="fileData">' + locationText(item.location) + '</div></td>' +
-              '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
+              '<td><div class="fileData">' + ItemViewClass.locationText(item.location) + '</div></td>' +
+              '<td><div class="dateData">' + ItemViewClass.dateText(item.date) + '</div></td>' +
               '</tr>';
           });
           break;
@@ -222,7 +222,7 @@ export class AccessionClass {
             htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
               '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
               '<td><div class="fileData">' + item.link + '</div></td>' +
-              '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
+              '<td><div class="dateData">' + ItemViewClass.dateText(item.date) + '</div></td>' +
               '</tr>';
           });
           break;
@@ -277,8 +277,8 @@ export class AccessionClass {
           sortedItems.forEach(item => {
             htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
               '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
-              '<td><div class="descData">' + personText(item.person, false) + '</div></td>' +
-              '<td><div class="dateData">' + dateText(item.received) + '</div></td>' +
+              '<td><div class="descData">' + ItemViewClass.personText(item.person, false) + '</div></td>' +
+              '<td><div class="dateData">' + ItemViewClass.dateText(item.received) + '</div></td>' +
               '</tr>';
           });
           break;
@@ -310,7 +310,7 @@ export class AccessionClass {
             htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
               '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
               '<td><div class="fileData">' + item.accession + '</div></td>' +
-              '<td><div class="dateData">' + dateText(item.date) + '</div></td>' +
+              '<td><div class="dateData">' + ItemViewClass.dateText(item.date) + '</div></td>' +
               '</tr>';
           });
           break;
@@ -335,10 +335,10 @@ export class AccessionClass {
     var sortedItems = '';
     let collection = this.collections.getCollection(selectedCollection)
     sortedItems = collection.itemKeys.map(itemKey => {
-      const item = this.getItem(itemKey.accession, itemKey.link);
+      const itemView = this.getItemView(itemKey.accession, itemKey.link);
       return {
-        type: item.type,
-        link: item.link
+        type: itemView.getType(),
+        link: itemView.getLink()
       };
     })
       .sort((a, b) => {
@@ -366,7 +366,7 @@ export class AccessionClass {
       }
     });
     return commandOutput;
-  }
+  }  // getCommands
 
   getAccessions(selectedCollection) {
     let accessionsOutput = {accessions: {item: []}};
@@ -374,9 +374,9 @@ export class AccessionClass {
     let collection = this.collections.getCollection(selectedCollection)
     accessionsOutput.accessions.title = collection.title
     sortedItems = collection.itemKeys.map(itemKey => {
-      const item = this.getItem(itemKey.accession, itemKey.link);
+      const itemView = this.getItemView(itemKey.accession, itemKey.link);
       return {
-        ...item
+        ...itemView.itemJSON
       };
     })
       .sort((a, b) => {
@@ -391,49 +391,35 @@ export class AccessionClass {
       accessionsOutput.accessions.item.push(item)
     });
     return accessionsOutput;
-  }
+  } // getAccessions
 
   getMonthNumber(monthAbbreviation) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return months.indexOf(monthAbbreviation) + 1;
-  }
+  } // getMonthNumber
 
-  getItem(accession, link) {
-    let item = this.accessionJSON.accessions.item.find(item => item.accession === accession);
+  // getItemView returns an ItemViewClass object for the given accession or link
+  getItemView(accession, link) {
+    let item;
+    if (accession) {
+      item = this.accessionJSON.accessions.item.find(item => item.accession === accession);
+      if (link && item.link !== link) {
+        console.log('AccessionClass getItemView: item.link mismatch with collection. accession: ' + accession + ', collection link: ' + link + ', item: ' + item.link);
+      }
+    } else if (link) {
+      item = this.accessionJSON.accessions.item.find(item => item.link === link);
+    }
     if (!item) {
-      console.log('getItem: item not found: ' + accession)
+      console.log('getItemView: item not found: ' + accession);
+      return null;
     }
-    if (link && item.link !== link) {
-      console.log('AccessionClass getItem: item.link mismatch with collection. accession: ' + accession + ', collection link: ' + link + ', item: ' + item.link)
-    }
-    return item;
-  }
-
-  getJSONItem(itemNumber, callback) {
-    let items = this.accessionJSON.accessions.item.filter(item => {
-      return item.accession === itemNumber
-    })
-    if (items.length > 1) {
-      console.log('getJSONItem: ' + items.length + ' items for accession: ' + itemNumber)
-    }
-    items[0].collections = this.collections.getCollectionKeys(itemNumber)
-    callback(items[0])
-  }
-
-  getJSONForLink(link, callback) {
-    let items = this.accessionJSON.accessions.item.filter(item => {
-      return item.link === link
-    })
-    if (items.length > 1) {
-      console.log('getJSONForLInk: ' + items.length + ' items for link: ' + link)
-    }
-    items[0].collections = this.collections.getCollectionKeys(items[0].accession)
-    callback(items[0])
-  }
-
-  getJSONReferencesForLink(link) {
-    // get a list of items in playlist entries that refer to this link
-    // enables showing the photo while the audio or video is playing
+    item.collections = this.collections.getCollectionKeys(item.accession);
+    return new ItemViewClass( item, this );
+  } // getItemView
+      
+  // create an array of playlist items that refer to this link (photos that are described in audio or video)
+  // enables showing the photo while the audio or video is playing
+  getReferencesForLink(link) {
     let refs = []
     if (this.accessionJSON.accessions.item) {
       this.accessionJSON.accessions.item.forEach(item => {
@@ -460,6 +446,6 @@ export class AccessionClass {
       })
     }
     return refs
-  }
+  } // getReferencesForLink
 }
 module.exports = AccessionClass;

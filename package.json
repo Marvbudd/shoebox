@@ -1,11 +1,11 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Multimedia browser",
   "main": "app/main/index.js",
   "module": "app/main/main.js",
-    "build": {
+  "build": {
     "appId": "com.gmail.marvbudd.shoebox",
     "dmg": {
       "background": null,
@@ -80,6 +80,7 @@
   "copyright": "Copyright © 2001-2024",
   "dependencies": {
     "electron-updater": "^6.1.8",
+    "esm": "^3.2.25",
     "handlebars": "^4.7.8",
     "nconf": "^0.12.0"
   },

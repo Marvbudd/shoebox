@@ -3,7 +3,7 @@
 ## Supported Versions
 
 This project is expected to have minimal security vulnerabilities since it accesses only
-data from the local system where it is installed. All versions you may have are supported.
+data from the local system where it is installed. Ask me about any version.
 You may need to upgrade to a recent version to solve problems. 
 
 ## Reporting a Vulnerability
