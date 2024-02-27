@@ -1,10 +1,10 @@
-const fs = require('fs');
-const path = require('path');
-const CollectionClass = require('./CollectionClass');
+import { existsSync, mkdirSync, readdirSync } from 'fs';
+import { join } from 'path';
+import { CollectionClass } from './CollectionClass.js';
 
-class CollectionsClass {
+export class CollectionsClass {
   constructor(accessionsDir) {
-    this.collectionsDir = path.join(accessionsDir, 'collections');
+    this.collectionsDir = join(accessionsDir, 'collections');
     this.collections = [];
   }
 
@@ -26,9 +26,9 @@ class CollectionsClass {
   saveCollections() {
     try {
       // Check if collections directory exists
-      if (!fs.existsSync(this.collectionsDir)) {
+      if (!existsSync(this.collectionsDir)) {
         // Create collections directory
-        fs.mkdirSync(this.collectionsDir);
+        mkdirSync(this.collectionsDir);
         console.log('Collections directory created.');
       } else {
         console.log('Collections directory already exists.');
@@ -39,7 +39,7 @@ class CollectionsClass {
     for (const collection of this.collections) {
       // Generate the file path
       if (collection.collectionChanged) {
-        const filePath = path.join(this.collectionsDir, `${collection.key}.json`);
+        const filePath = join(this.collectionsDir, `${collection.key}.json`);
         collection.tofile(filePath);
       }
     }
@@ -54,12 +54,12 @@ class CollectionsClass {
       }
     }
 
-    if (fs.existsSync(this.collectionsDir)) {
+    if (existsSync(this.collectionsDir)) {
       // Read files in collectionsDir
-      const files = fs.readdirSync(this.collectionsDir);
+      const files = readdirSync(this.collectionsDir);
 
       for (const file of files) {
-        const filePath = path.join(this.collectionsDir, file);
+        const filePath = join(this.collectionsDir, file);
         try {
           this.collections.push(CollectionClass.fromFile(filePath));
         } catch (error) {
@@ -97,6 +97,4 @@ class CollectionsClass {
       }
     }
   }
-}
-
-module.exports = CollectionsClass;
+} // end of CollectionsClass

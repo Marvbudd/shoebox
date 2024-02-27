@@ -1,11 +1,15 @@
-const Handlebars = require('handlebars')
-const fs = require('fs')
-const path = require('path');
-const nconf = require( 'nconf' );
-import url from 'url'
-import { AppendString } from './AppendString.js'
-const { copyright, version } = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json')))
-// const version = process.env.npm_package_version
+import Handlebars from 'handlebars';
+import fs from 'fs';
+import path from 'path';
+import nconf from 'nconf';
+import url from 'url';
+import { AppendString } from './AppendString.js';
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+// const __dirname = import.meta.dirname;
+const { copyright, version } = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json')));
 
 const detailTemplate = '<table id="prevData" summary="preview data">' +
 '<tr><td class="detailCol1">Desc:</td><td class="detailCol2" id="desc">{{description}}</td></tr>' +
@@ -39,7 +43,7 @@ export class ItemViewClass {
   constructor(itemJSON, accessionClass) {
     this.itemJSON = itemJSON
     this.accessionClass = accessionClass
-  }
+  } // constructor
 
   getType() {
     return this.itemJSON.type
@@ -96,7 +100,7 @@ export class ItemViewClass {
       }
     });
     return lastStr.string();
-  }
+  } // lastName
 
   static personText(oneNode, includePosition = true) {
     var first = '';
@@ -111,7 +115,7 @@ export class ItemViewClass {
       last = ItemViewClass.lastName(oneNode.last)
     }
     return first + " " + last;
-  }
+  } // personText
 
   static peopleList(personNodes) {
     var people = new AppendString(', ');
@@ -119,7 +123,7 @@ export class ItemViewClass {
       people.add(ItemViewClass.personText(person));
     })
     return people.string();
-  }
+  } // peopleList
 
   static locationText(oneNode) {
     var lText = '';
@@ -213,11 +217,10 @@ export class ItemViewClass {
           viewObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`;
           break;
       }
-      viewObject.descDetail = this.showNodeDescription(); // this must be called after reflist is filled
+      viewObject.descDetail = this.showNodeDescription();
       callback(viewObject);
     } else {
       callback('ItemViewClass:getViewObject - No itemJSON!!!');
     }
   } // getViewObject
 } // ItemViewClass
-module.exports = ItemViewClass;

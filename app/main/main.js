@@ -1,12 +1,19 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require( 'electron' )
-const path = require( 'path' );
-const nconf = require( 'nconf' );
-import url from 'url'
-import * as fs from 'fs';
-import { AccessionClass } from '../main/utils/AccessionClass.js'
-import { autoUpdater } from 'electron-updater';
+import { app, BrowserWindow, dialog, ipcMain, shell, Menu } from 'electron';
+import fs from 'fs';
+import path from 'path';
+import nconf from 'nconf';
+import url from 'url';
+import { AccessionClass } from '../main/utils/AccessionClass.js';
+// const { autoUpdater } = 'electron-updater';
 
-autoUpdater.checkForUpdatesAndNotify()
+// autoUpdater.checkForUpdatesAndNotify();
+
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
+console.log('main.js __dirname is ' + __dirname);
 // Setup nconf to use (in-order):
 //   1. Command-line arguments
 //   2. Environment variables
@@ -75,7 +82,6 @@ let mainWindow = null;
 let helpWindow = null;
 let mediaWindow = null;
 // tracks the renderer drop-down selection via 'items:collection' message
-let selectedCollection = ''
 let showCollection = false
 
 const createWindow = () => {
@@ -91,16 +97,18 @@ const createWindow = () => {
       nodeIntegration: false,
       contextIsolation: true
     }
-  })
+  }) // BrowserWindow
   // and load the index.html of the app.
   mainWindow.loadFile( path.resolve(__dirname + '/../render/html/index.html') );
+  
   mainWindow.on('close', (e) => {
     if (mainWindow) {
       const mainWindowSize = mainWindow.getSize()
       nconf.set('ui:main:width', mainWindowSize[0])
       nconf.set('ui:main:height', mainWindowSize[1])
     }
-  })
+  }) //
+  
   mainWindow.webContents.on('destroyed', () => {
     if (helpWindow) {
       helpWindow.close();
@@ -110,20 +118,23 @@ const createWindow = () => {
     }
     nconf.save( 'user' )
     mainWindow = null
-  })
+  }) // mainWindow.webContents.on('destroyed')
+
   ipcMain.on('items:getList', (event, requestParams) => {
     if (!accessionClass) {
       accessionClass = new AccessionClass( nconf.get('db:accessionsPath') )
     }
     let transformedObject = [ ]
     let listObject = {}
+    let selectedCollection = nconf.get('controls:selectedCollection')
     transformedObject = accessionClass.transformToHtml(requestParams.sort - 1)
     listObject.tableBody = transformedObject.tableBody
     listObject.navHeader = transformedObject.navHeader
     listObject.collections = accessionClass.getCollections()
     showCollection = listObject.collections.length > 0
-    if (showCollection) {
-      selectedCollection = listObject.collections[0].value
+    if (showCollection
+    &&  listObject.collections.find( (collection) => collection.value === selectedCollection ) === undefined) {
+        selectedCollection = listObject.collections[0].value
     }      
     listObject.selectedCollection = selectedCollection
     listObject.accessionTitle = accessionClass.getTitle()
@@ -133,7 +144,7 @@ const createWindow = () => {
     listObject.restrictChecked = nconf.get('controls:restrictChecked')
     event.sender.send('items:render', JSON.stringify(listObject))
     createMenu() // update the menu to show/hide the collection build option
-  })
+  }) // items:getList
 
   ipcMain.on('item:getDetail', async (_, accession) => {
     // This fires when requesting any item from the left-hand list
@@ -150,13 +161,22 @@ const createWindow = () => {
         }
       })
     };
-  })
-  ipcMain.on('items:collection', (_, collection) => {
-    selectedCollection = collection
-  })
+  }) // item:getDetail
+
+  ipcMain.on('items:collection', (_, controls) => {
+    let itemsObject = JSON.parse(controls)
+    nconf.set( 'controls:photoChecked', itemsObject.photoChecked)
+    nconf.set( 'controls:tapeChecked', itemsObject.tapeChecked)
+    nconf.set( 'controls:videoChecked', itemsObject.videoChecked)
+    nconf.set( 'controls:restrictChecked', itemsObject.restrictChecked)
+    nconf.set( 'controls:selectedCollection', itemsObject.selectedCollection)
+    nconf.save( 'user' )
+  }) // items:collection
+  
   ipcMain.on('item:setCategory', (_, accession) => {
-    accessionClass.toggleItemInCollection( selectedCollection, accession )
-  })
+    accessionClass.toggleItemInCollection( nconf.get('controls:selectedCollection'), accession )
+  }) // item:setCategory
+  
   ipcMain.on('item:Play', (_, playString) => {
     // This fires when requesting AV for a filename attached to a photo
     const playObject = JSON.parse(playString)
@@ -175,20 +195,15 @@ const createWindow = () => {
         }
       })
     }
-  })
-  ipcMain.on('items:reload', (event, itemsString) => {
+  }) // item:Play
+
+  ipcMain.on('items:reload', (_, itemsString) => {
     // reload on main window causes a reload of accessions in case it changed.
     if (accessionClass) {
         accessionClass.saveAccessions();
     }
     accessionClass = undefined
-    let itemsObject = JSON.parse(itemsString)
-    nconf.set( 'controls:photoChecked', itemsObject.photoChecked)
-    nconf.set( 'controls:tapeChecked', itemsObject.tapeChecked)
-    nconf.set( 'controls:videoChecked', itemsObject.videoChecked)
-    nconf.set( 'controls:restrictChecked', itemsObject.restrictChecked)
-    nconf.save( 'user' )
-  })
+  }) // items:reload
 };
 
 // This method will be called when Electron has finished
@@ -197,7 +212,7 @@ const createWindow = () => {
 app.on('ready', () => {
   createWindow()
   createMenu();
-});
+}); // app.on('ready')
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
@@ -206,7 +221,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
-});
+}); // app.on('window-all-closed')
 
 app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
@@ -214,7 +229,7 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
-});
+}); // app.on('activate')
 
 function createMenu() {
   const template = [
@@ -267,12 +282,12 @@ function createMenu() {
     }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-}
+} // createMenu
 
 function hmsToSeconds( hms ) {
   let a = hms.split(':')
   return parseInt(a[0]) * 3600 + parseInt(a[1]) * 60 + parseInt(a[2])
-}
+} 
 
 function chooseAccessionsPath() {
   dialog.showOpenDialog(mainWindow, {
@@ -302,7 +317,7 @@ function chooseAccessionsPath() {
   }).catch((e) => {
     console.log('error in showOpenDialog: ', e);
   });
-}
+} // chooseAccessionsPath
 
 function createHelpWindow() {
   if (!helpWindow) {
@@ -320,7 +335,7 @@ function createHelpWindow() {
       helpWindow.show();
     }
   }
-}
+} // createHelpWindow
 
 function createMediaWindow( mediaInfo ) {
   if (!mediaWindow) {
@@ -360,9 +375,10 @@ function createMediaWindow( mediaInfo ) {
     // }
     mediaWindow.send('mediaDisplay', mediaInfo)
   }
-}
+} // createMediaWindow
 
 async function buildCollection() {
+  let selectedCollection = nconf.get('controls:selectedCollection')
   let collectionDir = path.resolve( path.dirname( nconf.get('db:accessionsPath') ), '../', selectedCollection )
   // Getting information for a directory
   fs.stat(collectionDir, (error, stats) => {
@@ -403,10 +419,10 @@ async function buildCollection() {
       console.log('error creating accessions.json - error - ' + error)
     }
   });
-}
+} // buildCollection
 
 // create a window to display the family tree website from SecondSite
 function createTreeWindow() {
   let treeURL = url.pathToFileURL( path.resolve( path.dirname( nconf.get('db:accessionsPath') ), 'website', 'index.htm' ) ).href
   shell.openExternal( treeURL );
-}
+} // createTreeWindow

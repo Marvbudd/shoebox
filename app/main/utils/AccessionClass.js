@@ -1,7 +1,7 @@
-const path = require( 'path' );
-const fs = require('fs')
-const ItemViewClass = require( './ItemViewClass.js' )
-const CollectionsClass = require('./CollectionsClass.js')
+import path from 'path';
+import fs from 'fs';
+import { ItemViewClass } from './ItemViewClass.js';
+import { CollectionsClass } from './CollectionsClass.js';
 
 // AccessionClass is a class that reads an accession JSON file and provides methods to access the data
 export class AccessionClass {
@@ -448,4 +448,3 @@ export class AccessionClass {
     return refs
   } // getReferencesForLink
 }
-module.exports = AccessionClass;

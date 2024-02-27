@@ -40,12 +40,7 @@ $prevDataDiv.addEventListener('dblclick', (e) => {
     }
   }
   a = a == 0 ? 1 : 0
-})
-
-$photo.addEventListener('change', hideHighlightFilter)
-$tape.addEventListener('change', hideHighlightFilter)
-$video.addEventListener('change', hideHighlightFilter)
-$restrict.addEventListener('change', hideHighlightFilter)
+}) // prevDataDiv
 
 function playEntry (windowEvent) {
   var rowElement = windowEvent.currentTarget.closest('tr')
@@ -57,7 +52,7 @@ function playEntry (windowEvent) {
     }
     BURRITO.sendToMain(BURRITO.req.ITEMPLAY, JSON.stringify(entry))
   }
-}
+} // playEntry
 
 function setPlaylistListener() {
   // mouseover on playlist entries
@@ -67,7 +62,7 @@ function setPlaylistListener() {
       tdElements[i].addEventListener('mouseover', playEntry)
     }
   }
-}
+} // setPlaylistListener
 
 function mediaContent(itemString) {
   if (itemString) {
@@ -77,21 +72,34 @@ function mediaContent(itemString) {
     a = 0
     setPlaylistListener()
   }
-}
+} // mediaContent
 BURRITO.whenItemDetail(mediaContent)
 
-$selectCollection.addEventListener('change', collectionChanged)
-function collectionChanged() {
-  if (!$selectCollectionLabel.hidden) {
-    hideHighlightFilter()
-    try {
-      BURRITO.sendToMain(BURRITO.req.ITEMSCOLLECTION, $selectCollection.value)
-    } 
-    catch (error) {
-      console.log('Error in collectionChanged: ', error)
-    }
+$photo.addEventListener('change', controlsChanged)
+$tape.addEventListener('change', controlsChanged)
+$video.addEventListener('change', controlsChanged)
+$restrict.addEventListener('change', controlsChanged)
+$selectCollection.addEventListener('change', controlsChanged)
+function controlsChanged() {
+  hideHighlightFilter()
+  let controls = {}
+  controls.photoChecked = $photo.checked
+  controls.tapeChecked = $tape.checked
+  controls.videoChecked = $video.checked
+  if ($selectCollectionLabel.hidden) {
+    controls.restrictChecked = false
+    controls.selectedCollection = ''
+  } else {
+    controls.restrictChecked = $restrict.checked
+    controls.selectedCollection = $selectCollection.value
   }
-}
+  try {
+    BURRITO.sendToMain(BURRITO.req.ITEMSCOLLECTION, JSON.stringify(controls))
+  } 
+  catch (error) {
+    console.log('Error in controlsChanged: ', error)
+  }
+} // controlsChanged
 
 // The left column text is green if the item is in the selected collection
 // The left column text is black if the item is not in the selected collection
@@ -128,7 +136,7 @@ function hideHighlightFilter() {
       detailElements[i].hidden = !showClass;
     }
   }
-}
+} // hideHighlightFilter
 
 // Toggle item in the selected collection on double click
 // A forced reload of the items list is done to update the collection column
@@ -146,7 +154,7 @@ function collectionSelect(windowEvent) {
     }
     getItemsList()
   }
-}
+} // collectionSelect
 
 function showThumb(windowEvent) {
   // Find nearest parent that is a tr element
@@ -161,13 +169,13 @@ function showThumb(windowEvent) {
       console.log('Error in showThumb: ', error)
     }
   }
-}
+} // showThumb
 
 window.addEventListener('DOMContentLoaded', getItemsList)
 $selectSort.addEventListener('change', () => {
   saveCheckbox()
   getItemsList()
-})
+}) // selectSort
 
 function getItemsList() {
   let requestParams = {
@@ -175,17 +183,7 @@ function getItemsList() {
     collection: $selectCollection.value
   }
   BURRITO.sendToMain(BURRITO.req.ITEMSGETLIST, requestParams)
-}
-
-window.addEventListener('beforeunload', saveCheckbox)
-function saveCheckbox() {
-  let itemsObject = {}
-  itemsObject.photoChecked = $photo.checked
-  itemsObject.tapeChecked = $tape.checked
-  itemsObject.videoChecked = $video.checked
-  itemsObject.restrictChecked = $restrict.checked
-  BURRITO.sendToMain( BURRITO.req.ITEMSRELOAD, JSON.stringify(itemsObject) )
-}
+} // getItemsList
 
 function renderItems(tableString) {
   const listObject = JSON.parse(tableString)
@@ -228,5 +226,5 @@ function renderItems(tableString) {
     }
   }
   hideHighlightFilter()
-}
+} // renderItems
 BURRITO.whenItemsRender(renderItems)
