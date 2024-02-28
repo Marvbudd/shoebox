@@ -1,4 +1,4 @@
-name: releaseBuild.yaml
+name: releaseBuild.yml
 
 on:
   push:
@@ -10,11 +10,12 @@ jobs:
     # If the commit is tagged with a version (e.g. "v1.0.0"),
     # release the app after building
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Check out Git repository
