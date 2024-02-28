@@ -173,14 +173,12 @@ function showThumb(windowEvent) {
 
 window.addEventListener('DOMContentLoaded', getItemsList)
 $selectSort.addEventListener('change', () => {
-  saveCheckbox()
   getItemsList()
 }) // selectSort
 
 function getItemsList() {
   let requestParams = {
-    sort: $selectSort.value,
-    collection: $selectCollection.value
+    sort: $selectSort.value
   }
   BURRITO.sendToMain(BURRITO.req.ITEMSGETLIST, requestParams)
 } // getItemsList
