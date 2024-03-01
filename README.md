@@ -1,37 +1,41 @@
 This is a project that displays multimedia files with descriptive information about each file.
 
-As I was collecting photos, videos of interviews with older living relatives, and recordings of interviews and visits to historic sites with significant relevance to my family history I put them in a big "shoebox" until I could curate them for others to use. It was difficult to share these rare items with others who wanted them, and the information I collected about them was almost as valuable as the items. 
+As I was collecting photos, videos of interviews with older living relatives, and recordings of interviews and visits to historic sites with significant relevance to my family history I put them in a big "shoebox" until I could curate them for others to use. It was difficult to share these items with others who wanted them along with my discoveries about them.
 
-This project is my answer to the need to make this information available. The original was started during the 9/11 era when I was off work for a year. It was written for Windows 98 and Internet Explorer. Javascript was cool, and not needing to install additional software made this attractive. Unfortunately, this choice made the result inaccessible to Apple and *nix users, and as browser technology became more secure it did not run at all.
+This project is my answer to the need to make this information available without paying a subscription fee. I started this in 9/11 era when I was off work for a year. It was written for Windows 98 and Internet Explorer. Shoebox, written in Electron/Node.js, is the current software. Then I add my pedigree and genealogy research using a product called Second Site by John Cardinal (https://www.secondsite8.com/). This is written to a data DVD, or a shared drive for others to install on their computer. 
 
-With this software, written in Electron/Node.js, I include a subset of the media for my family that is customized to the part of the family they share with me. Then I add my pedigree and genealogy research using a product called Second Site by John Cardinal. This is written to a data DVD, or a shared drive for them to install on their computer. 
+To install, go to https://github.com/Marvbudd/shoebox and look on the right side for the Latest release and click. Under the assets select the installer appropriate for your operating system as listed below where x.x.x is the shoebox version.<br>
+  Apple Mac  - shoebox-x.x.x.dmg<br>
+  Windows 10 - shoebox-Setup-x.x.x.exe<br>
+  Linux      - shoebox-x.x.x.AppImage<br>
 
-To Install: First look for the installer appropriate for your operating system. x.x.x is the shoebox version.<br>
-  Apple Mac  - shoebox-x.x.x.AppImage<br>
-  Windows 10 - shoebox Setup x.x.x.exe<br>
-  Linux      - shoebox-x.x.x.dmg<br>
+For Windows or Linux just double click on the downloaded file to install shoebox. For Apple Mac, you need to run the .dmg file, then drag it to the Applications folder and then run it. Here is a YouTube video showing the process with a different app. Do that same thing with the shoebox-x.x.x.dmg file.
 
-After the install completes the software can be run and only a sample set of files is installed. You can then either copy the files to an empty directory on your computer, or direct shoebox to open the accessions.json file directly. To select the location press <ALT>F for Windows/Linux or <CMD>F for Mac to access the menu. Then select "Choose Accessions.json file" from the menu. Use the dialog to find and double click on the accessions.xml file on your computer or on the DVD as needed. Now the full set of media can be viewed. The last selection is retained for future use by shoebox.
+After the install completes only a sample set of files is installed. For my family I provide a link to the data in a .zip file. Email me for this file if you would like it. Download the file to a clean directory on your computer. Then extract the files there.
 
-https://github.com:Marvbudd/shoebox.git is the current project repository. I'm looking for collaborators.
+Now run shoebox and direct it to the directory where you extracted the files. To do this press <ALT>F for Windows/Linux or <CMD>F for Mac to access the menu. Then select "Choose Accessions.json file" from the menu. Use the dialog to find and double click on the accessions.xml file on your computer or on the DVD as needed. Now the full set of media can be viewed. The last selection is retained for future use by shoebox.
 
-As I release version 2.0.0 which abandons xml in favor of json I have a small node.js app that I'll email anyone who asks. It converts accessions.xml to accessions.json.
+Run the shoebox Application and hold down the ALT key and press F and choose the Accessions file from the clean directory where you installed the .zip files and press enter. That should set you up.
 
-Here is the assumed directory structure for the accessions.json file and the media.
+As you run shoebox you will have a separate window for photos, and another for audio/video. Resize and move these so you can see them at the same time on your system. Multiple monitors are useful, but one screen can be used too.
+
+Here is the directory structure for the accessions.json file and the media that I provide in the .zip file.
 
 accessions.json<br>
-./photo - jpg files here<br>
-./video - mp4 files here<br>
-./audio - mp3 files here<br>
-./collections - optional - key.json files for lists<br>
-./website/index.htm - Second Site<br>
+./photo <-- jpg files here<br>
+./video <-- mp4 files here<br>
+./audio <-- mp3 files here<br>
+./collections <-- optional - key.json files for lists<br>
+./website/index.htm <-- Second Site<br>
 
-To create a Collection, save the following in the ./collections subdirectory. Name it mycoll.json (keep it short) and edit the text and title as appropriate. After this, open shoebox and use the dropdown and Filter controls. Toggle whether an item is in the collection by double clicking on the left hand column. Green text means it is in the selected collection. ALT-F opens a menu to write the collection to a subdirectory.
+Collections allow you to create arbitrary subsets of the media. To create a Collection, use any editor to save the following in the ./collections subdirectory. Name it something like mycoll.json (keep it short with no spaces) and edit the text and title as desired to identify your collection. After this, open shoebox and use the dropdown and Filter controls. Toggle whether an item is in the collection by double clicking on the left hand column. Green text means it is in the selected collection. ALT-F opens a menu to write the collection to a subdirectory.<br>
 {<br>
   "itemKeys": [ ],<br>
   "text": "Short description",<br>
   "title": "A New Collection - appears in the title bar of the collection page"<br>
 }<br>
+
+As I release version 2.0.0, which abandons xml in favor of json, I have a small node.js app that converts accessions.xml to accessions.json.
 
 Some improvements I'm hoping for:
   1. Ability to click on a name in shoebox and a link opens to the Second Site entry for that person. Requires entering the TMG ID for each person in accessions.json and code changes. Second Site already supports this.
