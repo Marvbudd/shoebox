@@ -312,14 +312,18 @@ function createMenu() {
           click: buildCollection
         }
           : { type: 'separator' }),
-        (showCollection ? {
-          label: 'Add &Media',
-          click: createAddMediaWindowShim
-        }
-          : { type: 'separator' }),
         { type: 'separator' },
         { role: 'quit' }
-      ],
+      ]
+    },
+    {
+      label: '&Edit',
+      submenu: [
+        {
+          label: 'Edit &Media',
+          click: createAddMediaWindowShim
+        }
+      ]
     },
     {
       label: '&View',
