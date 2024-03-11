@@ -1,8 +1,6 @@
 import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
-import nconf from 'nconf';
-import url from 'url';
 import { AppendString } from './AppendString.js';
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
@@ -17,20 +15,21 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
 '<tr><td>Date:</td><td id="date">{{dateDisplay}}</td></tr>' +
 '<tr><td>Location:</td><td id="locatn"><a target="newWindow" href="https://maps.google.com/maps/search/{{locationDisplay}}">{{locationDisplay}}</a></td></tr>' +
 '<tr class="detail"><td>Collections: </td><td id="collections">{{collections}}</td></tr>' +
-'<tr class="detail"><td>Accession:</td><td id="acsn">{{accession}}</td></tr>' +
-'<tr class="detail"><td>Source:</td><td id="itemSource">{{sourceDisplay}}</td></tr>' +
-'<tr class="detail"><td>Received:</td><td id="received">{{receivedDisplay}}</td></tr>' +
+'<tr class="detail"><td>Accession:</td><td id="accession">{{accession}}</td></tr>' +
 '<tr class="detail"><td>Link:</td><td id="link">{{link}}</td></tr>' +
+'<tr class="detail"><td colspan="2"><button id="editMedia">Edit media</button></td></tr>' +
 '{{#playlist}}' +
 '{{#entry}}' +
-'<tr class="detail"><td>Playlist:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
+'<tr><td>Playlist:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
 '{{/entry}}' +
 '{{/playlist}}' +
 '{{#reflist}}' +
 '{{#entry}}' +
-'<tr class="detail"><td>References:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
+'<tr><td>References:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
 '{{/entry}}' +
 '{{/reflist}}' +
+'<tr class="detail"><td>Source:</td><td id="itemSource">{{sourceDisplay}}</td></tr>' +
+'<tr class="detail"><td>Received:</td><td id="received">{{receivedDisplay}}</td></tr>' +
 '<caption><a href="{{ssURL}}" target="_blank">Second Site</a>  Media Description.</caption>' +
 '</table>' +
 '<p class="copyright">{{copyright}} ' +
@@ -39,6 +38,9 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
 '</p>'
 const detailCompiled = Handlebars.compile(detailTemplate)
 
+/**
+ * Represents a class for handling item views.
+ */
 export class ItemViewClass {
   constructor(itemJSON, accessionClass) {
     this.itemJSON = itemJSON
@@ -46,11 +48,11 @@ export class ItemViewClass {
   } // constructor
 
   getType() {
-    return this.itemJSON.type
+    return this.itemJSON.type;
   } // getType
   
   getLink() {
-    return this.itemJSON.link
+    return this.itemJSON.link;
   } // getLink
 
   static dateText(oneNode) {
@@ -186,7 +188,7 @@ export class ItemViewClass {
       version: version,
       copyright: copyright,
       reflist: this.accessionClass.getReferencesForLink(this.getLink()),
-      ssURL: url.pathToFileURL(path.resolve(path.dirname(nconf.get('db:accessionsPath')), 'website', 'index.htm')).href,
+      ssURL: this.accessionClass.getWebsite(),
       ...this.itemJSON
     }
     return detailCompiled(dataObject)
@@ -197,9 +199,9 @@ export class ItemViewClass {
     let mediaPath;
     if (this.itemJSON) {
       viewObject.link = this.getLink();
+      mediaPath = this.accessionClass.getMediaPath(this.itemJSON.type, viewObject.link);
       switch (this.itemJSON.type) {
         case 'photo':
-          mediaPath = path.resolve(nconf.get('media:photo'), this.itemJSON.link);
           try {
             const data = fs.readFileSync(mediaPath);
             const imgEncoded = data.toString('base64');
@@ -209,11 +211,9 @@ export class ItemViewClass {
           }
           break;
         case 'tape':
-          mediaPath = path.resolve(nconf.get('media:tape'), this.itemJSON.link);
           viewObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`;
           break;
         case 'video':
-          mediaPath = path.resolve(nconf.get('media:video'), this.itemJSON.link);
           viewObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`;
           break;
       }
@@ -223,4 +223,78 @@ export class ItemViewClass {
       callback('ItemViewClass:getViewObject - No itemJSON!!!');
     }
   } // getViewObject
+
+  /**
+   * Updates the item with the provided form data.
+   * @param {Object} formJSON - The form data in JSON format.
+   */
+  updateItem(formJSON) {
+    // accession and link are not updated intentionally, they are keys to the item
+    let itemJSON = this.itemJSON;
+    if (formJSON.description) {
+      itemJSON.description = formJSON.description;
+    }
+    if (formJSON.personFirst || formJSON.personLast) {
+      itemJSON.person.push({
+        first: formJSON.personFirst,
+        last: [{
+          last: formJSON.personLast
+        }]
+      });
+    }
+    if (formJSON.dateYear || formJSON.dateMonth || formJSON.dateDay) {
+      itemJSON.date = {
+        month: formJSON.dateMonth,
+        day: formJSON.dateDay,
+        year: formJSON.dateYear
+      };
+    }
+    if (formJSON.locationDetail || formJSON.locationCity || formJSON.locationState ) {
+      itemJSON.location[0] = {
+        detail: formJSON.locationDetail,
+        city: formJSON.locationCity,
+        state: formJSON.locationState
+      };
+    }
+    if (formJSON.sourPersonFirst || formJSON.sourPersonLast || formJSON.sourYear || formJSON.sourMonth || formJSON.sourDay) {
+      itemJSON.source.push({
+        person: {
+          first: formJSON.sourPersonFirst,
+          last: [{
+            last: formJSON.sourPersonLast
+          }]
+        },
+        received: {
+          month: formJSON.sourMonth,
+          day: formJSON.sourDay,
+          year: formJSON.sourYear
+        }
+      });
+    }
+  } // updateItem
+
+  // get the form data for the item
+  getFormJSON() {
+    let itemJSON = this.itemJSON;
+
+    let formJSON = {
+      accession:   itemJSON.accession,
+      link:        itemJSON.link,
+      description: itemJSON.description,
+      personFirst: itemJSON.person[0].first,
+      personLast:  itemJSON.person[0].last[0].last,
+      dateYear:    itemJSON.date.year,
+      dateMonth:   itemJSON.date.month,
+      dateDay:     itemJSON.date.day,
+      locationDetail: itemJSON.location[0].detail,
+      locationCity: itemJSON.location[0].city,
+      locationState: itemJSON.location[0].state,
+      sourPersonFirst: itemJSON.source[0].person.first,
+      sourPersonLast: itemJSON.source[0].person.last[0].last,
+      sourYear:    itemJSON.source[0].received.year,
+      sourMonth:   itemJSON.source[0].received.month,
+      sourDay:     itemJSON.source[0].received.day
+    };
+    return formJSON;
+  } // getformJSON
 } // ItemViewClass

@@ -12,7 +12,7 @@ $prevDataDiv.addEventListener('dblclick', (e) => {
     }
   }
   a = a == 0 ? 1 : 0
-})
+}) // $prevDataDiv
 
 function playEntry () {
   const windowEvent = window.event
@@ -27,17 +27,17 @@ function playEntry () {
       TACO.sendToMain(TACO.req.ITEMPLAY, JSON.stringify(entry))
     }
   }
-}
+} // playEntry
 
 function setPlaylistListener() {
   // mouseover on playlist entries
   const tdElements = $prevDataDiv.getElementsByClassName('playEntry')
   if (tdElements.length > 0) {
     for (var i = 0; i < tdElements.length; i++) {
-      tdElements[i].setAttribute('onmouseover', 'playEntry()')
+      tdElements[i].addEventListener('mouseover', playEntry);
     }
   }
-}
+} // setPlaylistListener
 
 function mediaContent(itemString) {
   const itemObject = JSON.parse(itemString)
@@ -58,6 +58,11 @@ function mediaContent(itemString) {
     }
   }
   a = 0
+  const $editMedia = document.getElementById("editMedia")
+  $editMedia.addEventListener('click', (e) => {
+    const keyData = { accession: document.getElementById('accession').innerText }
+    TACO.sendToMain(TACO.req.ITEMEDIT, JSON.stringify({keyData}))
+  })
   setPlaylistListener()
-}
+} //
 TACO.onMediaDisplay(mediaContent)

@@ -1,20 +1,48 @@
 import path from 'path';
 import fs from 'fs';
+import url from 'url';
+import exifr from 'exifr';
 import { ItemViewClass } from './ItemViewClass.js';
 import { CollectionsClass } from './CollectionsClass.js';
 
+const subdirectories = {
+  photo: 'photo',
+  tape: 'audio',
+  video: 'video'
+};
+
 // AccessionClass is a class that reads an accession JSON file and provides methods to access the data
 export class AccessionClass {
-  constructor(accessionFilename) {
+  constructor(accessionFilename, title) {
+    if (!title) {
+      const tempDate = new Date();
+      title = 'Accessions ' + tempDate.getFullYear() + tempDate.toLocaleString('default', { month: 'short' }) + tempDate.getDate();
+    }
+    if (!fs.existsSync(accessionFilename)) {
+      console.log(`AccessionClass: Accessions don't exist in ${accessionFilename}`)
+      this.accessionJSON = {
+        accessions: {
+          title, 
+          item: []
+        }};
+    } else {
+      this.accessionJSON = JSON.parse(fs.readFileSync(accessionFilename).toString())
+    }
+    this.accessionsChanged = false
     this.accessionFilename = accessionFilename
-    this.accessionJSON = JSON.parse(fs.readFileSync(this.accessionFilename).toString())
     this.collections = new CollectionsClass(path.dirname(accessionFilename))
     this.collections.readCollections()
+    // find the highest accession number. We only use the first numeric part of the accession
+    this.maxAccession = this.accessionJSON.accessions.item.length > 0 ? Math.max(...this.accessionJSON.accessions.item.map(item => parseInt(item.accession.match(/\d+/)[0]))) : 0;
   } // constructor
 
   // Call the persistence methods here before the class is destroyed
   saveAccessions() {
     this.collections.saveCollections();
+    if (this.accessionsChanged) {
+      fs.writeFileSync(this.accessionFilename, JSON.stringify(this.accessionJSON, null, 2))
+      this.accessionsChanged = false
+    }
   } // saveAccessions
   
   // adds or remove an item from a collection - called on double click
@@ -22,6 +50,10 @@ export class AccessionClass {
     const collection = this.collections.getCollection(collectionKey)
     if (collection) {
       let itemView = this.getItemView(accession)
+      if (!itemView) {
+        console.log('AccessionClass:toggleItemIncollection - Item not found: ' + accession)
+        return
+      }
       collection.getItem(accession) ? collection.removeAccession(accession) : collection.addItem(accession, itemView.getLink())
     } else {
       console.log('AccessionClass:toggleItemIncollection - Collection not found: ' + collectionKey)
@@ -41,7 +73,86 @@ export class AccessionClass {
   getTitle() {
     return this.accessionJSON.accessions.title
   } // getTitle
-  
+
+  getWebsite() {
+    return url.pathToFileURL(path.resolve(path.dirname(this.accessionFilename), 'website', 'index.htm')).href
+  } // getWebsite
+
+  // getMediaDirectory returns the path to the provided type and link
+  getMediaPath(type, link) {
+    return path.resolve(path.dirname(this.accessionFilename), subdirectories[type], link);
+  } // getMediaPath
+
+  // addMediaFiles adds media files to the accessionJSON 
+  async addMediaFiles(formJSON) {
+    try {
+      const subdirectoryKeys = Object.keys(subdirectories);
+      await Promise.all(subdirectoryKeys.map(async (type) => {
+        const directoryPath = path.join(formJSON.updateFocus, subdirectories[type]);
+        const files = fs.readdirSync(directoryPath);
+        for (const file of files) {
+          try {
+            await this.createItem(file, directoryPath, type, formJSON);
+          }
+          catch (error) {
+            console.log('Error in addMediaFiles: ', error);
+          }
+        }
+      }));
+    } catch (error) {
+      console.log('Error in addMediaFiles: ', error);
+    }
+  } // End of addMediaFiles function
+
+  async createItem(file, directoryPath, type, formJSON) {
+    const filePath = path.join(directoryPath, file);
+    const stats = fs.statSync(filePath);
+    const link = path.basename(file);
+    // Use the exifr library to extract metadata
+    let linkExists = this.accessionJSON.accessions.item.some(item => item.link === link);
+    if (!linkExists) {
+      // if the date isn't provided, use the file date
+      if (!formJSON.dateYear && !formJSON.dateMonth && !formJSON.dateDay) {
+        const date = stats.birthtime;
+        formJSON.dateYear = date.getFullYear();
+        formJSON.dateMonth = date.toLocaleString('default', { month: 'short' });
+        formJSON.dateDay = date.getDate();
+      }
+      try {
+        let metadata;
+        if (type === 'photo') {
+          metadata = await exifr.parse(filePath, { gps: true, exif: true });
+          // metadata = await exifr.parse(filePath, { pick: ['latitude','GPSLatitudeRef','longitude','GPSLongitudeRef','ImageDescription']} );
+        }
+        const location = (metadata?.latitude && metadata?.longitude) ? `GPS: ${metadata.latitude.toFixed(6)} ${metadata.GPSLatitudeRef} ${metadata.longitude.toFixed(6)} ${metadata.GPSLongitudeRef}` : '';
+        const description = metadata?.ImageDescription || '';
+        if (location) {
+          formJSON.locationDetail = location;
+        }
+        if (description) {
+          formJSON.description = description;
+        }
+        this.maxAccession++;
+        const item = {
+          link,
+          "person": [],
+          "accession": this.maxAccession.toString(),
+          type,
+          "location": [
+          ],
+          "source": []
+        };
+        let itemView = new ItemViewClass(item, this);
+        itemView.updateItem(formJSON) // update the item with the formJSON
+        this.accessionJSON.accessions.item.push(itemView.itemJSON);
+        this.accessionsChanged = true
+      }
+      catch (error) {
+        console.log('Error in createItem: ', error);
+      }
+    }
+  } // End of createItem function
+
   /**
    * Transforms the data into HTML for the left hand pane based on the selection criteria.
    * 
@@ -88,7 +199,7 @@ export class AccessionClass {
           sortedItems.forEach(item => {
             htmlOutput += '<tr class="' + item.type + '" accession="' + item.accession + 
               '" collections="' + this.collections.getCollectionKeys(item.accession) + '">' +
-              '<td><div class="dateData">' + ItemViewClass.dateText(item.date) + '</div></td>' +
+              '<td><div class="date">' + ItemViewClass.dateText(item.date) + '</div></td>' +
               '<td><div class="descData">' + ItemViewClass.peopleList(item.person) + '</div></td>' +
               '</tr>';
           });
@@ -404,13 +515,13 @@ export class AccessionClass {
     if (accession) {
       item = this.accessionJSON.accessions.item.find(item => item.accession === accession);
       if (link && item.link !== link) {
-        console.log('AccessionClass getItemView: item.link mismatch with collection. accession: ' + accession + ', collection link: ' + link + ', item: ' + item.link);
+        console.log(`AccessionClass getItemView: item.link mismatch with collection. accession: ${accession}, collection link: ${link}, item: ${item.link}`);
       }
     } else if (link) {
       item = this.accessionJSON.accessions.item.find(item => item.link === link);
     }
     if (!item) {
-      console.log('getItemView: item not found: ' + accession);
+      console.log(`AccessionClass.getItemView: item not found: ${accession}, ${link}`);
       return null;
     }
     item.collections = this.collections.getCollectionKeys(item.accession);
@@ -447,4 +558,32 @@ export class AccessionClass {
     }
     return refs
   } // getReferencesForLink
-}
+
+  // updateCategory updates all items in a category from a formJSON
+  updateCollection(formJSON) {
+    let collection = this.collections.getCollection(formJSON.updateFocus)
+    if (collection) {
+      collection.itemKeys.forEach(key => {
+        // delegate as if only one was updated
+        formJSON.accession = key.accession
+        this.updateAccession(formJSON)
+      });
+    }
+  } // updateCategory
+
+  // updateItem updates an item from a formJSON
+  updateAccession(formJSON) {
+    let itemView = this.getItemView(formJSON.accession)
+    if (itemView) {
+      itemView.updateItem(formJSON)
+      // replace the item in accessionJSON
+      let index = this.accessionJSON.accessions.item.findIndex(item => item.accession === formJSON.accession)
+      if (index >= 0) {
+        this.accessionJSON.accessions.item[index] = itemView.itemJSON
+        this.accessionsChanged = true
+      } else {
+        console.log('AccessionClass:updateItem - item not found: ' + formJSON.accession)
+      }
+    }
+  } // updateItem  
+} // AccessionClass

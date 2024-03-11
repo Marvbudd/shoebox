@@ -14,9 +14,8 @@ export class CollectionClass {
       this.collectionChanged = true;
   }
   // itemKeys is an array of objects that compose the collection
-  //  each object points to accession items in the accessions.json file.
-  //  the object has the accession, and the link to the accession.
-  //  these duplicate each other, but lend some redundancy if the link is broken.
+  //  Each object has the accession, and the link.
+  //  These duplicate each other, but lend some redundancy if the link is broken.
   //  They also help detect duplicate uses of the same accession.
   itemKeys = [];
   collectionChanged = false; // set to true if the collection has been changed
@@ -29,7 +28,7 @@ export class CollectionClass {
     const json = JSON.parse(fileContent);
     const collection = new CollectionClass(basename(filePath, '.json'), json.text, json.title);
     collection.itemKeys = json.itemKeys;
-    console.log(`${collection instanceof CollectionClass ? 'CollectionClass' : typeof collection} ${collection.key} read from file: ${filePath}`);
+    // console.log(`${collection instanceof CollectionClass ? 'CollectionClass' : typeof collection} ${collection.key} read from file: ${filePath}`);
     collection.collectionChanged = false; // false because it was just read from file
     return collection;
   } // end of fromFile

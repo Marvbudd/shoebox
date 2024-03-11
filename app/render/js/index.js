@@ -70,6 +70,12 @@ function mediaContent(itemString) {
     $prevDataDiv.innerHTML = itemObject.descDetail
     $previewDiv.innerHTML = itemObject.mediaTag  
     a = 0
+    // editMedia doesn't exist until the items are rendered
+    const $editMedia = document.getElementById("editMedia")
+    $editMedia.addEventListener('click', (e) => {
+      const keyData = { accession: document.getElementById('accession').innerText }
+      BURRITO.sendToMain(BURRITO.req.ITEMEDIT, JSON.stringify({keyData}))
+    })
     setPlaylistListener()
   }
 } // mediaContent

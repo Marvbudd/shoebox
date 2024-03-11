@@ -7,7 +7,8 @@ contextBridge.exposeInMainWorld('BURRITO', {
         ITEMPLAY: 'item:Play',
         ITEMSRELOAD: 'items:reload',
         ITEMSCOLLECTION: 'items:collection',
-        ITEMSETCOLLECTION: 'item:setCategory'
+        ITEMSETCOLLECTION: 'item:setCollection',
+        ITEMEDIT: 'item:edit'
     },
     rsp: {
         ITEMDETAIL: 'item:detail',

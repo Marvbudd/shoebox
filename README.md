@@ -58,11 +58,8 @@ Some improvements I'm hoping for:
         // The default settings are not an accident. They were chosen for several reasons, one of which is <br>
         // to produce static URLs.<br>
         // John Cardinal<br>
-  2. Support ad hoc list.json creation within shoebox. Only needs to prompt for text and title properties to create a new collection. For now a sample newfile.json is included. Put this in the collections subdirectory and edit the text and title.
-  A Collection dropdown will appear with a Filter checkbox allowing restricting the left column to only items in the collection.
-  When Filter is unchecked double click on the left column to toggle items into (Green) the collection.
-  3. An app to ingest select media directories and build an accessions.json file automatically for them, looking for internal metadata. This would be better than hand coding accessions.json. Then an entry editor form would be nice to complete each entry.
-  4. Each person's face in a picture should be identified like social media tags. Is a facial recognition toolkit available?
+  2. Improve the metadata editing to encompass all possibilities. Current version if crude and error-prone.
+  3. Each person's face in a picture should be identified like social media tags. Maybe we can process the photo and store a list of rectangles to identify. See https://www.sitepoint.com/face-detection-nodejs-opencv/ and others.
 
 Marvin E Budd
 marvbudd@gmail.com

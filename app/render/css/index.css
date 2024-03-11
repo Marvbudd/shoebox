@@ -44,7 +44,7 @@ A:visited {
   font-size: x-small;
 }
 .date {
-  width: 8%; }
+  text-align: left; }
 .dateRight {
     width: 8%;
     float: right; }
