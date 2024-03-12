@@ -13,9 +13,7 @@ For Windows or Linux just double click on the downloaded file to install shoebox
 
 After the install completes only a sample set of files is installed. For my family I provide a link to the data in a .zip file. Email me for this file if you would like it. Download the file to a clean directory on your computer. Then extract the files there.
 
-Now run shoebox and direct it to the directory where you extracted the files. To do this press <ALT>F for Windows/Linux or <CMD>F for Mac to access the menu. Then select "Choose Accessions.json file" from the menu. Use the dialog to find and double click on the accessions.xml file on your computer or on the DVD as needed. Now the full set of media can be viewed. The last selection is retained for future use by shoebox.
-
-Run the shoebox Application and hold down the ALT key and press F and choose the Accessions file from the clean directory where you installed the .zip files and press enter. That should set you up.
+Now run shoebox and direct it to the directory where you extracted the files. To do this hold down the ALT key and press F for Windows/Linux or CMD-F for Mac to access the menu. Then select "Choose Accessions.json file" from the File menu. Use the dialog to find and double click on the accessions.json file on your computer or on the DVD as needed. Now the full set of media can be viewed. The last selection is retained for future use by shoebox.
 
 As you run shoebox you will have a separate window for photos, and another for audio/video. Resize and move these so you can see them at the same time on your system. Multiple monitors are useful, but one screen can be used too.
 
