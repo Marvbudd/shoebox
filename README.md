@@ -33,6 +33,8 @@ Collections allow you to create arbitrary subsets of the media. To create a Coll
   "title": "A New Collection - appears in the title bar of the collection page"<br>
 }<br>
 
+I have uploaded some very basic videos on installing and using shoebox. See this link to the playlist: https://www.youtube.com/playlist?list=PL8z7p1h74xBqbjDLCWjncm9EF5RL7oTDP
+
 As I release version 2.0.0, which abandons xml in favor of json, I have a small node.js app that converts accessions.xml to accessions.json.
 
 Some improvements I'm hoping for:
