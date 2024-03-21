@@ -9,7 +9,8 @@ To install, go to https://github.com/Marvbudd/shoebox and look on the right side
   Windows 10 - shoebox-Setup-x.x.x.exe<br>
   Linux      - shoebox-x.x.x.AppImage<br>
 
-For Windows or Linux just double click on the downloaded file to install shoebox. For Apple Mac, you need to run the .dmg file, then drag it to the Applications folder and then run it. Here is a YouTube video showing the process with a different app. Do that same thing with the shoebox-x.x.x.dmg file.
+For Windows or Linux just double click on the downloaded file to install shoebox. For Apple Mac, you need to run the .dmg file, then drag it to the Applications folder and then run it. Here is a YouTube video showing the process with a different app. Do that same thing with the shoebox-x.x.x.dmg file. https://www.youtube.com/watch?v=8Kw6qH8OCns and here is another:
+https://www.youtube.com/watch?v=Zd6xMErakXw
 
 After the install completes only a sample set of files is installed. For my family I provide a link to the data in a .zip file. Email me for this file if you would like it. Download the file to a clean directory on your computer. Then extract the files there.
 
