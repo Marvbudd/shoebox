@@ -58,7 +58,7 @@ Some improvements I'm hoping for:
         // The default settings are not an accident. They were chosen for several reasons, one of which is <br>
         // to produce static URLs.<br>
         // John Cardinal<br>
-  2. Improve the metadata editing to encompass all possibilities. Current version if crude and error-prone.
+  2. Improve the metadata editing to encompass all possibilities. Current version is crude and error-prone.
   3. Each person's face in a picture should be identified like social media tags. Maybe we can process the photo and store a list of rectangles to identify. See https://www.sitepoint.com/face-detection-nodejs-opencv/ and others.
 
 Marvin E Budd
