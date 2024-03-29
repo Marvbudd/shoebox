@@ -1,85 +1,115 @@
 A:link {
   color: Navy;
 }
+
 A:visited {
   color: Navy;
 }
+
 #detailDiv {
   font-size: smaller;
   font-family: Arial, helvetica, sans-serif;
 }
+
 /* https://www.w3docs.com/snippets/css/how-to-auto-resize-an-image-to-fit-an-html-container.html */
 #previewDiv {
   position: sticky;
   height: 70%;
   width: 100%;
 }
+
 #previewImg {
   height: 100%;
   width: 100%;
   object-fit: contain;
 }
+
 #previewVideo {
   height: 100%;
   width: 100%;
 }
+
 #prevDataDiv {
   overflow-y: auto;
   height: 30%;
 }
-#prevData {
+
+#prevData,
+#prevData tbody {
   width: 100%;
   vertical-align: bottom;
+  border-spacing: 0;
 }
 #prevData .detailCol2 {
   column-width: 1000px;
 }
-#prevData caption {
-  font-weight: bold;
-}
+
 /* #prevData .detail { display: none; } */
 #prevData .copyright {
   color: Red;
   font-weight: normal;
   font-size: x-small;
 }
+
+.prevDataCaption {
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+  padding: 0 20px;
+}
+
 .date {
-  text-align: left; }
+  text-align: left;
+}
+
 .dateRight {
-    width: 8%;
-    float: right; }
+  width: 8%;
+  float: right;
+}
+
 .dateData {
-  text-align:right; }
+  text-align: right;
+}
+
 .descData {
-  word-wrap:normal; }
+  word-wrap: normal;
+}
+
 .photo {
   background: #eeeeff;
 }
+
 .bottomLeft .photoInput {
   background: #eeeeff;
   accent-color: #eeeeff;
 }
+
 .tape {
   background: #f1e6c2;
 }
+
 .bottomLeft .tapeInput {
   background: #f1e6c2;
   accent-color: #f1e6c2;
 }
+
 .video {
   background: #fab2b8;
 }
+
 .bottomLeft .videoInput {
   background: #fab2b8;
   accent-color: #fab2b8;
 }
+
 .emphasize {
   font-weight: bold;
 }
-.firstRow { 
+
+.firstRow {
   height: 20px;
   font-weight: bolder;
- }
+}
 
 .container {
   position: absolute;
@@ -88,6 +118,7 @@ A:visited {
   left: 0;
   right: 0;
 }
+
 .header {
   position: absolute;
   height: 20px;
@@ -96,39 +127,50 @@ A:visited {
   font-weight: bold;
   background: #aabbff;
 }
-.hidden { display: none; }
+
+.hidden {
+  display: none;
+}
+
 #tableDiv table {
   color: Black;
   font-size: smaller;
   font-family: Arial, helvetica, sans-serif;
   border-spacing: 0;
 }
+
 .maintable {
   width: 100%;
 }
+
 #navHeader {
   float: left;
   width: 30%;
 }
+
 #column1 {
   float: left;
 }
+
 #column2 {
   margin-right: 20px;
 }
+
 #previewHeader {
   float: right;
   width: 70%;
 }
+
 .contentLeft {
   position: absolute;
   top: 20px;
   bottom: 20px;
   left: 0;
   width: 30%;
-  overflow: auto;   
+  overflow: auto;
   background: #CCCCFF;
 }
+
 .contentRight {
   position: absolute;
   top: 20px;
@@ -138,6 +180,7 @@ A:visited {
   overflow: auto;
   background: #eeeeff;
 }
+
 .mediaContentRight {
   position: absolute;
   top: 0px;
@@ -147,6 +190,7 @@ A:visited {
   overflow: auto;
   background: #eeeeff;
 }
+
 .bottomLeft {
   position: fixed;
   bottom: 0;

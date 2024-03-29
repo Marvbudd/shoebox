@@ -30,7 +30,7 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
 '{{/reflist}}' +
 '<tr class="detail"><td>Source:</td><td id="itemSource">{{sourceDisplay}}</td></tr>' +
 '<tr class="detail"><td>Received:</td><td id="received">{{receivedDisplay}}</td></tr>' +
-'<caption><a href="{{ssURL}}" target="_blank">Second Site</a>  Media Description.</caption>' +
+'<div class="prevDataCaption"><span>Media Details</span> <span><a href="{{ssURL}}" target="_blank">Pedigree Website</a></span></div>' +
 '</table>' +
 '<p class="copyright">{{copyright}} ' +
 '<a href="mailto:marvbudd@gmail.com">Marvin E Budd.</a> ' +

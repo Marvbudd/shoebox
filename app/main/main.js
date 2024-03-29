@@ -1,11 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu } from 'electron';
 import fs from 'fs';
+import electron from 'electron';
 import path from 'path';
 import nconf from 'nconf';
 import { AccessionClass } from '../main/utils/AccessionClass.js';
-// const { autoUpdater } = 'electron-updater';
-
-// autoUpdater.checkForUpdatesAndNotify();
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
+autoUpdater.checkForUpdatesAndNotify();
 
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
@@ -76,36 +77,18 @@ let mainWindow = null;
 let helpWindow = null;
 let mediaWindow = null;
 let addMediaWindow = null;
+
 // tracks the renderer drop-down selection via 'items:collection' message
 let showCollection = false
 
 const createWindow = () => {
   // Create the browser window.
-  mainWindow = new BrowserWindow({
-    width: nconf.get('ui:main:width'),
-    height: nconf.get('ui:main:height'),
-    autoHideMenuBar: true,
-    preloadWindow: true,
-    webPreferences: {
-      webtools: true,
-      preload: path.resolve(__dirname, '../render/js/preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true
-    }
-  }) // BrowserWindow
-  // and load the index.html of the app.
+  mainWindow = new BrowserWindow( newWindowParameters('main', '../render/js/preload.js', false, true) );
   mainWindow.loadFile(path.resolve(__dirname + '/../render/html/index.html'));
 
   mainWindow.on('close', (e) => {
     if (mainWindow) {
-      const mainWindowSize = mainWindow.getSize()
-      nconf.set('ui:main:width', mainWindowSize[0])
-      nconf.set('ui:main:height', mainWindowSize[1])
-      nconf.save('user')
-      if (accessionClass) {
-        accessionClass.saveAccessions();
-        accessionClass = undefined
-      }
+      saveWindowState(mainWindow, 'main');
     }
   }) //
 
@@ -383,18 +366,7 @@ function chooseAccessionsPath() {
 
 function createMediaWindow(mediaInfo) {
   if (!mediaWindow) {
-    mediaWindow = new BrowserWindow({
-      width: nconf.get('ui:mediaPlayer:width'),
-      height: nconf.get('ui:mediaPlayer:height'),
-      autoHideMenuBar: true,
-      show: false,
-      webPreferences: {
-        webtools: true,
-        preload: path.resolve(__dirname, '../render/js/mediaPreload.js'),
-        nodeIntegration: false,
-        contextIsolation: true
-      }
-    });
+    mediaWindow = new BrowserWindow(newWindowParameters('mediaPlayer', '../render/js/mediaPreload.js', false, false));
     mediaWindow.loadFile(path.resolve(__dirname + '/../render/html/media.html'));
     // Open the DevTools.
     // mediaWindow.webContents.openDevTools();
@@ -407,9 +379,7 @@ function createMediaWindow(mediaInfo) {
     })
     mediaWindow.on('close', (e) => {
       if (mediaWindow) {
-        const mediaWindowSize = mediaWindow.getSize()
-        nconf.set('ui:mediaPlayer:width', mediaWindowSize[0])
-        nconf.set('ui:mediaPlayer:height', mediaWindowSize[1])
+        saveWindowState(mediaWindow, 'mediaPlayer');
       }
     })
   } else {
@@ -426,19 +396,7 @@ function createAddMediaWindowShim(/* menu */) {
 } // createAddMediaWindowShim
 function createAddMediaWindow(mediaInfo) {
   if (!addMediaWindow) {
-    addMediaWindow = new BrowserWindow({
-      width: nconf.get('ui:addMedia:width'),
-      height: nconf.get('ui:addMedia:height'),
-      autoHideMenuBar: true,
-      parent: mainWindow, modal: true,
-      show: false,
-      webPreferences: {
-        webtools: true,
-        preload: path.resolve(__dirname, '../render/js/addmediaPreload.js'),
-        nodeIntegration: false,
-        contextIsolation: true
-      }
-    });
+    addMediaWindow = new BrowserWindow(newWindowParameters('addMedia', '../render/js/addmediaPreload.js', mainWindow, false));
     addMediaWindow.loadFile(path.resolve(__dirname + '/../render/html/addmedia.html'));
     addMediaWindow.once('ready-to-show', () => {
       // mediaInfo is a stringified JSON object simulating a request to edit an accession
@@ -458,15 +416,55 @@ function createAddMediaWindow(mediaInfo) {
     });
     addMediaWindow.on('close', (e) => {
       if (addMediaWindow) {
-        const mediaWindowSize = addMediaWindow.getSize();
-        nconf.set('ui:addMedia:width', mediaWindowSize[0]);
-        nconf.set('ui:addMedia:height', mediaWindowSize[1]);
+        saveWindowState(addMediaWindow, 'addMedia');
       }
     });
   } else {
     console.log('AddMediaWindow is already open!!');
   }
 } // createAddMediaWindow
+
+function saveWindowState(window, confname) {
+  const windowSize = window.getSize();
+  const windowBounds = window.getBounds();
+
+  nconf.set(`ui:${confname}:width`, windowSize[0]);
+  nconf.set(`ui:${confname}:height`, windowSize[1]);
+  nconf.set(`ui:${confname}:x`, windowBounds.x);
+  nconf.set(`ui:${confname}:y`, windowBounds.y);
+
+  let allDisplays = electron.screen.getAllDisplays();
+  const currentDisplay = allDisplays.findIndex(display => {
+    return windowBounds.x >= display.bounds.x &&
+      windowBounds.x < display.bounds.x + display.bounds.width &&
+      windowBounds.y >= display.bounds.y &&
+      windowBounds.y < display.bounds.y + display.bounds.height;
+  });
+
+  nconf.set(`ui:${confname}:display`, currentDisplay);
+  nconf.save('user');
+}
+
+function newWindowParameters(confname, preload, parentWindow, show) {
+  let displayIndex = nconf.get('ui:addMedia:display');
+  let allDisplays = electron.screen.getAllDisplays();
+  let targetDisplay = allDisplays[displayIndex] || electron.screen.getPrimaryDisplay();
+  return {
+    x: nconf.get(`ui:${confname}:x`) || targetDisplay.bounds.x,
+    y: nconf.get(`ui:${confname}:y`) || targetDisplay.bounds.y,
+    width: nconf.get(`ui:${confname}:width`),
+    height: nconf.get(`ui:${confname}:height`),
+    autoHideMenuBar: true,
+    show: show,
+    parent: parentWindow ? mainWindow : null,
+    webPreferences: {
+      webtools: true,
+      preload: path.resolve(__dirname, preload),
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  };
+}
 
 // After changing the accessions file, the main window and views need to be reloaded
 function resetAccessions(baseDirectory) {
