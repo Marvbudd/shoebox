@@ -14,9 +14,9 @@ https://www.youtube.com/watch?v=Zd6xMErakXw
 
 After the install completes only a sample set of files is installed. For my family I provide a link to the data in a .zip file. Email me for this file if you would like it. Download the file to a clean directory on your computer. Then extract the files there.
 
-Now run shoebox and direct it to the directory where you extracted the files. To do this hold down the ALT key and press F for Windows/Linux or CMD-F for Mac to access the menu. Then select "Choose Accessions.json file" from the File menu. Use the dialog to find and double click on the accessions.json file on your computer or on the DVD as needed. Now the full set of media can be viewed. The last selection is retained for future use by shoebox.
+Now run shoebox and direct it to the directory where you extracted the files. To do this hold down the ALT key and press F for Windows/Linux or CMD-F for Mac to access the menu. Then select "Choose Accessions.json file" from the File menu. Use the dialog to find and double click on the accessions.json file on your computer or on the DVD as needed. Now the full set of media can be viewed.
 
-As you run shoebox you will have a separate window for photos, and another for audio/video. Resize and move these so you can see them at the same time on your system. Multiple monitors are useful, but one screen can be used too.
+As you run shoebox you will have a window for photos, and another window for audio/video. Resize and move these so you can see them at the same time on your system. Multiple monitors are useful, but one screen can be used too.
 
 Here is the directory structure for the accessions.json file and the media that I provide in the .zip file.
 
@@ -27,12 +27,7 @@ accessions.json<br>
 ./collections <-- optional - key.json files for lists<br>
 ./website/index.htm <-- Second Site<br>
 
-Collections allow you to create arbitrary subsets of the media. To create a Collection, use any editor to save the following in the ./collections subdirectory. Name it something like mycoll.json (keep it short with no spaces) and edit the text and title as desired to identify your collection. After this, open shoebox and use the dropdown and Filter controls. Toggle whether an item is in the collection by double clicking on the left hand column. Green text means it is in the selected collection. ALT-F opens a menu to write the collection to a subdirectory.<br>
-{<br>
-  "itemKeys": [ ],<br>
-  "text": "Short description",<br>
-  "title": "A New Collection - appears in the title bar of the collection page"<br>
-}<br>
+Collections allow you to create arbitrary subsets of the media. To create a Collection, use the Edit menu. After this, on the bottom of the window there will be a dropdown to select the collection and a filter checkbox. Toggle whether an item is in the collection by double clicking on the left hand column. Green text means it is in the selected collection. ALT-F opens a menu to write the collection to a subdirectory. The Edit menu allows deleting a collection, which really just archives it.<br>
 
 I have uploaded some very basic videos on installing and using shoebox. See this link to the playlist: https://www.youtube.com/playlist?list=PL8z7p1h74xBqbjDLCWjncm9EF5RL7oTDP
 

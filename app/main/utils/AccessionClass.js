@@ -19,7 +19,7 @@ export class AccessionClass {
       title = 'Accessions ' + tempDate.getFullYear() + tempDate.toLocaleString('default', { month: 'short' }) + tempDate.getDate();
     }
     if (!fs.existsSync(accessionFilename)) {
-      console.log(`AccessionClass: Accessions don't exist in ${accessionFilename}`)
+      console.error(`AccessionClass: Accessions don't exist in ${accessionFilename}`)
       this.accessionJSON = {
         accessions: {
           title, 
@@ -51,12 +51,12 @@ export class AccessionClass {
     if (collection) {
       let itemView = this.getItemView(accession)
       if (!itemView) {
-        console.log('AccessionClass:toggleItemIncollection - Item not found: ' + accession)
+        console.error('AccessionClass:toggleItemIncollection - Item not found: ' + accession)
         return
       }
       collection.getItem(accession) ? collection.removeAccession(accession) : collection.addItem(accession, itemView.getLink())
     } else {
-      console.log('AccessionClass:toggleItemIncollection - Collection not found: ' + collectionKey)
+      console.error('AccessionClass:toggleItemIncollection - Collection not found: ' + collectionKey)
     }
   } // toggleItemInCollection
   
@@ -95,12 +95,12 @@ export class AccessionClass {
             await this.createItem(file, directoryPath, type, formJSON);
           }
           catch (error) {
-            console.log('Error in addMediaFiles: ', error);
+            console.error('Error in addMediaFiles: ', error);
           }
         }
       }));
     } catch (error) {
-      console.log('Error in addMediaFiles: ', error);
+      console.error('Error in addMediaFiles: ', error);
     }
   } // End of addMediaFiles function
 
@@ -148,7 +148,7 @@ export class AccessionClass {
         this.accessionsChanged = true
       }
       catch (error) {
-        console.log('Error in createItem: ', error);
+        console.error('Error in createItem: ', error);
       }
     }
   } // End of createItem function
@@ -426,14 +426,14 @@ export class AccessionClass {
           });
           break;
         default:
-          console.log('Invalid sortBy option');
+          console.error('Invalid sortBy option');
           break;
       }
 
       htmlOutput += '</tbody></table>';
       return {tableBody: htmlOutput, navHeader: navHeader};
     } catch (error) {
-      console.log('Error in AccessionClass.transformToHtml. ', error);
+      console.error('Error in AccessionClass.transformToHtml. ', error);
     }
   } // transformToHtml
 
@@ -515,13 +515,13 @@ export class AccessionClass {
     if (accession) {
       item = this.accessionJSON.accessions.item.find(item => item.accession === accession);
       if (link && item.link !== link) {
-        console.log(`AccessionClass getItemView: item.link mismatch with collection. accession: ${accession}, collection link: ${link}, item: ${item.link}`);
+        console.error(`AccessionClass getItemView: item.link mismatch with collection. accession: ${accession}, collection link: ${link}, item: ${item.link}`);
       }
     } else if (link) {
       item = this.accessionJSON.accessions.item.find(item => item.link === link);
     }
     if (!item) {
-      console.log(`AccessionClass.getItemView: item not found: ${accession}, ${link}`);
+      console.error(`AccessionClass.getItemView: item not found: ${accession}, ${link}`);
       return null;
     }
     item.collections = this.collections.getCollectionKeys(item.accession);
@@ -559,7 +559,7 @@ export class AccessionClass {
     return refs
   } // getReferencesForLink
 
-  // updateCategory updates all items in a category from a formJSON
+  // updateCollection updates all items in a collection from a formJSON
   updateCollection(formJSON) {
     let collection = this.collections.getCollection(formJSON.updateFocus)
     if (collection) {
@@ -569,7 +569,7 @@ export class AccessionClass {
         this.updateAccession(formJSON)
       });
     }
-  } // updateCategory
+  } // updateCollection
 
   // updateItem updates an item from a formJSON
   updateAccession(formJSON) {
@@ -582,8 +582,18 @@ export class AccessionClass {
         this.accessionJSON.accessions.item[index] = itemView.itemJSON
         this.accessionsChanged = true
       } else {
-        console.log('AccessionClass:updateItem - item not found: ' + formJSON.accession)
+        console.error('AccessionClass:updateItem - item not found: ' + formJSON.accession)
       }
     }
   } // updateItem  
+
+  // Create a new collection
+  createCollection(collectionKey, title, text) {
+    this.collections.createCollection(collectionKey, title, text)
+  }
+
+  // Delete existing collection
+  deleteCollection(collectionKey, title, text) {
+    this.collections.deleteCollection(collectionKey, title, text)
+  } //
 } // AccessionClass

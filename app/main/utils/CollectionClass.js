@@ -71,4 +71,10 @@ export class CollectionClass {
   getItem(accession) {
     return this.itemKeys.find(item => item.accession === accession);
   } // end of getItem
+
+  // delete the collection (really archive it)
+  deleteCollection() {
+    // set the collectionChanged flag to true
+    this.collectionChanged = true;
+  } // end of deleteCollection
 } // end of CollectionClass

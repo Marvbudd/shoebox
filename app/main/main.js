@@ -10,6 +10,7 @@ autoUpdater.checkForUpdatesAndNotify();
 
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
+import { title } from 'process';
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
@@ -30,12 +31,12 @@ fs.stat(configDir, (error, stats) => {
       console.log(`Creating config directory. ${configDir}`)
       fs.mkdirSync(configDir)
     } else {
-      console.log('Config directory error ' + error);
+      console.error('Config directory error ' + error);
       return
     }
   } else {
     if (!stats.isDirectory()) {
-      console.log(`${configDir} is not a directory!!!`)
+      console.error(`${configDir} is not a directory!!!`)
       return
     }
   }
@@ -77,20 +78,26 @@ let mainWindow = null;
 let helpWindow = null;
 let mediaWindow = null;
 let addMediaWindow = null;
+let editCollectionWindow = null;
+let editCollectionWindowType = 'create'; // create or delete selected in Edit menu
 
 // tracks the renderer drop-down selection via 'items:collection' message
 let showCollection = false
 
 const createWindow = () => {
   // Create the browser window.
-  mainWindow = new BrowserWindow( newWindowParameters('main', '../render/js/preload.js', false, true) );
+  mainWindow = newWindow('main', '../render/js/preload.js', false, true);
   mainWindow.loadFile(path.resolve(__dirname + '/../render/html/index.html'));
 
   mainWindow.on('close', (e) => {
     if (mainWindow) {
       saveWindowState(mainWindow, 'main');
     }
-  }) //
+    if (accessionClass) {
+      accessionClass.saveAccessions(); // persist the current accessions
+      accessionClass = undefined;
+    }
+  }) // close
 
   // when the main window is destroyed, close the other windows too
   mainWindow.webContents.on('destroyed', () => {
@@ -104,7 +111,7 @@ const createWindow = () => {
       addMediaWindow.close()
     }
     mainWindow = null
-  }) // mainWindow.webContents.on('destroyed')
+  }) // destroyed
 
   ipcMain.on('items:getList', (event, requestParams) => {
     let transformedObject = []
@@ -116,7 +123,7 @@ const createWindow = () => {
       listObject.tableBody = transformedObject.tableBody
       listObject.navHeader = transformedObject.navHeader
     } else {
-      console.log('Error: transformedObject is undefined')
+      console.error('Error: transformedObject is undefined')
     }
     listObject.collections = accessionClass.getCollections()
     showCollection = listObject.collections.length > 0
@@ -133,7 +140,7 @@ const createWindow = () => {
     listObject.videoChecked = nconf.get('controls:videoChecked')
     listObject.restrictChecked = nconf.get('controls:restrictChecked')
     event.sender.send('items:render', JSON.stringify(listObject))
-    createMenu() // update the menu to show/hide the collection build option
+    Menu.setApplicationMenu( createMenu() ) // update the menu to show/hide the collection build option
   }) // items:getList
 
   ipcMain.on('item:getDetail', async (_, accession) => {
@@ -248,12 +255,37 @@ const createWindow = () => {
         accessionClass.updateAccession(formJSON);
         addMediaWindow.close();
         resetAccessions();
-        console.log('add:Media break- ');
         break;
       default:
-        console.log('AddMedia.addMedia Unknown selectQuery: ' + formJSON.selectQuery);
+        console.error('AddMedia.addMedia Unknown selectQuery: ' + formJSON.selectQuery);
     }
   }) // add:media
+
+  ipcMain.on('get:Collection', (_, collectionForm) => {
+    let response = {}
+    if (editCollectionWindowType === 'delete') {
+      response.collectionlist = accessionClass.getCollections()
+    } // else create and no content needed
+    editCollectionWindow.send('show:collections', JSON.stringify(response));
+  }) // get:Collection
+
+  ipcMain.on('add:Collection', (_, formData) => {
+    let formJSON = JSON.parse(formData)
+    verifyAccessions();
+    accessionClass.createCollection(formJSON.key, formJSON.title, formJSON.text)
+    nconf.set('controls:selectedCollection', formJSON.key)
+    nconf.save('user')
+    editCollectionWindow.close()
+    resetAccessions()
+  }) // add:Collection
+
+  ipcMain.on('delete:Collection', (_, formData) => {
+    let formJSON = JSON.parse(formData)
+    verifyAccessions();
+    accessionClass.deleteCollection(formJSON.collection)
+    editCollectionWindow.close()
+    resetAccessions()
+  }) // delete:Collection
 }; // createWindow
 
 // This method will be called when Electron has finished
@@ -261,7 +293,6 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
   createWindow()
-  createMenu();
 }); // app.on('ready')
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -291,7 +322,7 @@ function createMenu() {
           click: chooseAccessionsPath
         },
         (showCollection ? {
-          label: '&Build Collection',
+          label: 'E&xport Collection',
           click: buildCollection
         }
           : { type: 'separator' }),
@@ -305,6 +336,14 @@ function createMenu() {
         {
           label: 'Edit &Media',
           click: createAddMediaWindowShim
+        },
+        {
+          label: 'C&reate Collection',
+          click: createCollectionWindow
+        },
+        {
+          label: 'De&lete Collection',
+          click: deleteCollectionWindow
         }
       ]
     },
@@ -341,8 +380,28 @@ function createMenu() {
       ]
     }
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  return Menu.buildFromTemplate(template);
 } // createMenu
+
+function createMinMenu(window) {
+  const template = [
+    {
+    label: '&File',
+    submenu: [
+      { role: 'close' }
+    ]},
+    {
+      label: '&Window',
+      submenu: [
+        {
+          label: 'Family &Tree',
+          click: createTreeWindow
+        }
+      ]
+    }
+  ];
+  return Menu.buildFromTemplate(template);
+} // createMiniMenu
 
 function hmsToSeconds(hms) {
   let a = hms.split(':')
@@ -360,13 +419,13 @@ function chooseAccessionsPath() {
       resetAccessions(mediaDirectory.filePaths[0]);
     }
   }).catch((e) => {
-    console.log('error in showOpenDialog: ', e);
+    console.error('error in showOpenDialog: ', e);
   });
 } // chooseAccessionsPath
 
 function createMediaWindow(mediaInfo) {
   if (!mediaWindow) {
-    mediaWindow = new BrowserWindow(newWindowParameters('mediaPlayer', '../render/js/mediaPreload.js', false, false));
+    mediaWindow = newWindow('mediaPlayer', '../render/js/mediaPreload.js', false, false);
     mediaWindow.loadFile(path.resolve(__dirname + '/../render/html/media.html'));
     // Open the DevTools.
     // mediaWindow.webContents.openDevTools();
@@ -396,7 +455,8 @@ function createAddMediaWindowShim(/* menu */) {
 } // createAddMediaWindowShim
 function createAddMediaWindow(mediaInfo) {
   if (!addMediaWindow) {
-    addMediaWindow = new BrowserWindow(newWindowParameters('addMedia', '../render/js/addmediaPreload.js', mainWindow, false));
+    addMediaWindow = newWindow('addMedia', '../render/js/addmediaPreload.js', mainWindow, false);
+    addMediaWindow.setMenu(createMinMenu(addMediaWindow));
     addMediaWindow.loadFile(path.resolve(__dirname + '/../render/html/addmedia.html'));
     addMediaWindow.once('ready-to-show', () => {
       // mediaInfo is a stringified JSON object simulating a request to edit an accession
@@ -420,18 +480,51 @@ function createAddMediaWindow(mediaInfo) {
       }
     });
   } else {
-    console.log('AddMediaWindow is already open!!');
+    console.error('AddMediaWindow is already open!!');
   }
 } // createAddMediaWindow
 
+function createCollectionWindow() {
+  editCollectionWindowType = 'create';
+  createEditCollectionWindow();
+} // createCollectionWindow
+function deleteCollectionWindow() {
+  editCollectionWindowType = 'delete';
+  createEditCollectionWindow();
+} // deleteCollectionWindow
+function createEditCollectionWindow() {
+  if (!editCollectionWindow) {
+    editCollectionWindow = newWindow('editCollection', '../render/js/editCollectionPreload.js', mainWindow, false)
+    editCollectionWindow.setMenu(createMinMenu(editCollectionWindow));
+    editCollectionWindow.loadFile(path.resolve(__dirname + '/../render/html/editCollection.html'));
+    editCollectionWindow.once('ready-to-show', () => {
+      editCollectionWindow.show();
+    });
+
+    editCollectionWindow.on('closed', () => {
+      editCollectionWindow = null;
+    });
+
+    editCollectionWindow.webContents.on('destroyed', () => {
+      editCollectionWindow = null;
+    });
+    editCollectionWindow.on('close', (e) => {
+      if (editCollectionWindow) {
+        saveWindowState(editCollectionWindow, 'editCollection');
+      }
+    });
+  } else {
+    console.error('editCollectionWindow is already open!!');
+  }
+} // createEditCollectionWindow
+
 function saveWindowState(window, confname) {
-  const windowSize = window.getSize();
   const windowBounds = window.getBounds();
 
-  nconf.set(`ui:${confname}:width`, windowSize[0]);
-  nconf.set(`ui:${confname}:height`, windowSize[1]);
-  nconf.set(`ui:${confname}:x`, windowBounds.x);
-  nconf.set(`ui:${confname}:y`, windowBounds.y);
+  nconf.set(`ui:${confname}:width`,  windowBounds.width);
+  nconf.set(`ui:${confname}:height`, windowBounds.height);
+  nconf.set(`ui:${confname}:x`,      windowBounds.x);
+  nconf.set(`ui:${confname}:y`,      windowBounds.y);
 
   let allDisplays = electron.screen.getAllDisplays();
   const currentDisplay = allDisplays.findIndex(display => {
@@ -443,28 +536,47 @@ function saveWindowState(window, confname) {
 
   nconf.set(`ui:${confname}:display`, currentDisplay);
   nconf.save('user');
-}
+} // saveWindowState
 
-function newWindowParameters(confname, preload, parentWindow, show) {
+function newWindow(confname, preload, parentWindow, show) {
   let displayIndex = nconf.get('ui:addMedia:display');
   let allDisplays = electron.screen.getAllDisplays();
   let targetDisplay = allDisplays[displayIndex] || electron.screen.getPrimaryDisplay();
-  return {
+  let modalValue = parentWindow ? true : false;
+
+  let windowBounds = {
     x: nconf.get(`ui:${confname}:x`) || targetDisplay.bounds.x,
     y: nconf.get(`ui:${confname}:y`) || targetDisplay.bounds.y,
-    width: nconf.get(`ui:${confname}:width`),
-    height: nconf.get(`ui:${confname}:height`),
-    autoHideMenuBar: true,
-    show: show,
-    parent: parentWindow ? mainWindow : null,
-    webPreferences: {
-      webtools: true,
-      preload: path.resolve(__dirname, preload),
-      nodeIntegration: false,
-      contextIsolation: true
-    }
+    width: nconf.get(`ui:${confname}:width` || 400),
+    height: nconf.get(`ui:${confname}:height` || 300)
   };
-}
+
+  const win = new BrowserWindow(
+    {
+      ...windowBounds,
+      autoHideMenuBar: true,
+      show: show,
+      parent: parentWindow ? mainWindow : null,
+      modal: modalValue,
+      webPreferences: {
+        webtools: true,
+        preload: path.resolve(__dirname, preload),
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    }
+  );
+  // See https://github.com/electron/electron/issues/10388 for why this adjustment is needed.
+  // If that bug is ever fixed, this code can be removed.
+  win.once('move', () => {
+    const windowBoundsShow = win.getBounds();
+    const titleBarHeight = windowBoundsShow.y - windowBounds.y;
+    const newY = windowBoundsShow.y - titleBarHeight - titleBarHeight;
+    win.setPosition(windowBoundsShow.x, newY);
+    // console.log('newWindow move ' + confname + ' newY=' + newY + ' winBy=' + windowBounds.y + ' y=' + windowBoundsShow.y + ' tbh=' + titleBarHeight);
+  });
+  return win;
+} // newWindowParameters
 
 // After changing the accessions file, the main window and views need to be reloaded
 function resetAccessions(baseDirectory) {
@@ -479,7 +591,6 @@ function resetAccessions(baseDirectory) {
   } // else we just reload all views
   mediaWindow?.close();
   mainWindow.reload();
-  // mainWindow.loadFile(path.resolve(__dirname + '/../render/html/index.html'));
 } // resetAccessions
 
 // When accessionClass is not defined, create a new instance
@@ -532,7 +643,7 @@ function showAddMediaDialog(queryType) {
       };
       break;
     default:
-      console.log('AddMedia.showDialog Unknown queryType: ' + queryObject.type);
+      console.error('AddMedia.showDialog Unknown queryType: ' + queryObject.type);
   }
 } // showAddMediaDialog
 
@@ -547,12 +658,12 @@ async function buildCollection() {
         console.log(`Creating Directory ${collectionDir} for collection ${selectedCollection}.`)
         fs.mkdirSync(collectionDir)
       } else {
-        console.log('buildCollection Directory error ' + error);
+        console.error('buildCollection Directory error ' + error);
         return
       }
     } else {
       if (!stats.isDirectory()) {
-        console.log(`${collectionDir} is not a directory!!!`)
+        console.error(`${collectionDir} is not a directory!!!`)
         return
       }
     }
@@ -564,7 +675,7 @@ async function buildCollection() {
       console.log(`Created ${commandsPath}`)
     }
     catch (error) {
-      console.log('error creating commands - error - ' + error)
+      console.error('error creating commands - error - ' + error)
     }
     let accessionsPath = path.resolve(collectionDir, 'accessions.json')
     try {
@@ -573,7 +684,7 @@ async function buildCollection() {
       console.log(`Created ${accessionsPath}`)
     }
     catch (error) {
-      console.log('error creating accessions.json - error - ' + error)
+      console.error('error creating accessions.json - error - ' + error)
     }
   });
 } // buildCollection
@@ -585,6 +696,7 @@ function createHelpWindow() {
       height: 600,
       autoHideMenuBar: true,
     });
+    helpWindow.setMenu(createMinMenu(helpWindow));
     helpWindow.loadFile(path.resolve(__dirname + '/../render/html/help.html'));
     helpWindow.webContents.on('destroyed', () => {
       helpWindow = null;
