@@ -281,19 +281,19 @@ export class ItemViewClass {
       accession:   itemJSON.accession,
       link:        itemJSON.link,
       description: itemJSON.description,
-      personFirst: itemJSON.person[0].first,
-      personLast:  itemJSON.person[0].last[0].last,
+      personFirst: itemJSON.person[0]?.first,
+      personLast:  itemJSON.person[0]?.last[0]?.last,
       dateYear:    itemJSON.date.year,
       dateMonth:   itemJSON.date.month,
       dateDay:     itemJSON.date.day,
-      locationDetail: itemJSON.location[0].detail,
-      locationCity: itemJSON.location[0].city,
-      locationState: itemJSON.location[0].state,
-      sourPersonFirst: itemJSON.source[0].person.first,
-      sourPersonLast: itemJSON.source[0].person.last[0].last,
-      sourYear:    itemJSON.source[0].received.year,
-      sourMonth:   itemJSON.source[0].received.month,
-      sourDay:     itemJSON.source[0].received.day
+      locationDetail: itemJSON.location[0]?.detail,
+      locationCity: itemJSON.location[0]?.city,
+      locationState: itemJSON.location[0]?.state,
+      sourPersonFirst: itemJSON.source[0]?.person?.first,
+      sourPersonLast: itemJSON.source[0]?.person?.last[0]?.last,
+      sourYear:    itemJSON.source[0]?.received?.year,
+      sourMonth:   itemJSON.source[0]?.received?.month,
+      sourDay:     itemJSON.source[0]?.received?.day
     };
     return formJSON;
   } // getformJSON
