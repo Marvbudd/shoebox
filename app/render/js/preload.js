@@ -8,8 +8,9 @@ contextBridge.exposeInMainWorld('BURRITO', {
         ITEMSRELOAD: 'items:reload',
         ITEMSCOLLECTION: 'items:collection',
         ITEMSETCOLLECTION: 'item:setCollection',
-        ITEMEDIT: 'item:edit'
-    },
+        ITEMEDIT: 'item:edit',
+        OPENWEBSITE: 'open:Website'
+      },
     rsp: {
         ITEMDETAIL: 'item:detail',
         ITEMSRENDER: 'items:render'

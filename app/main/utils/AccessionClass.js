@@ -104,6 +104,8 @@ export class AccessionClass {
     }
   } // End of addMediaFiles function
 
+  // createItem creates an item in the accessionJSON
+  //  NOTE: formJSON must never be changed by this function!!! Results will be unexpected
   async createItem(file, directoryPath, type, formJSON) {
     const filePath = path.join(directoryPath, file);
     const stats = fs.statSync(filePath);
@@ -111,35 +113,39 @@ export class AccessionClass {
     // Use the exifr library to extract metadata
     let linkExists = this.accessionJSON.accessions.item.some(item => item.link === link);
     if (!linkExists) {
-      // if the date isn't provided, use the file date
-      if (!formJSON.dateYear && !formJSON.dateMonth && !formJSON.dateDay) {
-        const date = stats.birthtime;
-        formJSON.dateYear = date.getFullYear();
-        formJSON.dateMonth = date.toLocaleString('default', { month: 'short' });
-        formJSON.dateDay = date.getDate();
-      }
       try {
+        let date;
         let metadata;
         if (type === 'photo') {
           metadata = await exifr.parse(filePath, { gps: true, exif: true });
-          // metadata = await exifr.parse(filePath, { pick: ['latitude','GPSLatitudeRef','longitude','GPSLongitudeRef','ImageDescription']} );
         }
-        const location = (metadata?.latitude && metadata?.longitude) ? `GPS: ${metadata.latitude.toFixed(6)} ${metadata.GPSLatitudeRef} ${metadata.longitude.toFixed(6)} ${metadata.GPSLongitudeRef}` : '';
+        const latlon = (metadata?.latitude && metadata?.longitude) ? `GPS: ${metadata.latitude.toFixed(6)} ${metadata.GPSLatitudeRef} ${metadata.longitude.toFixed(6)} ${metadata.GPSLongitudeRef}` : '';
+        // search for the most original date using metadata and then file attributes
+        date = metadata?.DateTimeOriginal || metadata?.CreateDate || metadata?.ModifyDate || metadata?.DateTime || stats.mtime || stats.birthtime;
+        let dateProperty = {};
+        if (date.getFullYear()) {
+          dateProperty.year = date.getFullYear();
+        }
+        if (date.toLocaleString('default', { month: 'short' })) {
+          dateProperty.month = date.toLocaleString('default', { month: 'short' });
+        }
+        if (date.getDate()) {
+          dateProperty.day = date.getDate();
+        }
+        let location = [];
+        if (latlon) {
+          location.push({detail: latlon});
+        }          
         const description = metadata?.ImageDescription || '';
-        if (location) {
-          formJSON.locationDetail = location;
-        }
-        if (description) {
-          formJSON.description = description;
-        }
         this.maxAccession++;
         const item = {
           link,
           "person": [],
+          description,
           "accession": this.maxAccession.toString(),
           type,
-          "location": [
-          ],
+          "date": dateProperty,
+          location,
           "source": []
         };
         let itemView = new ItemViewClass(item, this);
@@ -524,7 +530,6 @@ export class AccessionClass {
       console.error(`AccessionClass.getItemView: item not found: ${accession}, ${link}`);
       return null;
     }
-    item.collections = this.collections.getCollectionKeys(item.accession);
     return new ItemViewClass( item, this );
   } // getItemView
       

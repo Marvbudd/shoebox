@@ -10,7 +10,6 @@ autoUpdater.checkForUpdatesAndNotify();
 
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
-import { title } from 'process';
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
@@ -125,14 +124,15 @@ const createWindow = () => {
     } else {
       console.error('Error: transformedObject is undefined')
     }
-    listObject.collections = accessionClass.getCollections()
-    showCollection = listObject.collections.length > 0
+    let colls = accessionClass.getCollections()
+    showCollection = colls.length > 0
     if (showCollection
-      && listObject.collections.find((collection) => collection.value === selectedCollection) === undefined) {
-      selectedCollection = listObject.collections[0].value
+      && colls.find((collection) => collection.value === selectedCollection) === undefined) {
+      selectedCollection = colls[0].value
       nconf.set('controls:selectedCollection', selectedCollection)
       nconf.save('user')
     }
+    listObject.collections = colls;
     listObject.selectedCollection = selectedCollection
     listObject.accessionTitle = accessionClass.getTitle()
     listObject.photoChecked = nconf.get('controls:photoChecked')
@@ -140,7 +140,7 @@ const createWindow = () => {
     listObject.videoChecked = nconf.get('controls:videoChecked')
     listObject.restrictChecked = nconf.get('controls:restrictChecked')
     event.sender.send('items:render', JSON.stringify(listObject))
-    Menu.setApplicationMenu( createMenu() ) // update the menu to show/hide the collection build option
+    mainWindow.setMenu(createMenu()); // set the menu for the current window
   }) // items:getList
 
   ipcMain.on('item:getDetail', async (_, accession) => {
@@ -216,6 +216,10 @@ const createWindow = () => {
     };
     createAddMediaWindow(JSON.stringify(queryObject));
   }) // item:Edit
+
+  ipcMain.on('open:Website', () => {
+    createTreeWindow();
+  }) // open:Website
   
   ipcMain.on('add:Media', (_, mediaForm) => {
     let formJSON = JSON.parse(mediaForm)
@@ -383,7 +387,7 @@ function createMenu() {
   return Menu.buildFromTemplate(template);
 } // createMenu
 
-function createMinMenu(window) {
+function createMinMenu() {
   const template = [
     {
     label: '&File',
@@ -401,7 +405,7 @@ function createMinMenu(window) {
     }
   ];
   return Menu.buildFromTemplate(template);
-} // createMiniMenu
+} // createMinMenu
 
 function hmsToSeconds(hms) {
   let a = hms.split(':')
@@ -426,9 +430,8 @@ function chooseAccessionsPath() {
 function createMediaWindow(mediaInfo) {
   if (!mediaWindow) {
     mediaWindow = newWindow('mediaPlayer', '../render/js/mediaPreload.js', false, false);
+    // mediaWindow.setMenu(createMinMenu(mediaWindow));
     mediaWindow.loadFile(path.resolve(__dirname + '/../render/html/media.html'));
-    // Open the DevTools.
-    // mediaWindow.webContents.openDevTools();
     mediaWindow.once('ready-to-show', () => {
       mediaWindow.show()
       mediaWindow.send('mediaDisplay', mediaInfo)
@@ -456,7 +459,7 @@ function createAddMediaWindowShim(/* menu */) {
 function createAddMediaWindow(mediaInfo) {
   if (!addMediaWindow) {
     addMediaWindow = newWindow('addMedia', '../render/js/addmediaPreload.js', mainWindow, false);
-    addMediaWindow.setMenu(createMinMenu(addMediaWindow));
+    // addMediaWindow.setMenu(createMinMenu(addMediaWindow));
     addMediaWindow.loadFile(path.resolve(__dirname + '/../render/html/addmedia.html'));
     addMediaWindow.once('ready-to-show', () => {
       // mediaInfo is a stringified JSON object simulating a request to edit an accession
@@ -495,7 +498,7 @@ function deleteCollectionWindow() {
 function createEditCollectionWindow() {
   if (!editCollectionWindow) {
     editCollectionWindow = newWindow('editCollection', '../render/js/editCollectionPreload.js', mainWindow, false)
-    editCollectionWindow.setMenu(createMinMenu(editCollectionWindow));
+    // editCollectionWindow.setMenu(createMinMenu(editCollectionWindow));
     editCollectionWindow.loadFile(path.resolve(__dirname + '/../render/html/editCollection.html'));
     editCollectionWindow.once('ready-to-show', () => {
       editCollectionWindow.show();

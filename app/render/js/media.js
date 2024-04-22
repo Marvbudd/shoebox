@@ -63,6 +63,10 @@ function mediaContent(itemString) {
     const keyData = { accession: document.getElementById('accession').innerText }
     TACO.sendToMain(TACO.req.ITEMEDIT, JSON.stringify({keyData}))
   })
+  const $openWebsite = document.getElementById("openWebsite")
+  $openWebsite.addEventListener('click', (e) => {
+    TACO.sendToMain(TACO.req.OPENWEBSITE)
+  })
   setPlaylistListener()
 } //
 TACO.onMediaDisplay(mediaContent)

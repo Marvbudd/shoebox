@@ -76,6 +76,10 @@ function mediaContent(itemString) {
       const keyData = { accession: document.getElementById('accession').innerText }
       BURRITO.sendToMain(BURRITO.req.ITEMEDIT, JSON.stringify({keyData}))
     })
+    const $openWebsite = document.getElementById("openWebsite")
+    $openWebsite.addEventListener('click', (e) => {
+      BURRITO.sendToMain(BURRITO.req.OPENWEBSITE)
+    })
     setPlaylistListener()
   }
 } // mediaContent

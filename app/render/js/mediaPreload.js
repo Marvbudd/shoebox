@@ -3,7 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('TACO', {
   req: {
     ITEMPLAY: 'item:Play',   // also generated in index.js
-    ITEMEDIT: 'item:edit'
+    ITEMEDIT: 'item:edit',
+    OPENWEBSITE: 'open:Website'
   },
   onMediaDisplay: (callback) => {
     ipcRenderer.on('mediaDisplay', (event, data) => {

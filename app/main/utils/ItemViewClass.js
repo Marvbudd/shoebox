@@ -30,7 +30,7 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
 '{{/reflist}}' +
 '<tr class="detail"><td>Source:</td><td id="itemSource">{{sourceDisplay}}</td></tr>' +
 '<tr class="detail"><td>Received:</td><td id="received">{{receivedDisplay}}</td></tr>' +
-'<div class="prevDataCaption"><span>Media Details</span> <span><a href="{{ssURL}}" target="_blank">Pedigree Website</a></span></div>' +
+'<div class="prevDataCaption"><span>Media Details</span> <span><button id="openWebsite">Pedigree Website</button></span></div>' +
 '</table>' +
 '<p class="copyright">{{copyright}} ' +
 '<a href="mailto:marvbudd@gmail.com">Marvin E Budd.</a> ' +
@@ -188,7 +188,7 @@ export class ItemViewClass {
       version: version,
       copyright: copyright,
       reflist: this.accessionClass.getReferencesForLink(this.getLink()),
-      ssURL: this.accessionClass.getWebsite(),
+      collections: this.accessionClass.collections.getCollectionKeys(this.itemJSON.accession),
       ...this.itemJSON
     }
     return detailCompiled(dataObject)
@@ -249,7 +249,7 @@ export class ItemViewClass {
         year: formJSON.dateYear
       };
     }
-    if (formJSON.locationDetail || formJSON.locationCity || formJSON.locationState ) {
+    if (formJSON.locationDetail || formJSON.locationCity || formJSON.locationState) {
       itemJSON.location[0] = {
         detail: formJSON.locationDetail,
         city: formJSON.locationCity,

@@ -198,3 +198,10 @@ A:visited {
   height: 20px;
   background: #aabbff;
 }
+
+#openWebsite {
+  border: none;
+  background: none;
+  font-weight: bold;
+  color: Navy;
+}
