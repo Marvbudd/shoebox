@@ -13,7 +13,7 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
 '<tr><td class="detailCol1">Desc:</td><td class="detailCol2" id="desc">{{description}}</td></tr>' +
 '<tr><td>People:</td><td id="people">{{peopleDisplay}}</td></tr>' +
 '<tr><td>Date:</td><td id="date">{{dateDisplay}}</td></tr>' +
-'<tr><td>Location:</td><td id="locatn"><a target="newWindow" href="https://maps.google.com/maps/search/{{locationDisplay}}">{{locationDisplay}}</a></td></tr>' +
+'<tr><td>Location:</td><td id="locatn">{{{locationLinks}}}</td></tr>' + // Use triple curly braces to render HTML as is
 '<tr class="detail"><td>Collections: </td><td id="collections">{{collections}}</td></tr>' +
 '<tr class="detail"><td>Accession:</td><td id="accession">{{accession}}</td></tr>' +
 '<tr class="detail"><td>Link:</td><td id="link">{{link}}</td></tr>' +
@@ -127,46 +127,48 @@ export class ItemViewClass {
     return people.string();
   } // peopleList
 
-  static locationText(oneNode) {
-    var lText = '';
-    var detail;
-    var city;
-    var state;
+  static locationText(oneNode, suppressGPS = false) {
+    let lText = '';
+    let gpsText = ''
+    let detail = oneNode.detail
+    let city = oneNode.city
+    let state = oneNode.state
 
-    detail = oneNode.detail
-    city = oneNode.city
-    state = oneNode.state
-
+    if (!suppressGPS) {
+      if (oneNode.gps) {
+        gpsText = oneNode.gps;
+        gpsText += (detail || city || state) ? ", " : "";
+      } else {
+        gpsText = '';
+      }
+    }
     if (detail) {
-      detail = detail;
-      if ((city) ||
-        (state))
-        detail = detail + ", ";
-    } else
+      detail += (city || state) ? ", " : "";
+    } else {
       detail = '';
-
+    }
     if (city) {
-      city = city;
-      if (state)
-        city = city + ", ";
-    } else
+      city += state ? ", " : "";
+    } else {
       city = '';
+    }
+    state = state || '';
 
-    if (state)
-      state = state;
-    else
-      state = '';
-
-    lText = detail + city + state;
+    lText = gpsText + detail + city + state;
     return lText;
   } // locationText
 
   static showLocations(locationArray) {
     var locationString = new AppendString(', ')
+    var locationLinks = new AppendString(', ')
     locationArray.forEach((location) => {
+      const locationText = ItemViewClass.locationText(location)
+      // Google likes either the gps or the text, not both
+      const locationSearch = location.gps ? location.gps : ItemViewClass.locationText(location, true)
+      locationLinks.add(`<a target="newWindow" href="https://maps.google.com/maps/search/${locationSearch}">${locationText}</a>`)
       locationString.add(ItemViewClass.locationText(location))
     })
-    return locationString.string()
+    return {'locationString': locationString.string(), 'locationLinks': locationLinks.string()}
   } // showLocations
 
   showNodeDescription() {
@@ -178,17 +180,18 @@ export class ItemViewClass {
         receivedText.add(ItemViewClass.dateText(itemSource.received))
       })
     }
-
+    let locationDisplay = ItemViewClass.showLocations(this.itemJSON.location)
     let dataObject = {
-      peopleDisplay: ItemViewClass.peopleList(this.itemJSON.person),
-      dateDisplay: ItemViewClass.dateText(this.itemJSON.date),
-      locationDisplay: ItemViewClass.showLocations(this.itemJSON.location),
-      sourceDisplay: sourceText.string(),
-      receivedDisplay: receivedText.string(),
-      version: version,
-      copyright: copyright,
-      reflist: this.accessionClass.getReferencesForLink(this.getLink()),
-      collections: this.accessionClass.collections.getCollectionKeys(this.itemJSON.accession),
+      'peopleDisplay': ItemViewClass.peopleList(this.itemJSON.person),
+      'dateDisplay': ItemViewClass.dateText(this.itemJSON.date),
+      'locationDisplay': locationDisplay.locationString,
+      'locationLinks': locationDisplay.locationLinks,
+      'sourceDisplay': sourceText.string(),
+      'receivedDisplay': receivedText.string(),
+      'version': version,
+      'copyright': copyright,
+      'reflist': this.accessionClass.getReferencesForLink(this.getLink()),
+      'collections': this.accessionClass.collections.getCollectionKeys(this.itemJSON.accession),
       ...this.itemJSON
     }
     return detailCompiled(dataObject)

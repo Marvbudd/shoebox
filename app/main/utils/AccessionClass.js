@@ -119,7 +119,7 @@ export class AccessionClass {
         if (type === 'photo') {
           metadata = await exifr.parse(filePath, { gps: true, exif: true });
         }
-        const latlon = (metadata?.latitude && metadata?.longitude) ? `GPS: ${metadata.latitude.toFixed(6)} ${metadata.GPSLatitudeRef} ${metadata.longitude.toFixed(6)} ${metadata.GPSLongitudeRef}` : '';
+        const latlon = (metadata?.latitude && metadata?.longitude) ? `${metadata.latitude.toFixed(6)} ${metadata.longitude.toFixed(6)}` : '';
         // search for the most original date using metadata and then file attributes
         date = metadata?.DateTimeOriginal || metadata?.CreateDate || metadata?.ModifyDate || metadata?.DateTime || stats.mtime || stats.birthtime;
         let dateProperty = {};
@@ -134,7 +134,7 @@ export class AccessionClass {
         }
         let location = [];
         if (latlon) {
-          location.push({detail: latlon});
+          location.push({gps: latlon});
         }          
         const description = metadata?.ImageDescription || '';
         this.maxAccession++;
