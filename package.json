@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "description": "Multimedia browser",
   "main": "app/main/main.js",
   "type": "module",
@@ -49,7 +49,7 @@
     }
   },
   "scripts": {
-    "start": "electron app/main/index.js",
+    "start": "electron app/main/main.js",
     "pack": "electron-builder --dir",
     "electron-builder": "electron-builder",
     "build": "electron-builder build --publish never",
@@ -85,7 +85,7 @@
     "nconf": "^0.12.0"
   },
   "devDependencies": {
-    "electron": "^29.0.0",
-    "electron-builder": "^24.0.0"
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0"
   }
 }

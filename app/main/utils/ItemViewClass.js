@@ -164,11 +164,12 @@ export class ItemViewClass {
     locationArray.forEach((location) => {
       const locationText = ItemViewClass.locationText(location)
       // Google likes either the gps or the text, not both
-      const locationSearch = location.gps ? location.gps : ItemViewClass.locationText(location, true)
-      locationLinks.add(`<a target="newWindow" href="https://maps.google.com/maps/search/${locationSearch}">${locationText}</a>`)
+      // latlon format is from https://stackoverflow.com/questions/2660201/what-parameters-should-i-use-in-a-google-maps-url-to-go-to-a-lat-lon
+      const locationSearch = location.gps ? `?q=${location.gps}&t=k` : `?q=${ItemViewClass.locationText(location, true)}&t=k`;
+      locationLinks.add(`<a target="newWindow" href="https://maps.google.com${locationSearch}">${locationText}</a>`)
       locationString.add(ItemViewClass.locationText(location))
     })
-    return {'locationString': locationString.string(), 'locationLinks': locationLinks.string()}
+    return { 'locationString': locationString.string(), 'locationLinks': locationLinks.string() }
   } // showLocations
 
   showNodeDescription() {
