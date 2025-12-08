@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",
@@ -12,7 +12,7 @@
     "email": "marvbudd@gmail.com"
   },
   "license": "MIT",
-  "copyright": "Copyright © 2001-2024",
+  "copyright": "Copyright © 2001-2025, Marvin E Budd",
   "dependencies": {
     "electron-updater": "^6.0.0",
     "exifr": "^7.0.0",
