@@ -211,13 +211,28 @@ export class AccessionClass {
           });
           break;
         case 1:
-          // Sort by Person (last, first) and date - show Name and Date in the navigation table
+          // Sort by Person (last, first, married) and date - show Name and Date in the navigation table
           navHeader = `
             <div id="column1">Person</div>
             <div id="column2" class="dateRight">Date</div>
           `;
           sortedItems = this.accessionJSON.accessions.item.flatMap(item => {
             return item.person.flatMap(person => {
+              // Collect all married names and concatenate them
+              const marriedNames = person.last
+                .filter(ln => ln.type === 'married')
+                .map(ln => ln.last)
+                .sort()
+                .join(' ');
+
+              // Collect all maiden/non-married names
+              const maidenNames = person.last
+                .filter(ln => !ln.type || ln.type !== 'married')
+                .map(ln => ln.last)
+                .sort()
+                .join(' ');
+
+              // Only create entries for each last name in the list
               return person.last.map(lastName => {
                 const { year, month, day } = item.date;
 
@@ -228,9 +243,15 @@ export class AccessionClass {
                   day || 1
                 );
 
+                // For sorting: 
+                // - If this is a maiden name entry, use married names for secondary sort
+                // - If this is a married name entry, use maiden names for secondary sort
+                const secondaryNames = lastName.type === 'married' ? maidenNames : marriedNames;
+
                 return {
                   person: { ...person },
                   lastName: lastName.last,
+                  secondaryNames: secondaryNames,
                   date: item.date,
                   accession: item.accession,
                   type: item.type,
@@ -239,7 +260,7 @@ export class AccessionClass {
               });
             });
           }).sort((a, b) => {
-            // Compare by last, first, and then date
+            // Compare by last name, then first name, then secondary names (married or maiden), and then date
             const lastComparison = a.lastName.localeCompare(b.lastName);
             if (lastComparison !== 0) {
               return lastComparison;
@@ -248,6 +269,11 @@ export class AccessionClass {
             const firstComparison = (a.person.first || '').localeCompare(b.person.first || '');
             if (firstComparison !== 0) {
               return firstComparison;
+            }
+
+            const secondaryComparison = a.secondaryNames.localeCompare(b.secondaryNames);
+            if (secondaryComparison !== 0) {
+              return secondaryComparison;
             }
 
             return a.dateSort - b.dateSort;
