@@ -32,9 +32,6 @@ jobs:
       - name: Install dependencies
         run: yarn install
 
-      - name: Install electron-builder
-        run: yarn global add electron-builder
-
       - name: Build/release Electron app
         run: yarn run dist
         env:
