@@ -36,6 +36,9 @@ build/Release
 node_modules/
 jspm_packages/
 
+# Vue build output
+app/render/vue-dist/
+
 # TypeScript v1 declaration files
 typings/
 
@@ -101,3 +104,14 @@ xmldb/xml/audio
 xmldb/xml/video
 xmldb/xml/photo
 config
+
+# Optional face detection models (download via scripts/download-additional-models.js)
+app/resource/models/mtcnn_model-*
+app/resource/models/tiny_face_detector_model-*
+
+# Internal documets
+FUTURE-ENHANCEMENTS*
+VERSION-3*
+
+# Working documents
+*.docx

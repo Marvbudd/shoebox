@@ -1,0 +1,310 @@
+#!/usr/bin/env node
+
+/**
+ * unsymlink - Remove symlinks and accession entries for files in a directory
+ * 
+ * Usage: unsymlink <source-directory-path>
+ * 
+ * When you want to remove files from your shoebox archive that are symlinked
+ * from a specific source directory, this script:
+ * 1. Finds all symlinks in photo/, video/, audio/ pointing to files in that directory
+ * 2. Removes those symlinks
+ * 3. Removes corresponding entries from accessions.json (matched by link field)
+ * 4. Leaves the original files in the source directory untouched
+ * 
+ * Example:
+ *   unsymlink /home/mbudd/Documents/GOIndia/2017-KollegalStore
+ */
+
+import fs from 'fs';
+import path from 'path';
+import readline from 'readline';
+
+// Hard-coded path to accessions.json
+const ACCESSIONS_JSON_PATH = '/home/mbudd/Documents/GOIndia/shoebox/accessions.json';
+
+// Get resource directory from accessions.json path
+const RESOURCE_DIR = path.dirname(ACCESSIONS_JSON_PATH);
+
+// Media directories to check
+const MEDIA_DIRS = ['photo', 'video', 'audio'];
+
+/**
+ * Print usage and exit
+ */
+function printUsage() {
+  console.error('Usage: unsymlink <source-directory-path>');
+  console.error('');
+  console.error('Removes symlinks and accession entries for files in the specified directory.');
+  console.error('');
+  console.error('Example:');
+  console.error('  unsymlink /home/mbudd/Documents/GOIndia/2017-KollegalStore');
+  process.exit(1);
+}
+
+/**
+ * Validate arguments
+ */
+function validateArgs() {
+  const args = process.argv.slice(2);
+  
+  if (args.length !== 1) {
+    console.error('Error: Expected 1 argument\n');
+    printUsage();
+  }
+  
+  let sourceDir = args[0];
+  
+  // Remove trailing slash
+  sourceDir = sourceDir.replace(/\/$/, '');
+  
+  // Convert to absolute path if relative
+  if (!path.isAbsolute(sourceDir)) {
+    sourceDir = path.resolve(process.cwd(), sourceDir);
+  }
+  
+  // Check if source directory exists
+  if (!fs.existsSync(sourceDir)) {
+    console.error(`Error: Source directory does not exist: ${sourceDir}`);
+    process.exit(1);
+  }
+  
+  if (!fs.statSync(sourceDir).isDirectory()) {
+    console.error(`Error: Not a directory: ${sourceDir}`);
+    process.exit(1);
+  }
+  
+  // Check if accessions.json exists
+  if (!fs.existsSync(ACCESSIONS_JSON_PATH)) {
+    console.error(`Error: accessions.json not found at ${ACCESSIONS_JSON_PATH}`);
+    process.exit(1);
+  }
+  
+  return sourceDir;
+}
+
+/**
+ * Find and remove symlinks pointing to files in source directory
+ */
+function findAndRemoveSymlinks(sourceDir) {
+  const removedSymlinks = [];
+  
+  for (const mediaType of MEDIA_DIRS) {
+    const mediaDirPath = path.join(RESOURCE_DIR, mediaType);
+    
+    if (!fs.existsSync(mediaDirPath)) {
+      console.log(`  Directory not found: ${mediaType}/ (skipping)`);
+      continue;
+    }
+    
+    console.log(`\nScanning ${mediaType}/ directory...`);
+    
+    // Get all files in the media directory
+    const files = fs.readdirSync(mediaDirPath);
+    
+    for (const file of files) {
+      const filePath = path.join(mediaDirPath, file);
+      
+      // Check if it's a symlink
+      try {
+        const stats = fs.lstatSync(filePath);
+        
+        if (stats.isSymbolicLink()) {
+          // Get the target of the symlink
+          const target = fs.readlinkSync(filePath);
+          
+          // Check if target is in the source directory
+          // Handle both absolute and relative paths
+          const absoluteTarget = path.isAbsolute(target) 
+            ? target 
+            : path.resolve(path.dirname(filePath), target);
+          
+          if (absoluteTarget.startsWith(sourceDir + path.sep)) {
+            console.log(`  Found: ${file} → ${target}`);
+            
+            // Remove the symlink
+            fs.unlinkSync(filePath);
+            
+            removedSymlinks.push({
+              link: file,
+              type: mediaType,
+              target: target
+            });
+            
+            console.log(`  ✓ Removed symlink: ${file}`);
+          }
+        }
+      } catch (error) {
+        console.error(`  Error processing ${file}: ${error.message}`);
+      }
+    }
+  }
+  
+  return removedSymlinks;
+}
+
+/**
+ * Load accessions.json
+ */
+function loadAccessions() {
+  try {
+    const fileContent = fs.readFileSync(ACCESSIONS_JSON_PATH, 'utf8');
+    return JSON.parse(fileContent);
+  } catch (error) {
+    console.error(`Error reading accessions.json: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Save accessions.json with backup
+ */
+function saveAccessions(data) {
+  try {
+    // Create backup
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = `${ACCESSIONS_JSON_PATH}.backup.${timestamp}`;
+    fs.copyFileSync(ACCESSIONS_JSON_PATH, backupPath);
+    console.log(`\n✓ Backup created: ${path.basename(backupPath)}`);
+    
+    // Write updated file
+    const json = JSON.stringify(data, null, 2);
+    fs.writeFileSync(ACCESSIONS_JSON_PATH, json);
+    console.log(`✓ Updated accessions.json`);
+    
+  } catch (error) {
+    console.error(`Error saving accessions.json: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Remove items from accessions.json
+ */
+function removeFromAccessions(removedSymlinks) {
+  if (removedSymlinks.length === 0) {
+    console.log('\nNo symlinks removed, skipping accessions.json update');
+    return 0;
+  }
+  
+  console.log('\nUpdating accessions.json...');
+  
+  const data = loadAccessions();
+  
+  if (!data.accessions || !Array.isArray(data.accessions.item)) {
+    console.error('Error: Invalid accessions.json structure');
+    process.exit(1);
+  }
+  
+  // Create a set of links to remove for faster lookup
+  const linksToRemove = new Set(removedSymlinks.map(s => s.link));
+  
+  // Track original count
+  const originalCount = data.accessions.item.length;
+  
+  // Filter out items with links that were removed
+  data.accessions.item = data.accessions.item.filter(item => {
+    if (linksToRemove.has(item.link)) {
+      console.log(`  Removing: ${item.link} (accession: ${item.accession})`);
+      return false;
+    }
+    return true;
+  });
+  
+  const removedCount = originalCount - data.accessions.item.length;
+  
+  // Save the updated file
+  saveAccessions(data);
+  
+  return removedCount;
+}
+
+/**
+ * Confirm action with user
+ */
+function confirmAction(sourceDir) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  
+  return new Promise((resolve) => {
+    rl.question('\nProceed with removing symlinks and updating accessions.json? (y/N) ', (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+    });
+  });
+}
+
+/**
+ * Main function
+ */
+async function main() {
+  console.log('==================================================================');
+  console.log('Unsymlink - Remove symlinks and accession entries');
+  console.log('==================================================================\n');
+  
+  // Validate arguments
+  const sourceDir = validateArgs();
+  
+  console.log(`Source directory: ${sourceDir}`);
+  console.log(`Accessions file:  ${ACCESSIONS_JSON_PATH}`);
+  console.log(`Resource dir:     ${RESOURCE_DIR}`);
+  
+  // First, do a dry run to see what would be removed
+  console.log('\n------------------------------------------------------------------');
+  console.log('Preview: Finding symlinks to remove...');
+  console.log('------------------------------------------------------------------');
+  
+  const removedSymlinks = findAndRemoveSymlinks(sourceDir);
+  
+  if (removedSymlinks.length === 0) {
+    console.log('\n✓ No symlinks found pointing to files in this directory.');
+    console.log('Nothing to do.');
+    process.exit(0);
+  }
+  
+  // Show summary
+  console.log('\n------------------------------------------------------------------');
+  console.log('Summary:');
+  console.log('------------------------------------------------------------------');
+  console.log(`Symlinks removed: ${removedSymlinks.length}`);
+  
+  const byType = {};
+  removedSymlinks.forEach(s => {
+    byType[s.type] = (byType[s.type] || 0) + 1;
+  });
+  
+  Object.entries(byType).forEach(([type, count]) => {
+    console.log(`  ${type}: ${count}`);
+  });
+  
+  console.log('\nThese items will also be removed from accessions.json');
+  
+  // Confirm
+  const confirmed = await confirmAction(sourceDir);
+  
+  if (!confirmed) {
+    console.log('\nCancelled. No changes were made to accessions.json.');
+    console.log('Note: Symlinks have already been removed from the file system.');
+    process.exit(0);
+  }
+  
+  // Update accessions.json
+  const removedCount = removeFromAccessions(removedSymlinks);
+  
+  // Final summary
+  console.log('\n==================================================================');
+  console.log('Completed:');
+  console.log('==================================================================');
+  console.log(`Symlinks removed:          ${removedSymlinks.length}`);
+  console.log(`Accession entries removed: ${removedCount}`);
+  console.log('\n✓ Unsymlink completed successfully!');
+  console.log('==================================================================');
+}
+
+// Run the script
+main().catch(error => {
+  console.error(`\nFatal error: ${error.message}`);
+  process.exit(1);
+});

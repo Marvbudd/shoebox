@@ -1,19 +1,85 @@
+/**
+ * main.js - Shoebox Application Entry Point
+ * 
+ * This file orchestrates the Electron application by:
+ * - Configuring application settings (nconf)
+ * - Creating the main window
+ * - Registering IPC handlers for renderer communication
+ * - Managing window lifecycle
+ * 
+ * ARCHITECTURE:
+ * This file was refactored from 1439 lines to ~320 lines (Dec 2025).
+ * Functionality is now organized into modules:
+ * 
+ * - app/main/ipc/           - IPC handlers grouped by feature
+ *   - personHandlers.js     - Person management (10 handlers)
+ *   - itemHandlers.js       - Item/media management (14 handlers)
+ *   - collectionHandlers.js - Collection management (6 handlers)
+ *   - accessionsHandlers.js - Accessions creation (3 handlers)
+ * 
+ * - app/main/windows/       - Window creation and UI
+ *   - windowManager.js      - All window lifecycle management
+ *   - menuTemplates.js      - Application menus
+ * 
+ * - app/main/utils/         - Helper functions
+ *   - helpers.js            - Utility functions
+ *   - AccessionClass.js     - Core data model
+ * 
+ * KEY PATTERNS:
+ * 
+ * 1. Reference Objects for Pass-by-Reference:
+ *    JavaScript doesn't have true pass-by-reference, so we use objects:
+ *    const windowRefs = { media: { value: null }, personManager: { value: null } }
+ *    Access: windowRefs.media.value
+ *    This allows modules to modify window references.
+ * 
+ * 2. Dependency Injection:
+ *    Functions are passed as parameters to avoid tight coupling:
+ *    registerItemHandlers(ipcMain, () => accessionClass, verifyAccessions, ...)
+ * 
+ * 3. Getter Functions:
+ *    Use () => variable instead of passing variable directly
+ *    This ensures the latest value is always accessed
+ * 
+ * ADDING NEW FEATURES:
+ * - New window? Add creation function to windowManager.js
+ * - New IPC handler? Add to appropriate file in ipc/
+ * - New menu item? Add to menuTemplates.js
+ */
+
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu } from 'electron';
 import fs from 'fs';
 import electron from 'electron';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import { createRequire } from 'module';
 import nconf from 'nconf';
 import { AccessionClass } from '../main/utils/AccessionClass.js';
+import { FaceDetectionService } from '../main/utils/FaceDetectionService.js';
+import { hmsToSeconds, verifyAccessions as verifyAccessionsHelper, resetAccessions as resetAccessionsHelper, buildCollection as buildCollectionHelper, generateTimestamp } from '../main/utils/helpers.js';
+import { createMainMenu, createMinimalMenu } from '../main/windows/menuTemplates.js';
+import * as windowManager from '../main/windows/windowManager.js';
+import { registerPersonHandlers } from '../main/ipc/personHandlers.js';
+import { registerItemHandlers } from '../main/ipc/itemHandlers.js';
+import { registerCollectionHandlers } from '../main/ipc/collectionHandlers.js';
+import { registerAccessionsHandlers } from '../main/ipc/accessionsHandlers.js';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
+autoUpdater.logger = null; // Disable auto-updater logging
 autoUpdater.checkForUpdatesAndNotify();
 
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Import version from package.json
+const require = createRequire(import.meta.url);
+const packageJson = require('../package.json');
+const APP_VERSION = packageJson.version;
 
 console.log('main.js __dirname is ' + __dirname);
+
+// ===== Configuration Setup =====
 // Setup nconf to use (in-order):
 //   1. Command-line arguments
 //   2. Environment variables
@@ -46,12 +112,16 @@ nconf.argv()
   .defaults({
     "controls": {
       "photoChecked": true,
-      "tapeChecked": true,
+      "audioChecked": true,
       "videoChecked": true,
       "restrictChecked": false
     },
     "db": {
       "accessionsPath": path.resolve(__dirname, "../resource/accessions.json")
+    },
+    "faceDetection": {
+      "confidenceThreshold": 0.20,
+      "autoAssignThreshold": 0.60
     },
     "ui": {
       "main": {
@@ -72,25 +142,44 @@ if (nconf.get('db:accessionsPath').includes('.xml')) {
 }
 process.on('warning', e => console.warn(e.stack));
 process.on('uncaughtException - ', e => console.log('***** uncaughtException with error=', e))
-let accessionClass = undefined
+
+// ===== Application State =====
+
+// Application state
+let accessionClass = undefined;
 let mainWindow = null;
-let helpWindow = null;
-let mediaWindow = null;
-let addMediaWindow = null;
-let editCollectionWindow = null;
-let editCollectionWindowType = 'create'; // create or delete selected in Edit menu
+
+// Face detection service (initialized on first use)
+let faceDetectionService = null;
+
+// Window references (using objects for pass-by-reference)
+const windowRefs = {
+  media: { value: null },
+  personManager: { value: null },
+  createAccessions: { value: null },
+  mediaManager: { value: null },
+  updateCollection: { value: null },
+  collectionManager: { value: null },
+  collectionSetOperations: { value: null }
+};
+const collectionManagerModeRef = { value: 'create' }; // 'create' or 'delete'
 
 // tracks the renderer drop-down selection via 'items:collection' message
-let showCollection = false
+const showCollectionRef = { value: false };
+
+// ===== Main Window Creation =====
 
 const createWindow = () => {
   // Create the browser window.
-  mainWindow = newWindow('main', '../render/js/preload.js', false, true);
-  mainWindow.loadFile(path.resolve(__dirname + '/../render/html/index.html'));
+  mainWindow = windowManager.newWindow('main', '../render/vue/windows/MainWindow/preload.js', false, true, nconf);
+  mainWindow.loadFile(path.resolve(__dirname + '/../render/vue-dist/mainWindow/index.html'));
+  
+  // Set the application menu (use Menu.setApplicationMenu for proper click handling on Linux)
+  Menu.setApplicationMenu(createMenu());
 
   mainWindow.on('close', (e) => {
     if (mainWindow) {
-      saveWindowState(mainWindow, 'main');
+      windowManager.saveWindowState(mainWindow, 'main', nconf);
     }
     if (accessionClass) {
       accessionClass.saveAccessions(); // persist the current accessions
@@ -100,197 +189,375 @@ const createWindow = () => {
 
   // when the main window is destroyed, close the other windows too
   mainWindow.webContents.on('destroyed', () => {
-    if (helpWindow) {
-      helpWindow.close();
+    if (windowRefs.media.value && typeof windowRefs.media.value.close === 'function') {
+      windowRefs.media.value.close();
     }
-    if (mediaWindow) {
-      mediaWindow.close()
+    if (windowRefs.personManager.value && typeof windowRefs.personManager.value.close === 'function') {
+      windowRefs.personManager.value.close();
     }
-    if (addMediaWindow) {
-      addMediaWindow.close()
+    if (windowRefs.createAccessions.value && typeof windowRefs.createAccessions.value.close === 'function') {
+      windowRefs.createAccessions.value.close();
+    }
+    if (windowRefs.mediaManager.value && typeof windowRefs.mediaManager.value.close === 'function') {
+      windowRefs.mediaManager.value.close();
+    }
+    if (windowRefs.updateCollection.value && typeof windowRefs.updateCollection.value.close === 'function') {
+      windowRefs.updateCollection.value.close();
+    }
+    if (windowRefs.collectionManager.value && typeof windowRefs.collectionManager.value.close === 'function') {
+      windowRefs.collectionManager.value.close();
+    }
+    if (windowRefs.collectionSetOperations.value && typeof windowRefs.collectionSetOperations.value.close === 'function') {
+      windowRefs.collectionSetOperations.value.close();
     }
     mainWindow = null
   }) // destroyed
 
-  ipcMain.on('items:getList', (event, requestParams) => {
-    let transformedObject = []
-    let listObject = {}
-    let selectedCollection = nconf.get('controls:selectedCollection')
-    verifyAccessions();
-    transformedObject = accessionClass.transformToHtml(requestParams.sort - 1)
-    if (transformedObject) {
-      listObject.tableBody = transformedObject.tableBody
-      listObject.navHeader = transformedObject.navHeader
-    } else {
-      console.error('Error: transformedObject is undefined')
-    }
-    let colls = accessionClass.getCollections()
-    showCollection = colls.length > 0
-    if (showCollection
-      && colls.find((collection) => collection.value === selectedCollection) === undefined) {
-      selectedCollection = colls[0].value
-      nconf.set('controls:selectedCollection', selectedCollection)
-      nconf.save('user')
-    }
-    listObject.collections = colls;
-    listObject.selectedCollection = selectedCollection
-    listObject.accessionTitle = accessionClass.getTitle()
-    listObject.photoChecked = nconf.get('controls:photoChecked')
-    listObject.tapeChecked = nconf.get('controls:tapeChecked')
-    listObject.videoChecked = nconf.get('controls:videoChecked')
-    listObject.restrictChecked = nconf.get('controls:restrictChecked')
-    event.sender.send('items:render', JSON.stringify(listObject))
-    mainWindow.setMenu(createMenu()); // set the menu for the current window
-  }) // items:getList
-
-  ipcMain.on('item:getDetail', async (_, accession) => {
-    // This fires when requesting any item from the left-hand list
-    verifyAccessions();
-    let itemView = accessionClass.getItemView(accession);
-    if (itemView) {
-      itemView.getViewObject((viewObject) => {
-        if (itemView.getType() === 'photo') {
-          mainWindow.send('item:detail', JSON.stringify(viewObject));
-        } else {
-          createMediaWindow(JSON.stringify(viewObject));
-        }
-      })
-    };
-  }) // item:getDetail
-
-  ipcMain.on('items:collection', (_, controls) => {
-    let itemsObject = JSON.parse(controls)
-    nconf.set('controls:photoChecked', itemsObject.photoChecked)
-    nconf.set('controls:tapeChecked', itemsObject.tapeChecked)
-    nconf.set('controls:videoChecked', itemsObject.videoChecked)
-    nconf.set('controls:restrictChecked', itemsObject.restrictChecked)
-    nconf.set('controls:selectedCollection', itemsObject.selectedCollection)
-    nconf.save('user')
-  }) // items:collection
-
-  // This is the message from the renderer to set/reset the collection of an item
-  ipcMain.on('item:setCollection', (_, accession) => {
-    verifyAccessions();
-    accessionClass.toggleItemInCollection(nconf.get('controls:selectedCollection'), accession)
-  }) // item:setCollection
-
-  ipcMain.on('item:Play', (_, playString) => {
-    // This fires when requesting AV for a filename attached to a photo
-    const playObject = JSON.parse(playString)
-    verifyAccessions();
-    let itemView = accessionClass.getItemView(null, playObject.ref);
-    if (itemView) {
-      itemView.getViewObject((viewObject) => {
-        if (itemView.getType() === 'photo') {
-          mainWindow.send('item:detail', JSON.stringify(viewObject))
-        } else {
-          // console.log('audioPlay ' + playObject.ref + ' start ' + playObject.start + ' secs ' + playObject.startSeconds)
-          viewObject.entry = {
-            startSeconds: hmsToSeconds(playObject.start),
-            durationSeconds: hmsToSeconds(playObject.duration)
-          }
-          createMediaWindow(JSON.stringify(viewObject));
-        }
-      })
-    }
-  }) // item:Play
-
-  ipcMain.on('items:reload', (_, itemsString) => {
-    // reload on main window causes a reload of accessions in case it changed.
-    if (accessionClass) {
-      accessionClass.saveAccessions();
-    }
-    accessionClass = undefined
-  }) // items:reload
-
-  ipcMain.on('show:Dialog', (_, queryType) => {
-    showAddMediaDialog(queryType);
-  }) // show:Dialog
-
-  ipcMain.on('item:edit', (_, keyData) => {
-    // This fires when requesting to edit an item
-    let editObject = JSON.parse(keyData);
-    let queryObject = {
-      type: 'accession',
-      directory: editObject.keyData.accession
-    };
-    createAddMediaWindow(JSON.stringify(queryObject));
-  }) // item:Edit
-
-  ipcMain.on('open:Website', () => {
-    createTreeWindow();
-  }) // open:Website
+  // ===== IPC Handlers Registration =====
   
-  ipcMain.on('add:Media', (_, mediaForm) => {
-    let formJSON = JSON.parse(mediaForm)
-    let title = formJSON.title
-    let directoryPath = formJSON.updateFocus
-    switch (formJSON.selectQuery) {
-      case 'directory':
-        (async () => {
-          try {
-            if (accessionClass) {
-              accessionClass.saveAccessions(); // persist the current accessions
-              accessionClass = undefined;
-            }
-            nconf.set('db:accessionsPath', path.resolve(directoryPath, "accessions.json"));
-            nconf.save('user');
-            accessionClass = new AccessionClass(nconf.get('db:accessionsPath'), title);
-            await accessionClass.addMediaFiles(formJSON);
-            // All media files added successfully
-            addMediaWindow.close();
-            resetAccessions();
-          } catch (error) {
-            // Handle any errors that occurred during media file addition
-            console.error('Error adding media files:', error);
-          }
-        })();
-        break;
-      case 'collection':
-        // collection is in formJSON.updateFocus
-        verifyAccessions();
-        accessionClass.updateCollection(formJSON);
-        addMediaWindow.close();
-        resetAccessions();
-        break;
-      case 'accession':
-        // accession is in formJSON.accession
-        verifyAccessions();
-        accessionClass.updateAccession(formJSON);
-        addMediaWindow.close();
-        resetAccessions();
-        break;
-      default:
-        console.error('AddMedia.addMedia Unknown selectQuery: ' + formJSON.selectQuery);
+  // Fire-and-forget handlers for plain renderer (index.html)
+  ipcMain.on('open:Website', () => {
+    if (!accessionClass) {
+      console.error('AccessionClass not initialized');
+      return;
     }
-  }) // add:media
+    createTreeWindow(accessionClass);
+  }); // open:Website
 
-  ipcMain.on('get:Collection', (_, collectionForm) => {
-    let response = {}
-    if (editCollectionWindowType === 'delete') {
-      response.collectionlist = accessionClass.getCollections()
-    } // else create and no content needed
-    editCollectionWindow.send('show:collections', JSON.stringify(response));
-  }) // get:Collection
+  ipcMain.on('open:PersonLink', (event, tmgid) => {
+    if (!tmgid || !accessionClass) {
+      console.error('Missing TMGID or accession class');
+      return;
+    }
+    const personUrl = accessionClass.getPersonWebsiteUrl(tmgid);
+    if (personUrl) {
+      shell.openExternal(personUrl);
+    } else {
+      console.error('Could not generate person URL for TMGID:', tmgid);
+    }
+  }); // open:PersonLink
+  
+  // Async handlers for Vue windows (MainWindow, etc.)
+  ipcMain.handle('open:Website', async () => {
+    if (!accessionClass) {
+      console.error('AccessionClass not initialized');
+      return { success: false, error: 'AccessionClass not initialized' };
+    }
+    createTreeWindow(accessionClass);
+    return { success: true };
+  }); // open:Website (async)
 
-  ipcMain.on('add:Collection', (_, formData) => {
-    let formJSON = JSON.parse(formData)
-    verifyAccessions();
-    accessionClass.createCollection(formJSON.key, formJSON.title, formJSON.text)
-    nconf.set('controls:selectedCollection', formJSON.key)
-    nconf.save('user')
-    editCollectionWindow.close()
-    resetAccessions()
-  }) // add:Collection
+  ipcMain.handle('open:PersonLink', async (event, tmgid) => {
+    if (!tmgid || !accessionClass) {
+      console.error('Missing TMGID or accession class');
+      return { success: false, error: 'Missing TMGID or accession class' };
+    }
+    const personUrl = accessionClass.getPersonWebsiteUrl(tmgid);
+    console.log('Generated person URL:', personUrl);
+    if (personUrl) {
+      shell.openExternal(personUrl);
+      return { success: true };
+    }
+    return { success: false, error: 'Could not generate person URL' };
+  }); // open:PersonLink (async)
 
-  ipcMain.on('delete:Collection', (_, formData) => {
-    let formJSON = JSON.parse(formData)
-    verifyAccessions();
-    accessionClass.deleteCollection(formJSON.collection)
-    editCollectionWindow.close()
-    resetAccessions()
-  }) // delete:Collection
+  ipcMain.handle('open:Documentation', async (event) => {
+    shell.openExternal('https://marvbudd.github.io/shoebox/');
+    return { success: true };
+  }); // open:Documentation
+
+  // ===== Config (nconf) IPC Handlers =====
+  ipcMain.handle('config:get', async (event, key) => {
+    return nconf.get(key);
+  });
+
+  ipcMain.handle('config:set', async (event, key, value) => {
+    nconf.set(key, value);
+    nconf.save('user');
+    return { success: true };
+  });
+
+  // ===== Person Library IPC Handlers =====
+  registerPersonHandlers(ipcMain, () => accessionClass, verifyAccessions);
+
+  // ===== Item IPC Handlers =====
+  registerItemHandlers(
+    ipcMain,
+    () => accessionClass,
+    verifyAccessions,
+    () => mainWindow,
+    createMediaWindow,
+    createMediaManagerWindow,
+    createMenu,
+    resetAccessions,
+    hmsToSeconds,
+    nconf,
+    showCollectionRef
+  );
+
+  // ===== Collection IPC Handlers =====
+  registerCollectionHandlers(
+    ipcMain,
+    () => accessionClass,
+    verifyAccessions,
+    () => mainWindow,
+    resetAccessions,
+    () => collectionManagerModeRef.value,
+    nconf
+  );
+
+  // ===== Accessions and Media IPC Handlers =====
+  registerAccessionsHandlers(
+    ipcMain,
+    dialog,
+    () => accessionClass,
+    (value) => { accessionClass = value; },
+    verifyAccessions,
+    resetAccessions,
+    () => windowRefs.createAccessions.value,
+    nconf,
+    shell
+  );
+
+  // ===== Window Management IPC Handlers =====
+  
+  // Open Person Manager with a specific person selected
+  ipcMain.handle('window:openPersonManager', async (event, personID) => {
+    try {
+      // Open or focus the Person Manager window
+      createPersonManagerWindow();
+      
+      // Send the personID to the Person Manager window after it's ready (if provided)
+      if (personID && windowRefs.personManager && windowRefs.personManager.webContents) {
+        // Give the window a moment to be ready
+        setTimeout(() => {
+          windowRefs.personManager.webContents.send('person:select', personID);
+        }, 500);
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error opening Person Manager:', error);
+      return { success: false, error: error.message };
+    }
+  }); // window:openPersonManager
+
+  // ===== Face Detection IPC Handlers =====
+  
+  // Initialize face detection service on first use
+  const initFaceDetection = async () => {
+    if (!faceDetectionService) {
+      const modelsPath = path.resolve(__dirname, '../resource/models');
+      faceDetectionService = new FaceDetectionService(modelsPath);
+      await faceDetectionService.loadModels();
+    }
+    return faceDetectionService;
+  };
+
+  // Detect faces in a photo
+  ipcMain.handle('face-detection:detect', async (event, accession, options = {}) => {
+    try {
+      verifyAccessions();
+      const service = await initFaceDetection();
+      
+      // Get image path
+      const itemView = accessionClass.getItemView(accession);
+      if (!itemView) {
+        throw new Error(`Item not found: ${accession}`);
+      }
+      
+      if (itemView.getType() !== 'photo') {
+        throw new Error('Face detection only works on photos');
+      }
+      
+      const imagePath = accessionClass.getMediaPath(itemView.getType(), itemView.getLink());
+      // Get models to use (default to SSD only)
+      const models = options.models || ['ssd'];
+      const minConfidence = options.minConfidence || 0.5;
+      
+      // Detect faces
+      const faces = await service.detectFaces(imagePath, models, minConfidence);
+      
+      return {
+        success: true,
+        accession,
+        facesDetected: faces.length,
+        faces: faces.map(face => ({
+          descriptor: Array.from(face.descriptor), // Convert Float32Array to regular array for IPC
+          region: face.region,
+          confidence: face.confidence
+        }))
+      };
+    } catch (error) {
+      console.error('Face detection error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  // Get face detection status
+  ipcMain.handle('face-detection:status', async () => {
+    if (!faceDetectionService) {
+      return {
+        initialized: false,
+        modelsLoaded: false
+      };
+    }
+    return {
+      initialized: true,
+      ...faceDetectionService.getStatus()
+    };
+  });
+
+  // Get available detection models
+  ipcMain.handle('face-detection:get-models', async () => {
+    try {
+      const service = await initFaceDetection();
+      return {
+        success: true,
+        models: service.getAvailableModels()
+      };
+    } catch (error) {
+      console.error('Error getting face detection models:', error);
+      return {
+        success: false,
+        error: error.message,
+        models: []
+      };
+    }
+  });
+
+  // Match detected faces to persons already listed in this photo
+  ipcMain.handle('face-detection:match', async (event, accession, detectedFaces) => {
+    try {
+      verifyAccessions();
+      
+      if (!detectedFaces || detectedFaces.length === 0) {
+        return { success: true, matches: [], unmatchedFaces: [] };
+      }
+      
+      const itemView = accessionClass.getItemView(accession);
+      if (!itemView) {
+        throw new Error(`Item not found: ${accession}`);
+      }
+      
+      const item = itemView.itemJSON;
+      const itemPersons = item.person || [];
+      
+      if (itemPersons.length === 0) {
+        // No persons in item, all faces are unmatched
+        return { 
+          success: true, 
+          matches: [], 
+          unmatchedFaces: detectedFaces.map((face, index) => ({
+            faceIndex: index,
+            region: face.region,
+            confidence: face.confidence
+          }))
+        };
+      }
+      
+      // MATCH_THRESHOLD explanation:
+      // - 0.6 is industry standard for matching SAME PERSON across DIFFERENT PHOTOS
+      // - For re-detecting SAME IMAGE with SAME MODEL, expect distance ≈ 0.0 (perfect match)
+      // - Use stricter threshold (0.05) to avoid false positives from descriptor drift
+      const CROSS_PHOTO_THRESHOLD = 0.6;  // For different photos of same person
+      const SAME_IMAGE_THRESHOLD = 0.05;  // For re-detecting same image (expect ~0.0)
+      
+      // Auto-match only if confidence > 90% (distance < 0.05)
+      // This prevents questionable matches from being auto-assigned
+      const MATCH_THRESHOLD = SAME_IMAGE_THRESHOLD;
+      
+      const matches = [];
+      const unmatchedFaces = [];
+      
+      // Try to match each detected face to persons in THIS item only
+      for (let faceIndex = 0; faceIndex < detectedFaces.length; faceIndex++) {
+        const face = detectedFaces[faceIndex];
+        let bestMatch = null;
+        let bestDistance = Infinity;
+        // Convert descriptor array back to Float32Array for comparison
+        const faceDescriptor = new Float32Array(face.descriptor);
+
+        // Track which persons have already been matched
+        const alreadyMatchedPersonIndices = matches.map(m => m.personIndex);
+
+        // Check each person in the item for stored face descriptors in faceBioData
+        for (let personIndex = 0; personIndex < itemPersons.length; personIndex++) {
+          // Skip if this person has already been matched to a face
+          if (alreadyMatchedPersonIndices.includes(personIndex)) continue;
+          const personRef = itemPersons[personIndex];
+          
+          // Get person from library to check faceBioData
+          if (!personRef.personID) continue;
+          const person = accessionClass.getPerson(personRef.personID);
+          if (!person || !person.faceBioData) continue;
+          
+          // Find descriptor for current link with matching model
+          const faceModel = face.model || 'ssd';
+          const descriptor = person.faceBioData.find(d => 
+            d.link === item.link && d.model === faceModel
+          );
+          if (!descriptor || !descriptor.descriptor) continue;
+          
+          const storedDescriptor = new Float32Array(descriptor.descriptor);
+          const distance = faceDetectionService.euclideanDistance(
+            faceDescriptor,
+            storedDescriptor
+          );
+          
+          const personName = `${person.first || ''} ${person.last?.[0]?.last || ''}`.trim();
+          // Calculate confidence using cross-photo threshold (0.6) for display consistency
+          const confidence = Math.round((1 - (distance / CROSS_PHOTO_THRESHOLD)) * 100);
+          
+          if (distance < bestDistance && distance < MATCH_THRESHOLD) {
+            bestDistance = distance;
+            bestMatch = {
+              personIndex,
+              personID: personRef.personID,
+              distance,
+              confidence: 1 - (distance / CROSS_PHOTO_THRESHOLD)  // Use 0.6 for display
+            };
+          }
+        }
+
+        if (bestMatch) {
+          matches.push({
+            faceIndex,
+            ...bestMatch,
+            region: face.region
+          });
+        } else {
+          unmatchedFaces.push({
+            faceIndex,
+            region: face.region,
+            confidence: face.confidence
+            // Don't include descriptor - renderer already has it in detectedFaces
+          });
+        }
+      }
+      
+      return {
+        success: true,
+        matches,
+        unmatchedFaces
+      };
+    } catch (error) {
+      console.error('Face matching error:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+
+
 }; // createWindow
+
+// ===== Application Lifecycle Events =====
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -316,400 +583,673 @@ app.on('activate', () => {
   }
 }); // app.on('activate')
 
-function createMenu() {
-  const template = [
-    {
-      label: '&File',
-      submenu: [
-        {
-          label: 'Choose &Accessions.json file',
-          click: chooseAccessionsPath
-        },
-        (showCollection ? {
-          label: 'E&xport Collection',
-          click: buildCollection
-        }
-          : { type: 'separator' }),
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    },
-    {
-      label: '&Edit',
-      submenu: [
-        {
-          label: 'Edit &Media',
-          click: createAddMediaWindowShim
-        },
-        {
-          label: 'C&reate Collection',
-          click: createCollectionWindow
-        },
-        {
-          label: 'De&lete Collection',
-          click: deleteCollectionWindow
-        }
-      ]
-    },
-    {
-      label: '&View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' }
-      ]
-    },
-    {
-      label: '&Window',
-      submenu: [
-        {
-          label: 'Family &Tree',
-          click: createTreeWindow
-        }
-      ]
-    },
-    {
-      label: '&Help',
-      submenu: [
-        {
-          label: '&Info',
-          click: createHelpWindow
-        },
-        { role: 'about' }
-      ]
+// ===== Menu Creation Functions =====
+
+async function validateDatabase() {
+  try {
+    verifyAccessions();
+    const logInfo = await accessionClass.validateArchive();
+    
+    const message = `Archive validation complete!\n\n` +
+      `Errors: ${logInfo.errorCount}\n` +
+      `Warnings: ${logInfo.warningCount}\n` +
+      (logInfo.orphanedDescriptorCount > 0 ? `Orphaned Face Descriptors: ${logInfo.orphanedDescriptorCount}\n` : '') +
+      `\nLog file saved to:\n${logInfo.filename}`;
+    
+    // Build buttons array - include cleanup button only if orphans exist
+    const buttons = ['OK', 'Open Log File'];
+    if (logInfo.orphanedDescriptorCount > 0) {
+      buttons.push('Cleanup Orphaned Descriptors');
     }
-  ];
-  return Menu.buildFromTemplate(template);
+    
+    const response = await dialog.showMessageBox(mainWindow, {
+      type: logInfo.errorCount === 0 ? 'info' : 'warning',
+      title: 'Archive Validation',
+      message: message,
+      buttons: buttons
+    });
+    
+    if (response.response === 1) {
+      // Open Log File
+      shell.openPath(logInfo.path);
+    } else if (response.response === 2 && logInfo.orphanedDescriptorCount > 0) {
+      // Cleanup Orphaned Descriptors
+      await cleanupOrphanedDescriptors();
+    }
+  } catch (error) {
+    console.error('Validation error:', error);
+    dialog.showErrorBox('Validation Error', `Failed to validate archive: ${error.message}`);
+  }
+} // validateDatabase
+
+async function cleanupOrphanedDescriptors() {
+  try {
+    verifyAccessions();
+    
+    // Backup archive before cleanup
+    const backupResult = accessionClass.backupAccessions();
+    if (!backupResult.success) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Backup Failed',
+        message: 'Cannot proceed with cleanup',
+        detail: `Failed to backup archive: ${backupResult.error}\n\nOperation aborted to protect data integrity.`,
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    const result = accessionClass.cleanupOrphanedDescriptors();
+    
+    const message = result.totalRemoved > 0
+      ? `Successfully removed ${result.totalRemoved} orphaned face descriptor(s).`
+      : `No orphaned face descriptors found to cleanup.`;
+    
+    const detail = result.totalRemoved > 0
+      ? `These were face detection data entries that no longer matched any items or person assignments.`
+      : undefined;
+    
+    await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Cleanup Complete',
+      message: message,
+      detail: detail,
+      buttons: ['OK']
+    });
+    
+    // Optionally re-run validation to confirm cleanup
+    if (result.totalRemoved > 0) {
+      const revalidate = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: 'Re-run Validation?',
+        message: 'Would you like to re-run validation to confirm the orphaned descriptors were removed?',
+        buttons: ['Yes', 'No'],
+        defaultId: 0
+      });
+      
+      if (revalidate.response === 0) {
+        await validateDatabase();
+      }
+    }
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    dialog.showErrorBox('Cleanup Error', `Failed to cleanup orphaned descriptors: ${error.message}`);
+  }
+} // cleanupOrphanedDescriptors
+
+async function validateCollection() {
+  try {
+    verifyAccessions();
+    
+    // Get the currently selected collection from UI
+    const selectedCollectionKey = nconf.get('controls:selectedCollection');
+    
+    if (!selectedCollectionKey) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'No Collection Selected',
+        message: 'Please select a collection from the dropdown to validate.',
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    // Validate the collection using encapsulated method
+    const { results, logInfo, collectionText } = await accessionClass.collections.validateCollection(selectedCollectionKey, accessionClass);
+    
+    // Show dialog with results
+    const message = results.errorCount === 0 && results.warningCount === 0
+      ? `Collection "${collectionText}" validation complete!\n\nNo errors or warnings found.\n\nLog file: ${logInfo.filename}`
+      : `Collection "${collectionText}" validation complete!\n\nErrors: ${results.errorCount}\nWarnings: ${results.warningCount}\n\nLog file: ${logInfo.filename}`;
+    
+    const buttons = results.errorCount === 0 && results.warningCount === 0
+      ? ['OK']
+      : ['Open Log File', 'Close'];
+    
+    const dialogResponse = await dialog.showMessageBox(mainWindow, {
+      type: results.errorCount > 0 ? 'warning' : 'info',
+      title: 'Collection Validation Complete',
+      message: message,
+      buttons: buttons,
+      defaultId: 0
+    });
+    
+    // If user clicked "Open Log File"
+    if (dialogResponse.response === 0 && buttons.length > 1) {
+      await shell.openPath(logInfo.path);
+    }
+    
+  } catch (error) {
+    console.error('Failed to validate collection:', error);
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Validation Error',
+      message: `Failed to validate collection: ${error.message}`,
+      buttons: ['OK']
+    });
+  }
+} // validateCollection
+
+// ===== Backup Functions =====
+
+/**
+ * Backup the archive (accessions.json) file
+ * Creates a timestamped copy without .json extension to prevent ingestion
+ */
+async function backupArchive() {
+  try {
+    verifyAccessions();
+    
+    const result = accessionClass.backupAccessions();
+    
+    if (result.success) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Archive Backup Complete',
+        message: `Archive successfully backed up!`,
+        detail: `Backup file: ${result.backupFilename}`,
+        buttons: ['OK']
+      });
+    } else {
+      dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Backup Error',
+        message: `Failed to backup archive: ${result.error}`,
+        buttons: ['OK']
+      });
+    }
+  } catch (error) {
+    console.error('Failed to backup archive:', error);
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Backup Error',
+      message: `Failed to backup archive: ${error.message}`,
+      buttons: ['OK']
+    });
+  }
+} // backupArchive
+
+/**
+ * Backup all collections
+ * Creates timestamped copies without .json extension for each collection
+ */
+async function backupAllCollections() {
+  try {
+    verifyAccessions();
+    
+    const result = accessionClass.collections.backupAllCollections();
+    
+    if (result.success) {
+      const fileList = result.backedUpFiles.join('\n');
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Collections Backup Complete',
+        message: `Successfully backed up ${result.backedUpFiles.length} collection(s)!`,
+        detail: fileList,
+        buttons: ['OK']
+      });
+    } else {
+      dialog.showMessageBox(mainWindow, {
+        type: result.error === 'No collections to backup' ? 'info' : 'warning',
+        title: result.error === 'No collections to backup' ? 'No Collections' : 'Backup Failed',
+        message: result.error || 'Failed to backup collections.',
+        buttons: ['OK']
+      });
+    }
+  } catch (error) {
+    console.error('Failed to backup collections:', error);
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Backup Error',
+      message: `Failed to backup collections: ${error.message}`,
+      buttons: ['OK']
+    });
+  }
+} // backupAllCollections
+
+/**
+ * Create maintenance collections for items missing critical data
+ * Creates _nolocation.json, _nopersons.json, _nosource.json, _nodescription.json
+ */
+async function createMaintenanceCollections() {
+  try {
+    verifyAccessions();
+    
+    // Delegate to AccessionClass to check for existing maintenance collections
+    const existingCollections = accessionClass.getExistingMaintenanceCollections();
+    
+    if (existingCollections.length > 0) {
+      const response = dialog.showMessageBoxSync(mainWindow, {
+        type: 'warning',
+        title: 'Replace Existing Collections',
+        message: 'This will replace existing maintenance collections. Continue?',
+        detail: `The following collections will be replaced:\n${existingCollections.map(c => `${c.key}.json (${c.text})`).join('\n')}`,
+        buttons: ['Continue', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1
+      });
+      
+      if (response === 1) {
+        return; // User cancelled
+      }
+    }
+    
+    // Delegate to AccessionClass
+    const result = accessionClass.createMaintenanceCollections();
+    
+    // Refresh main window to show new collections in dropdown
+    if (result.created.length > 0) {
+      mainWindow.webContents.send('items:render', JSON.stringify({ reload: true, preserveSort: true }));
+    }
+    
+    // Show summary
+    if (result.created.length > 0) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Maintenance Collections Created',
+        message: `Created ${result.created.length} maintenance collection(s):`,
+        detail: result.created.join('\n'),
+        buttons: ['OK']
+      });
+    } else {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'No Issues Found',
+        message: 'All items have complete data. No maintenance collections needed.',
+        buttons: ['OK']
+      });
+    }
+  } catch (error) {
+    console.error('Failed to create maintenance collections:', error);
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Error Creating Collections',
+      message: `Failed to create maintenance collections: ${error.message}`,
+      buttons: ['OK']
+    });
+  }
+} // createMaintenanceCollections
+
+/**
+ * Update collection metadata (text and title only)
+ * Opens dialog to edit collection display name and full title
+ */
+async function updateCollectionMetadata() {
+  try {
+    verifyAccessions();
+    
+    // Get all collections
+    const collections = accessionClass.collections.collections;
+    
+    if (collections.length === 0) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'No Collections',
+        message: 'No collections available to update.',
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    // For now, use the currently selected collection from dropdown
+    const selectedKey = nconf.get('controls:selectedCollection');
+    
+    if (!selectedKey) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'No Collection Selected',
+        message: 'Please select a collection from the dropdown at the bottom of the main window first.',
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    const selectedCollection = accessionClass.collections.getCollection(selectedKey);
+    
+    if (!selectedCollection) {
+      throw new Error(`Collection not found: ${selectedKey}`);
+    }
+    
+    // Show current values (placeholder for full editor)
+    const currentText = selectedCollection.text || selectedCollection.key;
+    const currentTitle = selectedCollection.title || selectedCollection.key;
+    
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Collection Metadata',
+      message: `Collection: ${selectedCollection.key}`,
+      detail: `Current Text: ${currentText}\nCurrent Title: ${currentTitle}\n\nFull editor dialog coming soon...\n\n(Key "${selectedCollection.key}" cannot be changed - it's the filename)`,
+      buttons: ['OK']
+    });
+    
+  } catch (error) {
+    console.error('Failed to update collection metadata:', error);
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Error',
+      message: `Failed to update collection metadata: ${error.message}`,
+      buttons: ['OK']
+    });
+  }
+} // updateCollectionMetadata
+
+/**
+ * Add items from another collection to the target collection (union operation)
+ * Opens a Vue window for the operation
+ */
+function addItemsFromCollection() {
+  const targetKey = nconf.get('controls:selectedCollection');
+  if (!targetKey) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'No Target Collection',
+      message: 'Please select a collection from the dropdown first.',
+      buttons: ['OK']
+    });
+    return;
+  }
+  
+  windowManager.createCollectionSetOperationsWindow(
+    'add',
+    targetKey,
+    windowRefs.collectionSetOperations,
+    nconf
+  );
+}
+
+/**
+ * Remove items (in another collection) from target (difference operation)
+ * Opens a Vue window for the operation
+ */
+function removeItemsFromCollection() {
+  const targetKey = nconf.get('controls:selectedCollection');
+  if (!targetKey) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'No Target Collection',
+      message: 'Please select a collection from the dropdown first.',
+      buttons: ['OK']
+    });
+    return;
+  }
+  
+  windowManager.createCollectionSetOperationsWindow(
+    'remove',
+    targetKey,
+    windowRefs.collectionSetOperations,
+    nconf
+  );
+}
+
+/**
+ * Keep only items in both collections (intersection operation)
+ * Opens a Vue window for the operation
+ */
+function intersectWithCollection() {
+  const targetKey = nconf.get('controls:selectedCollection');
+  if (!targetKey) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'No Target Collection',
+      message: 'Please select a collection from the dropdown first.',
+      buttons: ['OK']
+    });
+    return;
+  }
+  
+  windowManager.createCollectionSetOperationsWindow(
+    'intersect',
+    targetKey,
+    windowRefs.collectionSetOperations,
+    nconf
+  );
+}
+
+/**
+ * Add all archive items to the target collection
+ * Opens a Vue window for the operation
+ */
+function addAllItemsToCollection() {
+  const targetKey = nconf.get('controls:selectedCollection');
+  if (!targetKey) {
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'No Target Collection',
+      message: 'Please select a collection from the dropdown first.',
+      buttons: ['OK']
+    });
+    return;
+  }
+  
+  windowManager.createCollectionSetOperationsWindow(
+    'addAll',
+    targetKey,
+    windowRefs.collectionSetOperations,
+    nconf
+  );
+}
+
+function createMenu() {
+  return createMainMenu({
+    showCollection: showCollectionRef.value,
+    chooseAccessionsPath,
+    buildCollection,
+    createCreateAccessionsWindow,
+    createUpdateCollectionWindow,
+    createPersonManagerWindow,
+    createCollectionManagerWindow,
+    createTreeWindow,
+    validateDatabase,
+    validateCollection,
+    showAbout,
+    backupArchive,
+    backupAllCollections,
+    createMaintenanceCollections,
+    updateCollectionMetadata,
+    addItemsFromCollection,
+    removeItemsFromCollection,
+    intersectWithCollection,
+    addAllItemsToCollection,
+    createBulkEditItemsWindow: createUpdateCollectionWindow // Alias for now
+  });
 } // createMenu
 
 function createMinMenu() {
-  const template = [
-    {
-    label: '&File',
-    submenu: [
-      { role: 'close' }
-    ]},
-    {
-      label: '&Window',
-      submenu: [
-        {
-          label: 'Family &Tree',
-          click: createTreeWindow
-        }
-      ]
-    }
-  ];
-  return Menu.buildFromTemplate(template);
+  return createMinimalMenu({
+    createTreeWindow
+  });
 } // createMinMenu
 
-function hmsToSeconds(hms) {
-  let a = hms.split(':')
-  return parseInt(a[0]) * 3600 + parseInt(a[1]) * 60 + parseInt(a[2])
-}
+// ===== File Selection =====
 
 function chooseAccessionsPath() {
-  dialog.showOpenDialog(mainWindow, {
-    filters: [{ name: 'json', extensions: 'json' }],
-    title: 'Select accessions.json file with "audio", "video", "photo" folders in the same folder.',
-    defaultPath: nconf.get('db.accessionsPath'),
-    properties: ['openFile']
-  }).then(mediaDirectory => {
-    if (!mediaDirectory.canceled) {
-      resetAccessions(mediaDirectory.filePaths[0]);
-    }
-  }).catch((e) => {
-    console.error('error in showOpenDialog: ', e);
-  });
-} // chooseAccessionsPath
+  windowManager.chooseAccessionsPath(dialog, mainWindow, resetAccessions, nconf);
+}
+
+// ===== Window Creation Functions =====
+// These are thin wrappers that delegate to windowManager module
 
 function createMediaWindow(mediaInfo) {
-  if (!mediaWindow) {
-    mediaWindow = newWindow('mediaPlayer', '../render/js/mediaPreload.js', false, false);
-    // mediaWindow.setMenu(createMinMenu(mediaWindow));
-    mediaWindow.loadFile(path.resolve(__dirname + '/../render/html/media.html'));
-    mediaWindow.once('ready-to-show', () => {
-      mediaWindow.show()
-      mediaWindow.send('mediaDisplay', mediaInfo)
-    })
-    mediaWindow.webContents.on('destroyed', () => {
-      mediaWindow = null;
-    })
-    mediaWindow.on('close', (e) => {
-      if (mediaWindow) {
-        saveWindowState(mediaWindow, 'mediaPlayer');
-      }
-    })
-  } else {
-    // On Mac this may cause an unwanted focus change to the media window
-    // if (!mediaWindow.isVisible() || !mediaWindow.isFocused()) {
-    //  mediaWindow.show();
-    // }
-    mediaWindow.send('mediaDisplay', mediaInfo)
-  }
+  windowManager.createMediaWindow(mediaInfo, windowRefs.media, nconf);
 } // createMediaWindow
 
-function createAddMediaWindowShim(/* menu */) {
-  createAddMediaWindow() // because the menu call parameter is the menu itself and breaks the call
-} // createAddMediaWindowShim
-function createAddMediaWindow(mediaInfo) {
-  if (!addMediaWindow) {
-    addMediaWindow = newWindow('addMedia', '../render/js/addmediaPreload.js', mainWindow, false);
-    // addMediaWindow.setMenu(createMinMenu(addMediaWindow));
-    addMediaWindow.loadFile(path.resolve(__dirname + '/../render/html/addmedia.html'));
-    addMediaWindow.once('ready-to-show', () => {
-      // mediaInfo is a stringified JSON object simulating a request to edit an accession
-      // usually the result of a click on the edit media button 
-      if (mediaInfo) {
-        showAddMediaDialog(mediaInfo)
-      }
-      addMediaWindow.show();
-    });
+function createPersonManagerWindow() {
+  windowManager.createPersonManagerWindow(windowRefs.personManager, nconf);
+}
 
-    addMediaWindow.on('closed', () => {
-      addMediaWindow = null;
-    });
+function createCreateAccessionsWindow() {
+  windowManager.createCreateAccessionsWindow(windowRefs.createAccessions, nconf);
+}
 
-    addMediaWindow.webContents.on('destroyed', () => {
-      addMediaWindow = null;
-    });
-    addMediaWindow.on('close', (e) => {
-      if (addMediaWindow) {
-        saveWindowState(addMediaWindow, 'addMedia');
-      }
-    });
-  } else {
-    console.error('AddMediaWindow is already open!!');
-  }
-} // createAddMediaWindow
+function createMediaManagerWindow(identifier) {
+  windowManager.createMediaManagerWindow(identifier, windowRefs.mediaManager, nconf);
+}
 
-function createCollectionWindow() {
-  editCollectionWindowType = 'create';
-  createEditCollectionWindow();
-} // createCollectionWindow
-function deleteCollectionWindow() {
-  editCollectionWindowType = 'delete';
-  createEditCollectionWindow();
-} // deleteCollectionWindow
-function createEditCollectionWindow() {
-  if (!editCollectionWindow) {
-    editCollectionWindow = newWindow('editCollection', '../render/js/editCollectionPreload.js', mainWindow, false)
-    // editCollectionWindow.setMenu(createMinMenu(editCollectionWindow));
-    editCollectionWindow.loadFile(path.resolve(__dirname + '/../render/html/editCollection.html'));
-    editCollectionWindow.once('ready-to-show', () => {
-      editCollectionWindow.show();
-    });
+function createUpdateCollectionWindow() {
+  windowManager.createUpdateCollectionWindow(windowRefs.updateCollection, nconf);
+}
 
-    editCollectionWindow.on('closed', () => {
-      editCollectionWindow = null;
-    });
+function createCollectionManagerWindow(mode) {
+  windowManager.createCollectionManagerWindow(mode, windowRefs.collectionManager, collectionManagerModeRef, nconf);
+}
 
-    editCollectionWindow.webContents.on('destroyed', () => {
-      editCollectionWindow = null;
-    });
-    editCollectionWindow.on('close', (e) => {
-      if (editCollectionWindow) {
-        saveWindowState(editCollectionWindow, 'editCollection');
-      }
-    });
-  } else {
-    console.error('editCollectionWindow is already open!!');
-  }
-} // createEditCollectionWindow
-
-function saveWindowState(window, confname) {
-  const windowBounds = window.getBounds();
-
-  nconf.set(`ui:${confname}:width`,  windowBounds.width);
-  nconf.set(`ui:${confname}:height`, windowBounds.height);
-  nconf.set(`ui:${confname}:x`,      windowBounds.x);
-  nconf.set(`ui:${confname}:y`,      windowBounds.y);
-
-  let allDisplays = electron.screen.getAllDisplays();
-  const currentDisplay = allDisplays.findIndex(display => {
-    return windowBounds.x >= display.bounds.x &&
-      windowBounds.x < display.bounds.x + display.bounds.width &&
-      windowBounds.y >= display.bounds.y &&
-      windowBounds.y < display.bounds.y + display.bounds.height;
-  });
-
-  nconf.set(`ui:${confname}:display`, currentDisplay);
-  nconf.save('user');
-} // saveWindowState
-
-function newWindow(confname, preload, parentWindow, show) {
-  let displayIndex = nconf.get('ui:addMedia:display');
-  let allDisplays = electron.screen.getAllDisplays();
-  let targetDisplay = allDisplays[displayIndex] || electron.screen.getPrimaryDisplay();
-  let modalValue = parentWindow ? true : false;
-
-  let windowBounds = {
-    x: nconf.get(`ui:${confname}:x`) || targetDisplay.bounds.x,
-    y: nconf.get(`ui:${confname}:y`) || targetDisplay.bounds.y,
-    width: nconf.get(`ui:${confname}:width` || 400),
-    height: nconf.get(`ui:${confname}:height` || 300)
-  };
-
-  const win = new BrowserWindow(
-    {
-      ...windowBounds,
-      autoHideMenuBar: true,
-      show: show,
-      parent: parentWindow ? mainWindow : null,
-      modal: modalValue,
-      webPreferences: {
-        webtools: true,
-        preload: path.resolve(__dirname, preload),
-        nodeIntegration: false,
-        contextIsolation: true
-      }
-    }
-  );
-  // See https://github.com/electron/electron/issues/10388 for why this adjustment is needed.
-  // If that bug is ever fixed, this code can be removed.
-  win.once('move', () => {
-    const windowBoundsShow = win.getBounds();
-    const titleBarHeight = windowBoundsShow.y - windowBounds.y;
-    const newY = windowBoundsShow.y - titleBarHeight - titleBarHeight;
-    win.setPosition(windowBoundsShow.x, newY);
-    // console.log('newWindow move ' + confname + ' newY=' + newY + ' winBy=' + windowBounds.y + ' y=' + windowBoundsShow.y + ' tbh=' + titleBarHeight);
-  });
-  return win;
-} // newWindowParameters
+// ===== Utility Functions =====
+// Wrappers around helper functions to maintain current API
 
 // After changing the accessions file, the main window and views need to be reloaded
 function resetAccessions(baseDirectory) {
-  // a new baseDirectory means we save any changes and reset the accessionsPath
-  if (baseDirectory) {
-    if (accessionClass) {
-      accessionClass.saveAccessions(); // persist the current accessions
-      accessionClass = undefined;
-    }
-    nconf.set('db:accessionsPath', baseDirectory); // save the new accessionsPath
+  // Wrapper to maintain current API
+  const saveConfig = (path) => {
+    nconf.set('db:accessionsPath', path);
     nconf.save('user');
-  } // else we just reload all views
-  mediaWindow?.close();
-  mainWindow.reload();
+  };
+  const state = { accessionClass, AccessionClass };
+  resetAccessionsHelper(state, mainWindow, windowRefs, saveConfig, baseDirectory);
+  accessionClass = state.accessionClass; // Update global reference
 } // resetAccessions
 
 // When accessionClass is not defined, create a new instance
 function verifyAccessions() {
-  if (!accessionClass) {
-    accessionClass = new AccessionClass(nconf.get('db:accessionsPath'));
-  }
+  const state = { accessionClass, AccessionClass };
+  const result = verifyAccessionsHelper(state, nconf.get('db:accessionsPath'));
+  accessionClass = result; // Update global reference
+  return result;
 } // verifyAccessions
 
-function showAddMediaDialog(queryType) {
-  let queryObject = JSON.parse(queryType);
-  let response = {};
-  response.selectQuery = queryObject.type; // reflect the query type in the response
-  switch (queryObject.type) {
-    case 'directory':
-      // On Linux the dialog is not modal causing several problems
-      dialog.showOpenDialog(addMediaWindow, {
-        properties: ['openDirectory'],
-        defaultPath: queryObject.directory
-      }).then((result) => {
-        if (!result.canceled) {
-          response.value = result.filePaths[0];
-          response.text = "Add Directory Media";
-          addMediaWindow.send('showDirectory', JSON.stringify(response));
-        }
-      });
-      break;
-    case 'collection':
-      verifyAccessions();
-      let collection = accessionClass.getCollections()
-        .find((collection) => collection.value === queryObject.directory);
-      if (collection) {
-        response.value = collection.value;
-        response.text = collection.text;
-      } else {
-        response.value = queryObject.directory;
-        response.text = 'Unknown Collection';
-      }
-      addMediaWindow.send('showDirectory', JSON.stringify(response));
-      break;
-    case 'accession':
-      // This is similar to getting the detail of an item above
-      verifyAccessions();
-      let itemView = accessionClass.getItemView(queryObject.directory);
-      if (itemView) {
-        response = { ...response, ...itemView.getFormJSON() };
-        response.value = queryObject.directory;
-        response.text = 'Update One Accession';
-        addMediaWindow.send('showDirectory', JSON.stringify(response));
-      };
-      break;
-    default:
-      console.error('AddMedia.showDialog Unknown queryType: ' + queryObject.type);
-  }
-} // showAddMediaDialog
-
 async function buildCollection() {
-  let selectedCollection = nconf.get('controls:selectedCollection')
-  const sourceDir = path.dirname(nconf.get('db:accessionsPath'))
-  let collectionDir = path.resolve(sourceDir, '../', selectedCollection)
-  // Getting information for a directory
-  fs.stat(collectionDir, (error, stats) => {
-    if (error) {
-      if (error.code === 'ENOENT') {
-        console.log(`Creating Directory ${collectionDir} for collection ${selectedCollection}.`)
-        fs.mkdirSync(collectionDir)
-      } else {
-        console.error('buildCollection Directory error ' + error);
-        return
-      }
-    } else {
-      if (!stats.isDirectory()) {
-        console.error(`${collectionDir} is not a directory!!!`)
-        return
-      }
+  try {
+    const selectedCollection = nconf.get('controls:selectedCollection');
+    
+    if (!selectedCollection) {
+      dialog.showMessageBoxSync(mainWindow, {
+        type: 'warning',
+        title: 'No Collection Selected',
+        message: 'Please select a collection first',
+        buttons: ['OK']
+      });
+      return;
     }
-    let commandsPath = path.resolve(collectionDir, 'commands')
+    
     verifyAccessions();
+    const collection = accessionClass.collections.getCollection(selectedCollection);
+    
+    if (!collection) {
+      dialog.showMessageBoxSync(mainWindow, {
+        type: 'error',
+        title: 'Collection Not Found',
+        message: `Collection "${selectedCollection}" was not found`,
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    // Ask if user wants to validate collection first
+    const validateResponse = dialog.showMessageBoxSync(mainWindow, {
+      type: 'question',
+      title: 'Validate Collection?',
+      message: `Export collection "${collection.text}"?`,
+      detail: `This will create a new directory with:\n• accessions.json (items and persons)\n• commands file (to copy media files)\n\nWould you like to validate the collection first to check for missing items?`,
+      buttons: ['Validate First', 'Export Without Validation', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2
+    });
+    
+    if (validateResponse === 2) {
+      return; // User cancelled
+    }
+    
+    // If user chose to validate first
+    if (validateResponse === 0) {
+      try {
+        const validationResults = await accessionClass.collections.validateCollection(selectedCollection, accessionClass);
+        
+        if (validationResults.results.errorCount > 0 || validationResults.results.warningCount > 0) {
+          const continueResponse = dialog.showMessageBoxSync(mainWindow, {
+            type: 'warning',
+            title: 'Collection Has Issues',
+            message: `Collection "${collection.text}" has validation issues`,
+            detail: `Errors: ${validationResults.results.errorCount}\n` +
+                    `Warnings: ${validationResults.results.warningCount}\n\n` +
+                    `A detailed log has been saved to:\n${validationResults.logInfo.logPath}\n\n` +
+                    `Do you want to continue with the export?`,
+            buttons: ['Continue Export', 'Cancel'],
+            defaultId: 1,
+            cancelId: 1
+          });
+          
+          if (continueResponse === 1) {
+            return; // User cancelled
+          }
+        } else {
+          dialog.showMessageBoxSync(mainWindow, {
+            type: 'info',
+            title: 'Validation Passed',
+            message: `Collection is valid! Proceeding with export...`,
+            buttons: ['OK']
+          });
+        }
+      } catch (validationError) {
+        dialog.showMessageBoxSync(mainWindow, {
+          type: 'error',
+          title: 'Validation Error',
+          message: `Failed to validate collection: ${validationError.message}`,
+          buttons: ['OK']
+        });
+        return;
+      }
+    }
+    
+    // Perform the export
     try {
-      let commandsFile = accessionClass.getCommands(sourceDir, collectionDir, selectedCollection)
-      fs.writeFileSync(commandsPath, commandsFile.split("\r\n").join("\n"))
-      console.log(`Created ${commandsPath}`)
+      const result = buildCollectionHelper(accessionClass, selectedCollection, nconf.get('db:accessionsPath'));
+      
+      // Show success message (buildCollectionHelper runs async, so we show generic success)
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Export Started',
+        message: `Collection export initiated`,
+        detail: `Creating export for "${collection.text}"...\n\nCheck the terminal/console for completion status.`,
+        buttons: ['OK']
+      });
+      
+    } catch (exportError) {
+      dialog.showMessageBoxSync(mainWindow, {
+        type: 'error',
+        title: 'Export Failed',
+        message: `Failed to export collection: ${exportError.message}`,
+        detail: exportError.stack || '',
+        buttons: ['OK']
+      });
     }
-    catch (error) {
-      console.error('error creating commands - error - ' + error)
-    }
-    let accessionsPath = path.resolve(collectionDir, 'accessions.json')
-    try {
-      let accessionsFile = accessionClass.getAccessions(selectedCollection)
-      fs.writeFileSync(accessionsPath, JSON.stringify(accessionsFile));
-      console.log(`Created ${accessionsPath}`)
-    }
-    catch (error) {
-      console.error('error creating accessions.json - error - ' + error)
-    }
-  });
+  } catch (error) {
+    console.error('buildCollection error:', error);
+    dialog.showMessageBoxSync(mainWindow, {
+      type: 'error',
+      title: 'Error',
+      message: `An unexpected error occurred: ${error.message}`,
+      buttons: ['OK']
+    });
+  }
 } // buildCollection
 
-function createHelpWindow() {
-  if (!helpWindow) {
-    helpWindow = new BrowserWindow({
-      width: 800,
-      height: 600,
-      autoHideMenuBar: true,
-    });
-    helpWindow.setMenu(createMinMenu(helpWindow));
-    helpWindow.loadFile(path.resolve(__dirname + '/../render/html/help.html'));
-    helpWindow.webContents.on('destroyed', () => {
-      helpWindow = null;
-    });
-  } else {
-    if (!helpWindow.isVisible() || !helpWindow.isFocused()) {
-      helpWindow.show();
-    }
-  }
-} // createHelpWindow
+// ===== About Dialog =====
+
+function showAbout() {
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: 'About Shoebox',
+    message: `Shoebox v${APP_VERSION}`,
+    detail: `A multimedia genealogy archive browser\n\n` +
+            `Copyright © 2001-2026 Marvin E Budd\n` +
+            `License: MIT\n\n` +
+            `Documentation: https://marvbudd.github.io/shoebox/\n` +
+            `GitHub: https://github.com/Marvbudd/shoebox\n\n` +
+            `Built with Electron ${process.versions.electron}`,
+    buttons: ['OK']
+  });
+}
+
+// ===== Tree Window =====
 
 // create a window to display the family tree website from SecondSite
 function createTreeWindow() {
