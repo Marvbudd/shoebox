@@ -31,8 +31,11 @@ jobs:
 
       - name: Install dependencies
         run: yarn install
+        env:
+          YARN_ENABLE_IMMUTABLE_INSTALLS: "false"
 
       - name: Build/release Electron app
         run: yarn run dist
         env:
+          YARN_ENABLE_IMMUTABLE_INSTALLS: "false"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
