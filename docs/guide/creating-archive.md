@@ -171,7 +171,7 @@ Once items are in your archive, you have better tools for detailed metadata:
 1. Select item in main window
 2. Click **Edit Media** button in the details pane
 3. Media Manager opens with full metadata editing:
-   - Add/remove multiple people with context (e.g., "holding baby")
+   - Add/remove multiple people with position info (e.g., "holding baby")
    - Add/remove multiple locations
    - Edit description, dates, sources
    - Assign face tags (if faces detected)
@@ -242,7 +242,7 @@ If you use The Master Genealogist or generate websites with Second Site, add TMG
 2. Click **Edit Media** button
 3. In Media Manager, click **+ Add Person**
 4. Select from dropdown or click 👤 to create new person
-5. Optionally add context (e.g., "holding baby", "in background")
+5. Optionally add position (e.g., "holding baby", "in background")
 6. Save changes
 
 ::: tip Face Detection

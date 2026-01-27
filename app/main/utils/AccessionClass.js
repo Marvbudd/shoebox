@@ -491,48 +491,6 @@ export class AccessionClass {
     }
   } // transformToHtml
 
-  getCommands(sourceDir, destDir, selectedCollection) {
-    let commandOutput = `
-    mkdir ${destDir}/audio
-    mkdir ${destDir}/photo
-    mkdir ${destDir}/video
-    `;
-    var sortedItems = '';
-    let collection = this.collections.getCollection(selectedCollection)
-    sortedItems = collection.getLinks().map(link => {
-      const itemView = this.getItemView(null, link);
-      return {
-        type: itemView.getType(),
-        link: itemView.getLink()
-      };
-    })
-      .sort((a, b) => {
-        if (a.type !== b.type) {
-          return a.type.localeCompare(b.type);
-        } else {
-          return a.link.localeCompare(b.link);
-        }
-      });
-    // Iterate over sorted items and build the command output
-    sortedItems.forEach(item => {
-      switch (item.type) {
-        case "photo":
-          commandOutput += `
-          ln ${sourceDir}/photo/${item.link} ${destDir}/photo`;
-          break;
-        case "audio":
-          commandOutput += `
-          ln ${sourceDir}/audio/${item.link} ${destDir}/audio`;
-          break;
-        case "video":
-          commandOutput += `
-          ln ${sourceDir}/video/${item.link} ${destDir}/video`;
-          break;
-      }
-    });
-    return commandOutput;
-  }  // getCommands
-
   getAccessions(selectedCollection) {
     let accessionsOutput = {persons: {}, accessions: {item: []}};
     var sortedItems = '';
@@ -546,25 +504,29 @@ export class AccessionClass {
     // Track unique person IDs referenced in the collection
     const referencedPersonIDs = new Set();
     
-    sortedItems = collection.getLinks().map(link => {
-      const itemView = this.getItemView(null, link);
-      if (!itemView) {
-        throw new Error(`Item with link "${link}" not found in archive`);
-      }
-      
-      // Collect person IDs from this item
-      if (itemView.itemJSON.person) {
-        itemView.itemJSON.person.forEach(personRef => {
-          if (personRef.personID) {
-            referencedPersonIDs.add(personRef.personID);
-          }
-        });
-      }
-      
-      return {
-        ...itemView.itemJSON
-      };
-    })
+    sortedItems = collection.getLinks()
+      .map(link => {
+        const itemView = this.getItemView(null, link);
+        if (!itemView) {
+          // Item not found - skip it (will be reported as error in media export)
+          console.warn(`Skipping missing item from accessions.json: ${link}`);
+          return null;
+        }
+        
+        // Collect person IDs from this item
+        if (itemView.itemJSON.person) {
+          itemView.itemJSON.person.forEach(personRef => {
+            if (personRef.personID) {
+              referencedPersonIDs.add(personRef.personID);
+            }
+          });
+        }
+        
+        return {
+          ...itemView.itemJSON
+        };
+      })
+      .filter(item => item !== null) // Remove null entries for missing items
       .sort((a, b) => {
         if (a.type !== b.type) {
           return a.type.localeCompare(b.type);

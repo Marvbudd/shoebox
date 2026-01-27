@@ -182,6 +182,15 @@ const saveMessage = ref(null);
 const isNewPerson = ref(false);
 const deleting = ref(false);
 
+const hasUnsavedChanges = () => {
+  if (!selectedPerson.value || !originalPerson.value) return false;
+  try {
+    return JSON.stringify(selectedPerson.value) !== JSON.stringify(originalPerson.value);
+  } catch (error) {
+    return false;
+  }
+};
+
 // Function to load all persons from backend
 const loadPersons = async () => {
   try {
@@ -189,7 +198,7 @@ const loadPersons = async () => {
     persons.value = allPersons;
     
     // If a person is currently selected, refresh their data
-    if (selectedPerson.value) {
+    if (selectedPerson.value && !hasUnsavedChanges()) {
       const refreshedPerson = allPersons.find(p => p.personID === selectedPerson.value.personID);
       if (refreshedPerson) {
         selectedPerson.value = refreshedPerson;
@@ -409,18 +418,7 @@ onMounted(async () => {
     }
   });
   
-  // Reload data when window gains focus (in case items were assigned elsewhere)
-  const handleFocus = async () => {
-    console.log('Person Manager window gained focus - refreshing data');
-    await loadPersons();
-  };
-  
-  window.addEventListener('focus', handleFocus);
-  
-  // Clean up event listener on unmount
-  onUnmounted(() => {
-    window.removeEventListener('focus', handleFocus);
-  });
+  // No focus-based refresh; rely on IPC events for updates
 });
 </script>
 

@@ -50,12 +50,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Collection Export
 - Collections > Export Collection - Exports collection with complete person library
+- **Cross-platform automatic media export** - works on Linux, macOS, and Windows
+  - Automatically creates symlinks (fastest, saves disk space)
+  - Falls back to hard links if symlinks not available
+  - Falls back to file copies if hard links not supported
+  - No manual command file execution required
 - Exported accessions.json includes persons referenced by items in the collection
 - Person faceBioData filtered to only include face descriptors for items within the collection
 - Optional validation workflow before export to check for missing items
-- Success/error dialogs with detailed feedback (item count, person count)
+- Success/error dialogs with detailed feedback (item count, person count, method used)
 - Comprehensive error handling with user-friendly error messages
-- Creates directory with accessions.json and commands file for copying media
+- Gracefully handles missing items by skipping and reporting them
 
 #### Validation
 - Collections > Validate Collection - Validates currently selected collection

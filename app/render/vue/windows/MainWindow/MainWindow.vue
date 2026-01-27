@@ -403,10 +403,10 @@ const setupDetailEventListeners = () => {
   const editMediaBtn = document.getElementById('editMedia');
   if (editMediaBtn) {
     editMediaBtn.addEventListener('click', async () => {
-      const accessionEl = document.getElementById('accession');
-      if (accessionEl) {
-        const accession = accessionEl.innerText;
-        await window.electronAPI.editItem(accession);
+      const linkEl = document.getElementById('link');
+      if (linkEl) {
+        const link = linkEl.innerText;
+        await window.electronAPI.editItem(link);
       }
     });
   }

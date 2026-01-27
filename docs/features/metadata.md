@@ -12,7 +12,7 @@ Link items to biographical person records:
 
 - **Person Manager**: Centralized biographical database
 - **Person Links**: Items are related to people, and Sources are people
-- **Context**: Add descriptive info for position in photo (e.g., "holding baby")
+- **Position**: Add descriptive info for position in photo (e.g., "holding baby")
 - **Face Detection**: AI-powered face tagging - tagging optional
 - **Audio/Video Descriptions**: Photo can be related to media by a playlist
 

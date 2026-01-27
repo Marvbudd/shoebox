@@ -3,6 +3,7 @@
  */
 
 import fs from 'fs';
+import fsPromises from 'fs/promises';
 import path from 'path';
 
 /**
@@ -112,67 +113,217 @@ export function resetAccessions(state, mainWindow, mediaWindow, saveConfig, base
 }
 
 /**
+ * Export collection media files to destination directory
+ * Uses cross-platform fallback strategy: symlinks → hard links → copy
+ * 
+ * Strategy:
+ * 1. Try symbolic links first (works on Linux/macOS, Windows 10+ with Developer Mode)
+ * 2. If symlink fails (EPERM), try hard links (works everywhere on same filesystem)
+ * 3. If hard link fails, fall back to copying files
+ * 
+ * @param {Object} accessionClass - AccessionClass instance
+ * @param {string} selectedCollection - Collection key to export
+ * @param {string} sourceDir - Source directory containing media subdirectories
+ * @param {string} destDir - Destination directory for exported media
+ * @returns {Promise<Object>} Result object with success status and statistics
+ */
+async function exportCollectionMedia(accessionClass, selectedCollection, sourceDir, destDir) {
+  const collection = accessionClass.collections.getCollection(selectedCollection);
+  const links = collection.getLinks();
+  
+  // Track statistics and method used
+  const stats = {
+    total: links.length,
+    symlinks: 0,
+    hardlinks: 0,
+    copies: 0,
+    errors: []
+  };
+  
+  // Determine which method to use on first attempt
+  let linkMethod = null; // Will be: 'symlink', 'hardlink', or 'copy'
+  
+  // Get sorted items by type, filtering out any null items (missing from database)
+  const sortedItems = links
+    .map(link => {
+      const itemView = accessionClass.getItemView(null, link);
+      if (!itemView) {
+        // Item not found in database - track as error
+        stats.errors.push({
+          file: link,
+          type: 'unknown',
+          error: 'Item not found in database'
+        });
+        return null;
+      }
+      return {
+        type: itemView.getType(),
+        link: itemView.getLink()
+      };
+    })
+    .filter(item => item !== null) // Remove null entries
+    .sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type.localeCompare(b.type);
+      }
+      return a.link.localeCompare(b.link);
+    });
+  
+  // Process each item
+  for (const item of sortedItems) {
+    const sourcePath = path.join(sourceDir, item.type, item.link);
+    const destPath = path.join(destDir, item.type, item.link);
+    
+    try {
+      // If method not determined yet, try in order: symlink → hardlink → copy
+      if (!linkMethod) {
+        try {
+          await fsPromises.symlink(sourcePath, destPath);
+          linkMethod = 'symlink';
+          stats.symlinks++;
+          continue;
+        } catch (symlinkErr) {
+          if (symlinkErr.code === 'EPERM' || symlinkErr.code === 'ENOSYS') {
+            // Symlinks not supported or no permission, try hard link
+            try {
+              await fsPromises.link(sourcePath, destPath);
+              linkMethod = 'hardlink';
+              stats.hardlinks++;
+              continue;
+            } catch (hardlinkErr) {
+              if (hardlinkErr.code === 'EXDEV' || hardlinkErr.code === 'EPERM') {
+                // Cross-device or no permission, fall back to copy
+                await fsPromises.copyFile(sourcePath, destPath);
+                linkMethod = 'copy';
+                stats.copies++;
+                continue;
+              }
+              throw hardlinkErr;
+            }
+          }
+          throw symlinkErr;
+        }
+      }
+      
+      // Use determined method for remaining files
+      switch (linkMethod) {
+        case 'symlink':
+          await fsPromises.symlink(sourcePath, destPath);
+          stats.symlinks++;
+          break;
+        case 'hardlink':
+          await fsPromises.link(sourcePath, destPath);
+          stats.hardlinks++;
+          break;
+        case 'copy':
+          await fsPromises.copyFile(sourcePath, destPath);
+          stats.copies++;
+          break;
+      }
+    } catch (error) {
+      stats.errors.push({
+        file: item.link,
+        type: item.type,
+        error: error.message
+      });
+    }
+  }
+  
+  return {
+    success: stats.errors.length === 0,
+    method: linkMethod,
+    stats
+  };
+}
+
+/**
  * Build collection - create directory structure and files for export
  * @param {Object} accessionClass - AccessionClass instance
  * @param {string} selectedCollection - Collection key to export
  * @param {string} accessionsPath - Path to accessions.json
+ * @returns {Promise<Object>} Result object with success status and details
  */
-export function buildCollection(accessionClass, selectedCollection, accessionsPath) {
+export async function buildCollection(accessionClass, selectedCollection, accessionsPath) {
   const sourceDir = path.dirname(accessionsPath);
   const collectionDir = path.resolve(sourceDir, '../', selectedCollection);
   
-  // Getting information for a directory
-  fs.stat(collectionDir, (error, stats) => {
-    if (error) {
-      if (error.code === 'ENOENT') {
-        console.log(`Creating Directory ${collectionDir} for collection ${selectedCollection}.`);
-        try {
-          fs.mkdirSync(collectionDir);
-        } catch (mkdirError) {
-          console.error('Failed to create collection directory:', mkdirError);
-          return { success: false, error: `Failed to create directory: ${mkdirError.message}` };
-        }
-      } else {
-        console.error('buildCollection Directory error ' + error);
-        return { success: false, error: `Directory error: ${error.message}` };
-      }
-    } else {
-      if (!stats.isDirectory()) {
-        console.error(`${collectionDir} is not a directory!!!`);
-        return { success: false, error: `${collectionDir} is not a directory` };
-      }
+  try {
+    // Create collection directory if it doesn't exist
+    try {
+      await fsPromises.mkdir(collectionDir, { recursive: true });
+    } catch (mkdirError) {
+      return { success: false, error: `Failed to create directory: ${mkdirError.message}` };
     }
     
-    const commandsPath = path.resolve(collectionDir, 'commands');
-    try {
-      const commandsFile = accessionClass.getCommands(sourceDir, collectionDir, selectedCollection);
-      fs.writeFileSync(commandsPath, commandsFile.split("\r\n").join("\n"));
-      console.log(`Created ${commandsPath}`);
-    } catch (error) {
-      console.error('Error creating commands:', error);
-      return { success: false, error: `Failed to create commands file: ${error.message}` };
+    // Verify it's a directory
+    const stats = await fsPromises.stat(collectionDir);
+    if (!stats.isDirectory()) {
+      return { success: false, error: `${collectionDir} is not a directory` };
     }
     
-    const accessionsPath = path.resolve(collectionDir, 'accessions.json');
-    try {
-      const accessionsFile = accessionClass.getAccessions(selectedCollection);
-      fs.writeFileSync(accessionsPath, JSON.stringify(accessionsFile, null, 2));
-      console.log(`Created ${accessionsPath}`);
-      
-      // Success - return summary
-      const itemCount = accessionsFile.accessions.item.length;
-      const personCount = Object.keys(accessionsFile.persons || {}).length;
-      console.log(`Collection exported successfully: ${itemCount} items, ${personCount} persons`);
-      return { 
-        success: true, 
-        collectionDir,
-        itemCount,
-        personCount,
-        message: `Collection exported successfully!\n\nLocation: ${collectionDir}\nItems: ${itemCount}\nPersons: ${personCount}`
-      };
-    } catch (error) {
-      console.error('Error creating accessions.json:', error);
-      return { success: false, error: `Failed to create accessions.json: ${error.message}` };
+    // Create media subdirectories
+    const mediaTypes = ['audio', 'photo', 'video'];
+    for (const type of mediaTypes) {
+      await fsPromises.mkdir(path.join(collectionDir, type), { recursive: true });
     }
-  });
+    
+    // Export media files using cross-platform method
+    const mediaResult = await exportCollectionMedia(
+      accessionClass,
+      selectedCollection,
+      sourceDir,
+      collectionDir
+    );
+    
+    // Create accessions.json
+    const accessionsFilePath = path.resolve(collectionDir, 'accessions.json');
+    const accessionsFile = accessionClass.getAccessions(selectedCollection);
+    await fsPromises.writeFile(accessionsFilePath, JSON.stringify(accessionsFile, null, 2));
+    
+    // Calculate statistics
+    const itemCount = accessionsFile.accessions.item.length;
+    const personCount = Object.keys(accessionsFile.persons || {}).length;
+    
+    // Build success message with method used
+    let methodMessage = '';
+    if (mediaResult.method === 'symlink') {
+      methodMessage = 'Media files linked using symbolic links';
+    } else if (mediaResult.method === 'hardlink') {
+      methodMessage = 'Media files linked using hard links';
+    } else if (mediaResult.method === 'copy') {
+      methodMessage = 'Media files copied';
+    }
+    
+    const message = `Collection exported successfully!\n\n` +
+      `Location: ${collectionDir}\n` +
+      `Items: ${itemCount}\n` +
+      `Persons: ${personCount}\n` +
+      `${methodMessage}`;
+    
+    console.log(`Collection exported: ${itemCount} items, ${personCount} persons, method: ${mediaResult.method}`);
+    
+    // Export is successful if we created the files, even if some items were missing
+    // Missing items are warnings, not fatal errors
+    const result = {
+      success: true,
+      collectionDir,
+      itemCount,
+      personCount,
+      method: mediaResult.method,
+      stats: mediaResult.stats,
+      message
+    };
+    
+    // Add warnings if there were errors (missing items, failed copies, etc.)
+    if (mediaResult.stats.errors.length > 0) {
+      result.warnings = `${mediaResult.stats.errors.length} item(s) could not be exported:\n` +
+        mediaResult.stats.errors.map(e => `  ${e.type}/${e.file}: ${e.error}`).join('\n');
+    }
+    
+    return result;
+    
+  } catch (error) {
+    console.error('Error exporting collection:', error);
+    return { success: false, error: `Export failed: ${error.message}` };
+  }
 }

@@ -14,7 +14,7 @@
 
       <form v-else @submit.prevent="handleSave" class="media-form">
         <!-- Media Preview -->
-        <div v-if="mediaPreviewPath" class="preview-section">
+        <div v-if="mediaPreviewPath || item.type === 'photo'" class="preview-section">
           <div class="preview-and-controls">
             <div class="preview-container" :style="{ position: 'relative', display: 'inline-block' }">
               <img 
@@ -130,8 +130,10 @@
           
           <!-- Unassigned faces section (below photo, above people list) -->
           <div v-if="item.type === 'photo' && getUnassignedFacesLeftToRight().length > 0" class="unassigned-faces-section">
-            <strong>⚠️ {{ getUnassignedFacesLeftToRight().length }} face(s) not yet assigned</strong>
-            <p class="hint-small">To assign: Add person below, select their name, then use the "Assign Face" dropdown. Hover badges to preview, click to search for similar faces in library.</p>
+            <div class="unassigned-faces-header">
+              <strong>⚠️ {{ getUnassignedFacesLeftToRight().length }} face(s) not yet assigned</strong>
+              <span class="unassigned-faces-hint">L→R order • Hover to preview • Click to search</span>
+            </div>
             <div class="face-badges">
               <button 
                 v-for="face in getUnassignedFacesLeftToRight()" 
@@ -149,9 +151,21 @@
           
           <!-- People List (visible for all media types) -->
           <div class="face-people-section">
-            <h3>People in This Item</h3>
+            <div class="face-people-header">
+              <h3>People in This Item</h3>
+              <div class="people-header-actions">
+                <button
+                  v-if="item.type === 'photo' && selectedFaceAssignmentsCount > 0"
+                  type="button"
+                  class="btn-assign-selected"
+                  @click="assignSelectedFaces"
+                >
+                  Assign selected faces ({{ selectedFaceAssignmentsCount }})
+                </button>
+              </div>
+            </div>
             <p v-if="item.type === 'photo'" class="hint">Click "+ Add Person" below, select who they are, then use the "Assign Face" dropdown to match detected faces. {{ detectedFaces.length > 0 ? 'Match confidence shown in %.': 'Press "Detect Faces" above to enable face matching.' }}</p>
-            <p v-else class="hint">Click "+ Add Person" below to add people appearing or speaking in this {{ item.type }}. Use the context field to note their role or appearance.</p>
+            <p v-else class="hint">Click "+ Add Person" below to add people appearing or speaking in this {{ item.type }}. Use the position field to note their role or appearance.</p>
             
             <!-- Scrollable people list -->
             <div class="people-list-container" :class="{ 'scrollable': item.person.length > 3 }">
@@ -198,16 +212,21 @@
                   👤
                 </button>
                 <input 
-                  v-model="person.context" 
+                  v-model="person.position" 
                   type="text"
-                  placeholder="Context"
+                  placeholder="Position"
                   class="person-context"
                   :disabled="false"
                 />
               </div>
               
               <div v-if="item.type === 'photo'" class="face-match-indicator" :class="{ 'face-controls-disabled': detectedFaces.length === 0 }">
-                <span v-if="getMatchForPerson(person.personID)" class="matched-indicator">
+                <span 
+                  v-if="getMatchForPerson(person.personID)" 
+                  class="matched-indicator"
+                  @mouseenter="handleFaceFieldHover(getMatchForPerson(person.personID).faceIndex)"
+                  @mouseleave="handleFaceFieldLeave()"
+                >
                   Face #{{ getMatchForPerson(person.personID).faceIndex + 1 }} ({{ Math.round((getMatchForPerson(person.personID).confidence || 0) * 100) }}%)
                   <button 
                     type="button"
@@ -222,6 +241,8 @@
                   <select 
                     v-model.number="faceAssignments[person.personID]" 
                     class="face-select-small"
+                    @mouseenter="handleFaceFieldHover(faceAssignments[person.personID])"
+                    @mouseleave="handleFaceFieldLeave()"
                   >
                     <option value="">-- Assign Face --</option>
                     <option v-for="face in getUnassignedFaces()" :key="face.faceIndex" :value="face.faceIndex">
@@ -712,6 +733,7 @@ const confidenceThreshold = ref(0.20); // Will be loaded from nconf
 const autoAssignThreshold = ref(0.60); // Will be loaded from nconf
 const lastUsedModel = ref('ssd');
 const hoveredFaceIndex = ref(null); // Track which face is being hovered over
+let hoverClearTimeout = null;
 const facesLoadedFromBioData = ref(false); // Track if faces were loaded vs detected
 
 // Watch thresholds and save to nconf when changed
@@ -727,6 +749,14 @@ watch(autoAssignThreshold, async (newValue) => {
 const matchedFaces = ref([]);
 const unmatchedFaces = ref([]);
 const faceAssignments = ref({});
+const selectedFaceAssignmentsCount = computed(() => {
+  if (item.value.type !== 'photo') return 0;
+  return item.value.person.filter(p => {
+    const hasSelected = faceAssignments.value[p.personID] !== undefined && faceAssignments.value[p.personID] !== null && faceAssignments.value[p.personID] !== '';
+    const hasAssigned = p.faceTag && p.faceTag.region;
+    return p.personID && hasSelected && !hasAssigned;
+  }).length;
+});
 
 // Face similarity search state
 const showFaceSelector = ref(false);
@@ -887,7 +917,7 @@ const getStateAbbreviation = (stateName) => {
 
 const addPerson = () => {
   try {
-    item.value.person.push({ personID: '', context: '' });
+    item.value.person.push({ personID: '', position: '' });
   } catch (err) {
     console.error('Error adding person:', err);
   }
@@ -1225,6 +1255,43 @@ const loadExistingFaceBioData = async () => {
   }
 };
 
+/**
+ * FACE DETECTION & MATCHING WORKFLOW
+ * 
+ * TWO-TIER MATCHING SYSTEM:
+ * 
+ * Tier 1 - Backend Re-matching (strict, 0.05 threshold):
+ *   - Only checks people ALREADY in item.person array
+ *   - Uses saved faceBioData descriptors for THIS exact image
+ *   - Purpose: Restore previous assignments when re-detecting
+ *   - Auto-assigns matches by setting person.faceTag
+ * 
+ * Tier 2 - UI Library Search (user threshold, default 60%):
+ *   - Searches ENTIRE person library for remaining unmatched faces
+ *   - Can add NEW people to photo
+ *   - Uses next-best-match fallback (tries 2nd, 3rd best if 1st already matched)
+ * 
+ * SINGLE SOURCE OF TRUTH:
+ *   - person.faceTag.region = face is assigned (pending or saved)
+ *   - faceAssignments[personID] = temporary UI state for dropdown selection
+ *   - Always check person.faceTag.region, not faceAssignments
+ * 
+ * PENDING SAVE PATTERN:
+ *   - UI sets person.faceTag.pending = true
+ *   - Backend person library updated ONLY when user clicks Save
+ *   - item:save handler processes pending face tags
+ *   - Never directly modify backend person library from UI
+ * 
+ * WORKFLOW:
+ *   1. Clear all person.faceTag entries (reset state)
+ *   2. Detect faces with selected models
+ *   3. Backend matches to people in photo (high confidence)
+ *   4. Auto-assign backend matches (set person.faceTag)
+ *   5. UI searches library for remaining unmatched faces
+ *   6. UI auto-selects library matches (sets faceAssignments only)
+ *   7. User manually assigns remaining faces via dropdown
+ *   8. User clicks Save → backend updates person library
+ */
 const handleDetectFaces = async () => {
   if (!item.value.accession) {
     faceDetectionStatus.value = 'Error: No accession number';
@@ -1291,6 +1358,26 @@ const handleDetectFaces = async () => {
           matchedFaces.value = matchResult.matches || [];
           unmatchedFaces.value = matchResult.unmatchedFaces || [];
           
+          // Backend matches are high-confidence re-detections of faces in THIS image
+          // Auto-assign them to restore previous assignments
+          if (matchedFaces.value.length > 0) {
+            for (const match of matchedFaces.value) {
+              const face = detectedFaces.value[match.faceIndex];
+              const person = item.value.person.find(p => p.personID === match.personID);
+              
+              if (person && face) {
+                // Set faceTag directly (already high confidence from backend)
+                person.faceTag = {
+                  region: { ...match.region },
+                  descriptor: [...face.descriptor],
+                  model: face.model || 'ssd',
+                  pending: true,
+                  faceIndex: match.faceIndex
+                };
+              }
+            }
+          }
+          
           const totalFaces = detectedFaces.value.length;
           let matched = matchedFaces.value.length;
           let unmatched = unmatchedFaces.value.length;
@@ -1303,8 +1390,8 @@ const handleDetectFaces = async () => {
             matched = matchedFaces.value.length;
             unmatched = unmatchedFaces.value.length;
             
-            if (autoAssignResult.assigned > 0) {
-              faceDetectionStatus.value = `${modelNames}: ${totalFaces} ${totalFaces === 1 ? 'face' : 'faces'} (${matched} matched, ${autoAssignResult.assigned} auto-assigned, ${unmatched} need manual assignment)`;
+            if (autoAssignResult.selected > 0) {
+              faceDetectionStatus.value = `${modelNames}: ${totalFaces} ${totalFaces === 1 ? 'face' : 'faces'} (${matched} matched, ${autoAssignResult.selected} auto-selected, ${unmatched} need assignment)`;
             } else if (unmatched > 0) {
               faceDetectionStatus.value = `${modelNames}: ${totalFaces} ${totalFaces === 1 ? 'face' : 'faces'} (${matched} matched, ${unmatched} need assignment)`;
             } else {
@@ -1578,22 +1665,18 @@ const assignFaceToPersonByID = async (personID) => {
   if (showFaceOverlays.value) {
     drawFaceOverlays();
   }
+};
+
+// Assign all currently selected faces (no modal)
+const assignSelectedFaces = async () => {
+  const personsToAssign = item.value.person.filter(p => {
+    const hasSelected = faceAssignments.value[p.personID] !== undefined && faceAssignments.value[p.personID] !== null && faceAssignments.value[p.personID] !== '';
+    const hasAssigned = p.faceTag && p.faceTag.region;
+    return p.personID && hasSelected && !hasAssigned;
+  });
   
-  // Auto-select if only one unmatched person and one unmatched face remain
-  if (unmatchedFaces.value.length === 1) {
-    // Find persons without matched faces
-    const unmatchedPersons = item.value.person.filter(p => {
-      return p.personID && !matchedFaces.value.find(m => m.personID === p.personID);
-    });
-    
-    if (unmatchedPersons.length === 1) {
-      const lastPerson = unmatchedPersons[0];
-      const lastFace = unmatchedFaces.value[0];
-      
-      // Auto-select the face in the dropdown (let user press Assign)
-      faceAssignments.value[lastPerson.personID] = lastFace.faceIndex;
-      console.log('[AUTO-SELECT] Auto-selected face', lastFace.faceIndex, 'for person', lastPerson.personID);
-    }
+  for (const person of personsToAssign) {
+    await assignFaceToPersonByID(person.personID);
   }
 };
 
@@ -1638,18 +1721,36 @@ const findSimilarFaces = async () => {
   }
 };
 
-// Face badge interaction handlers - Modified Option A workflow
-// Hover shows the face (if Show Overlays unchecked)
-// Click searches for matches
-
+// Face badge/field interaction handlers
+// Hover shows only the hovered face; leaving restores checkbox state after delay
 const handleFaceBadgeHover = (faceIndex) => {
+  if (faceIndex === null || faceIndex === undefined || faceIndex === '') {
+    return;
+  }
+  if (hoverClearTimeout) {
+    clearTimeout(hoverClearTimeout);
+    hoverClearTimeout = null;
+  }
   hoveredFaceIndex.value = faceIndex;
   drawFaceOverlays();
 };
 
 const handleFaceBadgeLeave = () => {
-  hoveredFaceIndex.value = null;
-  drawFaceOverlays();
+  if (hoverClearTimeout) {
+    clearTimeout(hoverClearTimeout);
+  }
+  hoverClearTimeout = setTimeout(() => {
+    hoveredFaceIndex.value = null;
+    drawFaceOverlays();
+  }, 1000);
+};
+
+const handleFaceFieldHover = (faceIndex) => {
+  handleFaceBadgeHover(faceIndex);
+};
+
+const handleFaceFieldLeave = () => {
+  handleFaceBadgeLeave();
 };
 
 const handleFaceBadgeClick = async (faceIndex) => {
@@ -1779,7 +1880,7 @@ const toggleMatchSelection = (personID) => {
   selectedMatches.value = new Set([personID]);
 };
 
-// Auto-assign unmatched faces from person library (high confidence matches only)
+// Auto-select unmatched faces from person library (high confidence matches only)
 const autoAssignUnmatchedFaces = async () => {
   // Convert percentage (0.60 = 60%) to distance threshold
   // Formula matches searchPersonLibrary: confidence = (1 - distance) * 100
@@ -1787,7 +1888,7 @@ const autoAssignUnmatchedFaces = async () => {
   // For 60% confidence: distance = 1 - 0.60 = 0.40
   const distanceThreshold = 1 - autoAssignThreshold.value;
   
-  let assignedCount = 0;
+  let selectedCount = 0;
   
   // Get persons with descriptors from library
   const personsWithDescriptors = await window.electronAPI.getPersonsWithDescriptors();
@@ -1809,38 +1910,61 @@ const autoAssignUnmatchedFaces = async () => {
     
     if (!face || !face.descriptor) continue;
     
-    // Search for best match in person library (gets top match, sorted by distance)
+    // Search for best match in person library (gets multiple matches, sorted by distance)
     const matches = await searchPersonLibrary(faceIndex, personsWithDescriptors);
     
     if (matches.length === 0) continue;
     
-    // Get best match (first in sorted array)
-    const bestMatch = matches[0];
+    // Try to find a match that doesn't already have a face assigned
+    // Start with best match, fall back to next-best if needed
+    let assignedThisFace = false;
     
-    // Only auto-assign if:
-    // 1. Distance is below threshold (high confidence)
-    // 2. Person is NOT already in the photo's person list
-    if (bestMatch.distance <= distanceThreshold && !bestMatch.alreadyInPhoto) {
-      console.log(`[AUTO-ASSIGN] Face #${faceIndex + 1}: ${bestMatch.first} ${bestMatch.last} (${bestMatch.confidence}%)`);
+    for (const match of matches) {
+      // Only consider matches above threshold
+      if (match.distance > distanceThreshold) {
+        break; // Remaining matches are below threshold
+      }
       
-      // Add person to photo
-      const newPerson = {
-        personID: bestMatch.personID,
-        context: ''
-      };
-      item.value.person.push(newPerson);
+      // Check if this person already has a face assigned (single source of truth)
+      const personInPhoto = item.value.person.find(p => p.personID === match.personID);
+      const hasFaceAssigned = personInPhoto && personInPhoto.faceTag && personInPhoto.faceTag.region;
+      const hasFaceSelected = faceAssignments.value[match.personID] !== undefined && faceAssignments.value[match.personID] !== null && faceAssignments.value[match.personID] !== '';
+      const faceAlreadySelected = Object.values(faceAssignments.value).includes(faceIndex);
       
-      // Set face assignment
-      faceAssignments.value[bestMatch.personID] = faceIndex;
+      if (hasFaceAssigned || hasFaceSelected || faceAlreadySelected) {
+        // This person already has a face - try next best match
+        console.log(`[AUTO-ASSIGN] Face #${faceIndex + 1}: Skipping ${match.first} ${match.last} (${match.confidence}%) - already has face`);
+        continue;
+      }
       
-      // Auto-press assign button
-      await assignFaceToPersonByID(bestMatch.personID);
+      // Found a match without a face assigned - use it
+      console.log(`[AUTO-SELECT] Face #${faceIndex + 1}: ${match.first} ${match.last} (${match.confidence}%)`);
       
-      assignedCount++;
+      // Add person to photo if not already in it
+      if (!match.alreadyInPhoto) {
+        const newPerson = {
+          personID: match.personID,
+          position: ''
+        };
+        item.value.person.push(newPerson);
+        personListKey.value++;
+      }
+      
+      // Set face selection only (no auto-assign)
+      faceAssignments.value[match.personID] = faceIndex;
+      
+      selectedCount++;
+      assignedThisFace = true;
+      break; // Successfully assigned this face, move to next face
+    }
+    
+    if (!assignedThisFace && matches.length > 0 && matches[0].distance <= distanceThreshold) {
+      // Had good matches but all already have faces assigned
+      console.log(`[AUTO-SELECT] Face #${faceIndex + 1}: All matches already have faces assigned/selected`);
     }
   }
   
-  return { assigned: assignedCount };
+  return { selected: selectedCount };
 };
 
 // Add selected match to photo and assign face
@@ -1869,7 +1993,7 @@ const addSelectedMatches = async () => {
     // Person doesn't exist - add them and set face assignment
     const newPerson = {
       personID: personID,
-      context: ''
+      position: ''
     };
     item.value.person.push(newPerson);
     faceAssignments.value[personID] = faceIndex;
@@ -1958,8 +2082,13 @@ const drawFaceOverlays = () => {
         return;
       }
       
-      // If Show Overlays is unchecked, only show the hovered face
-      if (!showFaceOverlays.value && hoveredFaceIndex.value !== index) {
+      const hasHover = hoveredFaceIndex.value !== null && hoveredFaceIndex.value !== undefined;
+      // If hovering a face, show ONLY that face
+      if (hasHover && hoveredFaceIndex.value !== index) {
+        return; // Skip this face
+      }
+      // If not hovering, show faces only when checkbox is enabled
+      if (!hasHover && !showFaceOverlays.value) {
         return; // Skip this face
       }
       
@@ -2136,7 +2265,7 @@ onMounted(async () => {
   try {
     // Get item identifier from query string or window property
     const urlParams = new URLSearchParams(window.location.search);
-    const identifier = urlParams.get('accession') || urlParams.get('link');
+    const identifier = urlParams.get('link');
     
     if (!identifier) {
       error.value = 'No item identifier provided';
@@ -2202,7 +2331,10 @@ onMounted(async () => {
       description: loadedItem.description || '',
       date: loadedItem.date || { year: '', month: '', day: '' },
       location: loadedItem.location || [],
-      person: loadedItem.person || [],
+      person: (loadedItem.person || []).map(p => ({
+        ...p,  // Preserve all original properties from backend
+        position: p.position || p.context || ''  // Use 'position' as standard field name
+      })),
       source: loadedItem.source || [],
       playlist: loadedItem.playlist || { entry: [] }
     };
@@ -2357,6 +2489,7 @@ header h1 {
   gap: 1.5rem;
   align-items: flex-start;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .preview-container {
@@ -2782,7 +2915,8 @@ header h1 {
   flex-direction: column;
   gap: 0.75rem;
   align-items: flex-start;
-  min-width: 150px;
+  min-width: 220px;
+  flex: 1 1 220px;
 }
 
 .face-detection-controls .btn-secondary {
@@ -2917,10 +3051,38 @@ header h1 {
   border: 2px solid #dee2e6;
 }
 
-.face-people-section h3 {
-  margin: 0 0 0.25rem 0;
+.face-people-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.face-people-header h3 {
+  margin: 0;
   color: #495057;
   font-size: 1rem;
+}
+
+.people-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.btn-assign-selected {
+  border: none;
+  background: none;
+  color: #0d6efd;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-assign-selected:hover {
+  text-decoration: underline;
 }
 
 .hint {
@@ -3128,29 +3290,37 @@ header h1 {
 
 /* Unassigned faces section (below photo, above people list) */
 .unassigned-faces-section {
-  margin: 1rem 0;
-  padding: 1rem;
+  margin: 0.5rem 0 0.75rem 0;
+  padding: 0.5rem 0.75rem;
   background: #fff3cd;
-  border: 2px solid #ffc107;
+  border: 1px solid #ffc107;
   border-radius: 6px;
   color: #856404;
 }
 
-.unassigned-faces-section strong {
-  display: block;
-  margin-bottom: 0.25rem;
+.unassigned-faces-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
 }
 
-.unassigned-faces-section .hint-small {
-  margin: 0.25rem 0 0.5rem 0;
-  font-size: 0.85rem;
+.unassigned-faces-section strong {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.unassigned-faces-hint {
+  font-size: 0.75rem;
   color: #856404;
+  white-space: nowrap;
 }
 
 .unassigned-faces-section .face-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 .face-badge {
@@ -3166,13 +3336,13 @@ header h1 {
 
 .face-badge-button {
   display: inline-block;
-  margin: 0.25rem;
-  padding: 0.5rem 0.75rem;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
   background: #007bff;
   color: white;
   border: none;
   border-radius: 4px;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;

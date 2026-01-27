@@ -39,35 +39,32 @@ Most users will find the included SSD model sufficient. Download additional mode
 **Important**: Using different detection models within the same archive can produce inconsistent face descriptors. Choose one model and use it consistently throughout your archive for best results.
 :::
 
-## Auto-Assignment Feature
+## Auto-Matching and Suggestions
 
-Shoebox includes intelligent auto-assignment that can automatically tag faces when you run face detection. The system uses a multi-stage matching process to identify people.
+Shoebox uses a **two‑stage workflow** when you run face detection. Stage 1 **auto‑assigns** faces that were previously tagged in the same photo. Stage 2 **suggests** matches from your Person Library by selecting faces, but does not assign them until you confirm.
 
 **How it works:**
-1. When you click "Detect Faces", the system identifies all faces in the photo
-2. **Stage 1 - Same Photo Matching (90% threshold):**
-   - If multiple faces are detected in the same photo
-   - Faces are compared to people already identified in that photo
-   - Matches at 90% confidence or higher are automatically assigned to that same person
-   - This ensures duplicate faces of the same person are tagged together
-3. **Stage 2 - Person Library Matching (60% threshold):**
-   - Remaining unassigned faces are compared against your entire Person Library
-   - If a face matches someone in your library with high confidence (default 60% threshold)
-   - That face is automatically assigned to the matching person
-4. All automatic assignments are saved immediately - no manual "Assign" button click needed
+1. When you click "Detect Faces", the system identifies all faces in the photo.
+2. **Stage 1 – Same Photo Re‑matching (strict):**
+   - Faces are compared only to people already in **this** photo.
+   - Uses saved face data for that exact image.
+   - Matches are **auto‑assigned** immediately (high confidence, strict threshold).
+3. **Stage 2 – Person Library Suggestions (configurable):**
+   - Remaining faces are compared against your entire Person Library.
+   - Matches above your **Auto‑Assign Threshold** are **selected** (not assigned).
+   - This lets you review suggestions before committing.
+4. You can **Assign selected faces** with one click or adjust individual selections first.
 
 **Benefits:**
-- Saves time when processing photos with familiar people
-- Automatically tags all instances of the same person in a photo
-- Reduces repetitive clicking for obvious matches
-- You only need to manually review uncertain or new faces
+- Preserves previously‑tagged faces with high confidence (Stage 1).
+- Provides fast suggestions without forcing auto‑assignments (Stage 2).
+- Lets you handle clean datasets quickly while still reviewing ambiguous cases.
 
 **Customization:**
-- Adjust the **Auto-Assign Threshold** in Advanced Settings (applies to Stage 2 - Person Library matching)
-- Higher threshold (e.g., 0.70): Fewer automatic assignments, more manual review
-- Lower threshold (e.g., 0.50): More automatic assignments, higher chance of errors
-- The 90% threshold for same-photo matching (Stage 1) is fixed to ensure accuracy
-- Settings are automatically saved and persist across sessions
+- Adjust the **Auto‑Assign Threshold** in Advanced Settings (applies to Stage 2 suggestions)
+- Higher threshold (e.g., 0.70): Fewer suggestions, more manual review
+- Lower threshold (e.g., 0.50): More suggestions, higher chance of errors
+- Threshold settings are saved and persist across sessions
 
 ## Face Detection Workflow
 
@@ -79,36 +76,35 @@ Face detection and tagging follows a specific workflow. Understanding this proce
 2. Click **Edit Media** button or press **E**
 3. Media Manager window opens with your photo
 
-### Step 2: Detect Faces with Auto-Assignment
+### Step 2: Detect Faces with Auto‑Matching and Suggestions
 
 1. Click **Detect Faces** button
 2. Wait for detection to complete (a few seconds)
 3. Green rectangles appear around detected faces (numbered left-to-right)
-4. **Auto-assignment runs automatically in two stages:**
-   - **Stage 1:** Faces are matched to people already in this photo (90% confidence threshold)
-   - **Stage 2:** Remaining faces are matched to your Person Library (60% confidence threshold, configurable)
-   - Matching faces are automatically assigned and saved
-5. Face badges show below the photo with assignment status
+4. **Two-stage workflow runs automatically:**
+   - **Stage 1:** Faces already tagged in this photo are re‑matched and auto‑assigned
+   - **Stage 2:** Library matches are **selected** (not assigned) for your review
+5. Face badges show below the photo in left‑to‑right order
 
-::: tip Adjusting Detection and Auto-Assignment
+::: tip Adjusting Detection and Suggestions
 Click **▶ Advanced Settings** to:
 - Change detection model (SSD, MTCNN, Tiny Face)
 - Adjust **Confidence Threshold** (0.20 default - lower = more faces detected, higher = fewer false positives)
-- Adjust **Auto-Assign Threshold** (0.60 default - higher = fewer automatic assignments, more manual review)
+- Adjust **Auto‑Assign Threshold** (0.60 default - higher = fewer suggestions, more manual review)
 
 **Note:** These threshold settings are automatically saved and will be remembered across sessions.
 :::
 
 ### Step 3: Add Person to Item (For Unassigned Faces)
 
-After auto-assignment, some faces may remain unassigned (didn't match anyone above the threshold).
+After detection and suggestions, some faces may remain unassigned (didn't match anyone above the threshold).
 
 1. Scroll down to "People in This Item" section
 2. Click **+ Add Person** button
 3. A new person entry appears with three parts:
    - **Person dropdown**: Select who this is
    - **👤 button**: Opens Person Manager to create/edit persons
-   - **Context field**: Optional context (e.g., "in background", "holding baby")
+   - **Position field**: Optional position/context (e.g., "in background", "holding baby")
 
 ### Step 4: Select or Create Person
 
@@ -128,7 +124,7 @@ After auto-assignment, some faces may remain unassigned (didn't match anyone abo
 
 ### Step 5: Assign Face to Person (Manual Assignment)
 
-For faces not automatically assigned (or to fix incorrect auto-assignments):
+For faces not assigned (or to fix incorrect matches):
 
 1. After selecting a person, look at the "Face Match" column
 2. If faces were detected, you'll see:
@@ -137,7 +133,9 @@ For faces not automatically assigned (or to fix incorrect auto-assignments):
 4. Click **Assign** button
 5. Face is now linked to this person when saved!
 
-To fix an incorrect auto-assignment:
+**Bulk assignment:** If Stage 2 suggested matches, use **Assign selected faces** to apply all current selections at once.
+
+To fix an incorrect match:
 1. Click **Unassign** button next to the face
 2. Then reassign to the correct person
 
@@ -149,7 +147,7 @@ For advanced users: See [Face Detection Advanced Guide](./face-detection-advance
 
 ### Step 6: Repeat for All Unassigned Faces
 
-For each remaining detected face that wasn't auto-assigned:
+For each remaining detected face that wasn't assigned:
 1. Click **+ Add Person**
 2. Select/create the person
 3. Assign the corresponding face
@@ -160,11 +158,12 @@ For each remaining detected face that wasn't auto-assigned:
 2. Your face tags are now saved to the archive
 3. Close Media Manager or move to next photo
 
-## Face Badge Shortcuts
+## Face Badge Shortcuts and Overlays
 
 Once you've tagged some faces in your archive:
 
-- **Hover** over face badges to preview which face
+- **Hover** over face badges to preview a single face region (even if overlays are enabled)
+- **Hover** over the face assignment field in the People list to preview that face
 - **Click** face badges to search for similar faces in your library
 - This helps quickly identify people across multiple photos
 
@@ -197,14 +196,14 @@ Access via **People > Manage Persons** or the 👤 button in Media Manager.
 
 ### Best Practices
 
-1. **Create persons first**: Build your person library before detecting faces - this enables auto-assignment
+1. **Create persons first**: Build your person library before detecting faces - this enables auto‑matching and suggestions
 2. **One model per archive**: Stick to one detection model for consistency
 3. **Tag systematically**: Work through one person across all photos before moving to the next
-4. **Use auto-assignment**: Let the system handle obvious matches, focus on reviewing edge cases
-5. **Verify detections**: AI isn't perfect - check and correct false positives and auto-assignments
+4. **Use suggestions**: Let the system handle obvious matches, focus on reviewing edge cases
+5. **Verify detections**: AI isn't perfect - check and correct false positives and incorrect matches
 6. **High quality photos**: Better resolution = better detection and matching
 7. **Good lighting**: Well-lit faces detect more reliably
-8. **Adjust thresholds**: Tune Auto-Assign Threshold based on your tolerance for errors vs. manual work
+8. **Adjust thresholds**: Tune Auto‑Assign Threshold based on your tolerance for errors vs. manual review
 
 ### Managing Face Tags
 
@@ -223,17 +222,17 @@ Access via **People > Manage Persons** or the 👤 button in Media Manager.
 
 ## Troubleshooting
 
-### Too Many Incorrect Auto-Assignments
+### Too Many Incorrect Suggestions
 
-If faces are being auto-assigned to the wrong people:
+If faces are being suggested as the wrong people:
 - Increase the **Auto-Assign Threshold** in Advanced Settings (e.g., from 0.60 to 0.70 or 0.75)
-- Higher threshold = more conservative, fewer automatic assignments
+- Higher threshold = more conservative, fewer suggestions
 - Click **Unassign** to fix any incorrect matches
 - Your threshold adjustment will be saved for future sessions
 
-### Not Enough Auto-Assignments
+### Not Enough Suggestions
 
-If the system isn't auto-assigning faces you expect it to:
+If the system isn't suggesting faces you expect it to:
 - Lower the **Auto-Assign Threshold** in Advanced Settings (e.g., from 0.60 to 0.50)
 - Ensure you've tagged some faces for that person already (system needs training data)
 - Check that person exists in your person library
@@ -266,7 +265,7 @@ All threshold settings (Confidence Threshold and Auto-Assign Threshold) are auto
 - Order of people in the people list is saved in shoebox and is significant
 - Numbers appear in Media Details after face detection
 - If there is a TMGID links to website appear
-- Use the context to describe where a person is or is doing in the photo
+- Use the position field to describe where a person is or is doing in the photo
 - Use the Face badges to see possible matches - Click on the reference to see the photo
 
 ## Technical Details

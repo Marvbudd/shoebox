@@ -87,7 +87,7 @@ The export feature creates a standalone directory that can be shared with others
 
 ### What Gets Exported
 
-The export directory contains two files:
+The export directory is created automatically with all necessary files and media:
 
 #### 1. `accessions.json`
 A complete, standalone archive file containing:
@@ -96,17 +96,35 @@ A complete, standalone archive file containing:
 - Person library entries referenced by those items
 - Proper structure for opening as a Shoebox archive
 
-#### 2. `commands` (bash script)
-A Linux shell script that creates the media file structure:
-- Creates `audio/`, `photo/`, and `video/` subdirectories
-- Uses symbolic links (`ln`) to link media files from your archive
-- Can be edited for other platforms (Windows: `mklink`, macOS: `ln`)
+#### 2. Media Files (automatic)
+Shoebox automatically creates the media file structure using the best method for your platform:
 
-**Note**: The script uses symbolic links to avoid duplicating large media files. Run the script in the export directory to complete the collection structure.
+**Cross-Platform Export Strategy:**
+
+1. **Symbolic Links** (default, best option)
+   - Works on Linux and macOS automatically
+   - Works on Windows 10+ with Developer Mode enabled
+   - Saves disk space by referencing original files
+   - Instant export, no file copying needed
+
+2. **Hard Links** (automatic fallback)
+   - Used if symbolic links aren't available
+   - Works on all platforms when source and destination are on the same filesystem
+   - Still saves disk space (same file, multiple directory entries)
+   - No file duplication
+
+3. **File Copies** (final fallback)
+   - Used if links aren't supported or cross-filesystem export
+   - Duplicates files but guaranteed to work everywhere
+   - Slower for large collections but creates fully independent copy
+
+Shoebox automatically tries each method in order and uses the first one that succeeds. The success dialog shows which method was used.
+
+**Missing Items**: If any items in the collection are no longer in the archive, they are skipped and reported in the warnings section of the export dialog.
 
 ### Directory Structure
 
-After export, you'll have:
+After export, you'll have a complete, ready-to-use collection:
 ```
 /parent-directory/
   ├── your-archive/
@@ -115,39 +133,41 @@ After export, you'll have:
   │   ├── audio/
   │   ├── photo/
   │   └── video/
-  └── collection-key/              (exported collection)
+  └── collection-key/              (exported collection - ready to use)
       ├── accessions.json          (collection subset)
-      └── commands                 (bash script)
+      ├── audio/                   (linked or copied media files)
+      ├── photo/                   (linked or copied media files)
+      └── video/                   (linked or copied media files)
 ```
 
-After running the `commands` script:
-```
-/parent-directory/
-  └── collection-key/
-      ├── accessions.json
-      ├── commands
-      ├── audio/                   (symlinks to source files)
-      ├── photo/                   (symlinks to source files)
-      └── video/                   (symlinks to source files)
-```
+The export is **immediately ready to use** - no additional steps required. Open the exported `accessions.json` in Shoebox to browse the collection.
 
 ### Sharing Collections
 
 To share a collection with others:
 
-1. **Run the `commands` script** on your system to create the directory structure with linked files
-2. **Copy the actual media files** (not symbolic links) to prepare for sharing:
-   - Replace symbolic links with actual file copies, or
-   - Use a sync tool to copy the linked files
-3. **Share the complete directory** containing:
-   - `accessions.json` (the collection subset)
-   - `audio/`, `photo/`, `video/` directories with actual media files
+**If exported with symlinks or hard links:**
+1. Copy the exported directory to an external drive or network location
+2. The links will be resolved during copy, creating actual file copies
+3. Share the complete directory
 
-The recipient can then:
-1. Open the `accessions.json` file in Shoebox
-2. Browse the collection as a standalone archive
+**If exported with file copies:**
+1. The export directory is already a complete, standalone copy
+2. Simply share the entire directory as-is
 
-This allows you to share themed subsets of your archive with only the relevant items, without duplicating your entire archive.
+**Alternative - Re-export for sharing:**
+If you want to ensure the export uses file copies (not links):
+- Move or copy your archive to a different drive
+- Export the collection
+- Shoebox will automatically use file copies (cross-filesystem limitation)
+- This creates a guaranteed standalone copy
+
+The recipient can:
+1. Copy the directory to their system
+2. Open the `accessions.json` file in Shoebox
+3. Browse the collection as a standalone archive
+
+This allows you to share themed subsets of your archive with only the relevant items, without duplicating your entire archive during the export process.
 
 ## Use Cases
 

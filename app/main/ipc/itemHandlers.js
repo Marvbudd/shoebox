@@ -419,7 +419,7 @@ export function registerItemHandlers(
     // This fires when requesting to edit an item
     let editObject = JSON.parse(keyData);
     // Use the new Media Manager window instead of old Add Media window
-    createMediaManagerWindow(editObject.keyData.accession);
+    createMediaManagerWindow(editObject.keyData.link);
   }); // item:Edit
 
   // Get current playback time from Media Player window

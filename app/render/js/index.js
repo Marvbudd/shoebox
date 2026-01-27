@@ -91,7 +91,7 @@ function mediaContent(itemString) {
       // editMedia doesn't exist until the items are rendered
       const $editMedia = document.getElementById("editMedia")
       $editMedia.addEventListener('click', (e) => {
-        const keyData = { accession: document.getElementById('accession').innerText }
+        const keyData = { link: document.getElementById('link').innerText }
         BURRITO.sendToMain(BURRITO.req.ITEMEDIT, JSON.stringify({keyData}))
       })
       const $openWebsite = document.getElementById("openWebsite")

@@ -1148,7 +1148,7 @@ async function buildCollection() {
       type: 'question',
       title: 'Validate Collection?',
       message: `Export collection "${collection.text}"?`,
-      detail: `This will create a new directory with:\n• accessions.json (items and persons)\n• commands file (to copy media files)\n\nWould you like to validate the collection first to check for missing items?`,
+      detail: `This will create a new directory with:\n• accessions.json (items and persons)\n• Media files (automatically linked or copied)\n\nWould you like to validate the collection first to check for missing items?`,
       buttons: ['Validate First', 'Export Without Validation', 'Cancel'],
       defaultId: 0,
       cancelId: 2
@@ -1201,16 +1201,30 @@ async function buildCollection() {
     
     // Perform the export
     try {
-      const result = buildCollectionHelper(accessionClass, selectedCollection, nconf.get('db:accessionsPath'));
+      const result = await buildCollectionHelper(accessionClass, selectedCollection, nconf.get('db:accessionsPath'));
       
-      // Show success message (buildCollectionHelper runs async, so we show generic success)
-      dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Export Started',
-        message: `Collection export initiated`,
-        detail: `Creating export for "${collection.text}"...\n\nCheck the terminal/console for completion status.`,
-        buttons: ['OK']
-      });
+      if (result.success) {
+        // Show success message with details
+        const detailMessage = result.warnings 
+          ? `${result.message}\n\nWarnings:\n${result.warnings}`
+          : result.message;
+        
+        dialog.showMessageBoxSync(mainWindow, {
+          type: 'info',
+          title: 'Export Completed',
+          message: `Collection exported successfully`,
+          detail: detailMessage,
+          buttons: ['OK']
+        });
+      } else {
+        dialog.showMessageBoxSync(mainWindow, {
+          type: 'error',
+          title: 'Export Failed',
+          message: `Failed to export collection`,
+          detail: result.error || 'Unknown error',
+          buttons: ['OK']
+        });
+      }
       
     } catch (exportError) {
       dialog.showMessageBoxSync(mainWindow, {

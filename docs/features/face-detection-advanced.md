@@ -134,13 +134,13 @@ However, re-detecting faces in the **same image** with the **same model** should
 ## Common Questions
 
 ### "Why aren't faces auto-matching across different photos?"
-By design! Shoebox only auto-matches at 99%+ confidence (re-detections), not new photos (typically 60-90%). This is correct behavior - manually assign faces from the dropdown for full control.
+By design! Shoebox only auto‑assigns re‑matches within the same photo. Matches from the Person Library are **suggested** and require manual assignment. This gives you control over cross‑photo identifications.
 
 ### "Getting 60-80% matches for same person in different photos"
 This is normal! Different lighting, angle, and expression reduce confidence. If visual inspection confirms same person, manually assign from dropdown.
 
 ### "Face shows 54% confidence - is this bad?"
-Questionable match. Could be same person under very different conditions, or different person. Review carefully - if unsure, leave unassigned or add notes in the Context field.
+Questionable match. Could be same person under very different conditions, or different person. Review carefully - if unsure, leave unassigned or add notes in the Position field.
 
 ### "All faces showing as unmatched after re-detection"
 Different model selected than original detection. Check which model was used previously in Media Manager and select the same one.

@@ -27,12 +27,13 @@ function isValidWindow(windowRef) {
  * Save window position and size to config
  */
 export function saveWindowState(window, confname, nconf) {
-  const windowBounds = window.getBounds();
+  const windowBounds = window.isMaximized() ? window.getNormalBounds() : window.getBounds();
 
   nconf.set(`ui:${confname}:width`,  windowBounds.width);
   nconf.set(`ui:${confname}:height`, windowBounds.height);
   nconf.set(`ui:${confname}:x`,      windowBounds.x);
   nconf.set(`ui:${confname}:y`,      windowBounds.y);
+  nconf.set(`ui:${confname}:isMaximized`, window.isMaximized());
 
   let allDisplays = electron.screen.getAllDisplays();
   const currentDisplay = allDisplays.findIndex(display => {
@@ -359,9 +360,14 @@ export function createMediaManagerWindow(identifier, windowRef, nconf) {
 
     const vueDistPath = path.resolve(__dirname, '../../render/vue-dist/mediaManager/index.html');
     
-    windowRef.value.loadFile(vueDistPath, { search: `accession=${encodeURIComponent(identifier)}` })
+    const shouldMaximize = nconf.get('ui:mediaManager:isMaximized');
+
+    windowRef.value.loadFile(vueDistPath, { search: `link=${encodeURIComponent(identifier)}` })
       .then(() => {
         windowRef.value.show();
+        if (shouldMaximize) {
+          windowRef.value.maximize();
+        }
         windowRef.value.focus();
       })
       .catch((err) => {
