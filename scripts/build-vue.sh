@@ -15,9 +15,10 @@ VUE_WINDOW="$WINDOW" yarn vite build
 
 # Define paths
 BUILD_DIR="app/render/vue-dist/$WINDOW"
+WINDOW_CAPITALIZED="$(printf '%s' "$WINDOW" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
 NESTED_HTML_PATTERNS=(
   "$BUILD_DIR/app/render/vue/windows/$WINDOW/index.html"
-  "$BUILD_DIR/app/render/vue/windows/${WINDOW^}/index.html"  # Capitalized
+  "$BUILD_DIR/app/render/vue/windows/$WINDOW_CAPITALIZED/index.html"  # Capitalized
 )
 TARGET_HTML="$BUILD_DIR/index.html"
 
