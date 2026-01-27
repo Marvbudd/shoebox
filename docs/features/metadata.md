@@ -202,6 +202,6 @@ For large cleanup operations:
 
 ## Related
 
-- [Data Structure](./data-structure.md)
+- [Data Structure](../guide/data-structure.md)
 - [Creating Your Archive](../guide/creating-archive.md)
 - [Face Detection](./face-detection.md)

@@ -133,7 +133,7 @@ Latest release highlights:
 - 🐛 Fixed metadata display persistence and UI bugs
 - 📚 Improved documentation and keyboard shortcuts
 
-[Full Release Notes](../../docs/RELEASE-NOTES-3.0.0.md)
+[Release Notes](../../CHANGELOG.md)
 
 ## Getting Help
 
