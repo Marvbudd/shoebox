@@ -48,8 +48,13 @@ fi
 # Fix asset paths in HTML
 if [ -f "$TARGET_HTML" ]; then
   echo "Fixing asset paths..."
-  sed -i 's|\.\./\.\./\.\./\.\./\.\./assets/|assets/|g' "$TARGET_HTML"
-  sed -i 's|/assets/|assets/|g' "$TARGET_HTML"
+  if sed --version >/dev/null 2>&1; then
+    sed -i 's|\.\./\.\./\.\./\.\./\.\./assets/|assets/|g' "$TARGET_HTML"
+    sed -i 's|/assets/|assets/|g' "$TARGET_HTML"
+  else
+    sed -i '' 's|\.\./\.\./\.\./\.\./\.\./assets/|assets/|g' "$TARGET_HTML"
+    sed -i '' 's|/assets/|assets/|g' "$TARGET_HTML"
+  fi
   echo "Build complete for $WINDOW"
 else
   echo "Error: index.html not found at $TARGET_HTML"
