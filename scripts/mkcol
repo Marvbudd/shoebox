@@ -1,0 +1,240 @@
+#!/usr/bin/env node
+
+/**
+ * mkcol - Create a shoebox collection file from media files in the current directory
+ * 
+ * Usage: mkcol <key> <text> <title>
+ * 
+ * Arguments:
+ *   key   - Unique identifier for the collection (no spaces or special chars)
+ *   text  - Short description for dropdown display
+ *   title - Human-readable description of the collection
+ * 
+ * Scans current directory for supported media files:
+ *   - Images: .jpg, .jpeg, .JPG, .JPEG
+ *   - Video: .mp4, .MP4
+ *   - Audio: .mp3, .MP3
+ * 
+ * Looks up accession numbers from accessions.json based on the link (filename).
+ * Creates a collection JSON file in the collections directory.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+// Hard-coded path to accessions.json
+const ACCESSIONS_JSON_PATH = '/home/mbudd/Documents/electron/shoebox/app/resource/accessions.json';
+
+// Supported file extensions
+const SUPPORTED_EXTENSIONS = [
+  '.jpg', '.jpeg', '.JPG', '.JPEG',
+  '.mp4', '.MP4',
+  '.mp3', '.MP3'
+];
+
+/**
+ * Load and parse accessions.json
+ */
+function loadAccessions() {
+  if (!fs.existsSync(ACCESSIONS_JSON_PATH)) {
+    console.error(`Error: accessions.json not found at ${ACCESSIONS_JSON_PATH}`);
+    process.exit(1);
+  }
+  
+  try {
+    const fileContent = fs.readFileSync(ACCESSIONS_JSON_PATH, 'utf8');
+    const data = JSON.parse(fileContent);
+    return data.accessions.item || [];
+  } catch (error) {
+    console.error(`Error reading accessions.json: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Build a map of link -> accession for quick lookup
+ */
+function buildLinkToAccessionMap(items) {
+  const map = new Map();
+  for (const item of items) {
+    if (item.link && item.accession) {
+      map.set(item.link, item.accession);
+    }
+  }
+  return map;
+}
+
+/**
+ * Get collections directory path
+ */
+function getCollectionsDir() {
+  const accessionsDir = path.dirname(ACCESSIONS_JSON_PATH);
+  const collectionsDir = path.join(accessionsDir, 'collections');
+  
+  // Create collections directory if it doesn't exist
+  if (!fs.existsSync(collectionsDir)) {
+    fs.mkdirSync(collectionsDir, { recursive: true });
+    console.log(`Created collections directory: ${collectionsDir}\n`);
+  }
+  
+  return collectionsDir;
+}
+
+/**
+ * Parse command line arguments
+ */
+function parseArguments() {
+  const args = process.argv.slice(2);
+  
+  if (args.length !== 3) {
+    console.error('Error: Expected 3 arguments');
+    console.error('Usage: mkcol <key> <text> <title>');
+    console.error('');
+    console.error('Example:');
+    console.error('  mkcol summer2024 "Summer 2024" "Summer Vacation Photos 2024"');
+    process.exit(1);
+  }
+  
+  const [key, text, title] = args;
+  
+  // Validate key (no spaces or special characters)
+  if (!/^[a-zA-Z0-9_-]+$/.test(key)) {
+    console.error('Error: Key must contain only letters, numbers, hyphens, and underscores');
+    console.error(`Invalid key: "${key}"`);
+    process.exit(1);
+  }
+  
+  return { key, text, title };
+}
+
+/**
+ * Scan current directory for supported media files
+ */
+function scanMediaFiles() {
+  const currentDir = process.cwd();
+  const files = fs.readdirSync(currentDir);
+  
+  const mediaFiles = files.filter(file => {
+    const ext = path.extname(file);
+    return SUPPORTED_EXTENSIONS.includes(ext);
+  }).sort(); // Sort alphabetically for consistent ordering
+  
+  return mediaFiles;
+}
+
+/**
+ * Create collection object with accession numbers from accessions.json
+ */
+function createCollection(key, text, title, mediaFiles, linkToAccessionMap) {
+  const itemKeys = [];
+  const warnings = [];
+  
+  for (const file of mediaFiles) {
+    const accession = linkToAccessionMap.get(file);
+    
+    if (!accession) {
+      warnings.push(`Warning: Link "${file}" not found in accessions.json - skipping`);
+      continue;
+    }
+    
+    itemKeys.push({
+      accession: accession,
+      link: file
+    });
+  }
+  
+  return {
+    collection: {
+      key,
+      text,
+      title,
+      itemKeys
+    },
+    warnings
+  };
+}
+
+/**
+ * Write collection to JSON file in collections directory
+ */
+function writeCollectionFile(collection, collectionsDir) {
+  const filename = `${collection.key}.json`;
+  const filepath = path.join(collectionsDir, filename);
+  
+  // Check if file already exists
+  if (fs.existsSync(filepath)) {
+    console.error(`Error: Collection file "${filename}" already exists in ${collectionsDir}`);
+    process.exit(1);
+  }
+  
+  const json = JSON.stringify(collection, null, 2);
+  fs.writeFileSync(filepath, json);
+  
+  return filepath;
+}
+
+/**
+ * Main function
+ */
+function main() {
+  console.log('Creating shoebox collection...\n');
+  
+  // Parse arguments
+  const { key, text, title } = parseArguments();
+  console.log(`Key:   ${key}`);
+  console.log(`Text:  ${text}`);
+  console.log(`Title: ${title}\n`);
+  
+  // Load accessions.json
+  console.log('Loading accessions.json...');
+  const items = loadAccessions();
+  const linkToAccessionMap = buildLinkToAccessionMap(items);
+  console.log(`Loaded ${linkToAccessionMap.size} accession entries\n`);
+  
+  // Get collections directory
+  const collectionsDir = getCollectionsDir();
+  
+  // Scan for media files
+  console.log('Scanning for media files...');
+  const mediaFiles = scanMediaFiles();
+  
+  if (mediaFiles.length === 0) {
+    console.error('Error: No supported media files found in current directory');
+    console.error('Supported extensions:', SUPPORTED_EXTENSIONS.join(', '));
+    process.exit(1);
+  }
+  
+  console.log(`Found ${mediaFiles.length} media file(s)\n`);
+  
+  // Create collection
+  const { collection, warnings } = createCollection(key, text, title, mediaFiles, linkToAccessionMap);
+  
+  // Display warnings if any
+  if (warnings.length > 0) {
+    console.log('Warnings:');
+    warnings.forEach(warning => console.log(`  ${warning}`));
+    console.log('');
+  }
+  
+  if (collection.itemKeys.length === 0) {
+    console.error('Error: No valid items found for collection (all files were skipped)');
+    process.exit(1);
+  }
+  
+  // Display items to be included
+  console.log(`Including ${collection.itemKeys.length} item(s) in collection:\n`);
+  collection.itemKeys.forEach((item, index) => {
+    console.log(`  ${(index + 1).toString().padStart(3)}. ${item.link} → accession ${item.accession}`);
+  });
+  console.log('');
+  
+  // Write to file
+  const filepath = writeCollectionFile(collection, collectionsDir);
+  
+  console.log(`✓ Collection created successfully: ${path.basename(filepath)}`);
+  console.log(`  Items: ${collection.itemKeys.length}`);
+  console.log(`  Path:  ${filepath}`);
+}
+
+// Run the script
+main();

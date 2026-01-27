@@ -1,0 +1,2717 @@
+<template>
+  <div class="media-manager">
+    <header>
+      <h1>Media Manager</h1>
+      <p class="subtitle">Edit media item metadata</p>
+    </header>
+
+    <div class="content">
+      <div v-if="loading" class="loading">Loading item...</div>
+      
+      <div v-else-if="error" class="error-box">
+        <strong>Error:</strong> {{ error }}
+      </div>
+
+      <form v-else @submit.prevent="handleSave" class="media-form">
+        <!-- Media Preview -->
+        <div v-if="mediaPreviewPath" class="preview-section">
+          <div class="preview-and-controls">
+            <div class="preview-container" :style="{ position: 'relative', display: 'inline-block' }">
+              <img 
+                v-if="item.type === 'photo'" 
+                ref="imageElement"
+                :src="mediaPreviewPath" 
+                alt="Preview" 
+                class="media-preview"
+                @load="onImageLoad"
+              />
+              <video v-else-if="item.type === 'video'" :src="mediaPreviewPath" controls class="media-preview"></video>
+              <audio v-else-if="item.type === 'audio'" :src="mediaPreviewPath" controls class="media-preview"></audio>
+              
+              <!-- Face overlay canvas (only for photos) -->
+              <canvas 
+                v-if="item.type === 'photo' && showFaceOverlays"
+                ref="faceCanvas"
+                class="face-overlay-canvas"
+                :style="{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }"
+              ></canvas>
+            </div>
+            
+            <!-- Face Detection Controls (only for photos) - beside preview -->
+            <div v-if="item.type === 'photo'" class="face-detection-controls">
+              <!-- Advanced Settings (collapsed by default) -->
+              <div class="advanced-settings">
+                <button 
+                  type="button" 
+                  @click="showAdvancedSettings = !showAdvancedSettings"
+                  class="btn-link"
+                >
+                  {{ showAdvancedSettings ? '▼' : '▶' }} Advanced Settings
+                </button>
+                
+                <div v-if="showAdvancedSettings" class="settings-panel">
+                  <!-- Model Selection -->
+                  <div class="setting-group">
+                    <label>Detection Models:</label>
+                    <div class="model-checkboxes">
+                      <label v-for="model in availableModels" :key="model.key" class="model-option">
+                        <input 
+                          type="checkbox" 
+                          :value="model.key"
+                          v-model="selectedModels"
+                          :disabled="!model.available"
+                        />
+                        <span :class="{ disabled: !model.available }">
+                          {{ model.name }}
+                          <small class="model-desc">{{ model.description }}</small>
+                        </span>
+                      </label>
+                    </div>
+                    <p class="hint-small">Select one or more. Multiple models will find more faces but take longer.</p>
+                  </div>
+                  
+                  <!-- Confidence Threshold (not implemented yet, placeholder for future)
+                  <div class="setting-group">
+                    <label>
+                      Confidence Threshold: {{ confidenceThreshold }}
+                    </label>
+                    <input 
+                      type="range" 
+                      v-model.number="confidenceThreshold"
+                      min="0.3"
+                      max="0.8"
+                      step="0.05"
+                      class="confidence-slider"
+                    />
+                    <p class="hint-small">Lower = more faces detected, higher = fewer false positives</p>
+                  </div>
+                  -->
+                </div>
+              </div>
+              
+              <button 
+                type="button" 
+                @click="handleDetectFaces" 
+                :disabled="detectingFaces || selectedModels.length === 0"
+                class="btn-secondary"
+              >
+                {{ detectingFaces ? 'Detecting...' : 'Detect Faces' }}
+              </button>
+              
+              <label v-if="detectedFaces.length > 0" class="toggle-overlay">
+                <input type="checkbox" v-model="showFaceOverlays" @change="drawFaceOverlays" />
+                Show Overlays<br>
+                <small>({{ detectedFaces.length }} {{ detectedFaces.length === 1 ? 'face' : 'faces' }})</small>
+              </label>
+              
+              <span v-if="faceDetectionStatus" class="detection-status">
+                {{ faceDetectionStatus }}
+              </span>
+            </div>
+          </div>
+          
+          <!-- People List (always visible for photos) -->
+          <div v-if="item.type === 'photo' && (item.person.length > 0 || detectedFaces.length > 0)" class="face-people-section">
+            <h3>People in This Item</h3>
+            <p class="hint">Add people and assign faces. {{ detectedFaces.length > 0 ? 'Match confidence shown in %.': 'Press "Detect Faces" to enable face matching.' }}</p>
+            
+            <!-- Scrollable people list -->
+            <div class="people-list-container" :class="{ 'scrollable': item.person.length > 3 }">
+              <div v-for="(person, index) in item.person" :key="person.personID || index" class="person-face-row">
+              <div class="person-info">
+                <select v-model="person.personID" @change="personListKey++" class="person-select">
+                  <option value="">-- Select Person --</option>
+                  <option v-for="p in getAvailablePersons(index)" :key="p.personID" :value="p.personID">
+                    {{ getPersonDisplayName(p) }}
+                  </option>
+                </select>
+                <input 
+                  v-model="person.context" 
+                  type="text"
+                  placeholder="Context (e.g., 'holding baby', 'in background')"
+                  class="person-context"
+                />
+              </div>
+              
+              <div class="face-match-indicator" :class="{ 'face-controls-disabled': detectedFaces.length === 0 }">
+                <span v-if="person.faceTag && person.faceTag.region" class="matched-indicator">
+                  Face #{{ person.faceTag.faceIndex + 1 }} ({{ Math.round((person.faceTag.confidence || 0) * 100) }}%)
+                  <button 
+                    type="button"
+                    @click="unmatchPersonFace(person.personID)"
+                    class="btn-unmatch-inline"
+                    title="Unmatch this face"
+                  >
+                    Unmatch
+                  </button>
+                </span>
+                <span v-else-if="person.personID && detectedFaces.length > 0 && unmatchedFaces.length > 0" class="unmatched-indicator">
+                  <select 
+                    v-model.number="faceAssignments[person.personID]" 
+                    class="face-select-small"
+                    @change="console.log('Face selected for', person.personID, ':', faceAssignments[person.personID], 'type:', typeof faceAssignments[person.personID])"
+                  >
+                    <option value="">-- Assign Face --</option>
+                    <option v-for="face in getUnassignedFaces()" :key="face.faceIndex" :value="face.faceIndex">
+                      Face #{{ face.faceIndex + 1 }} ({{ Math.round(face.confidence * 100) }}%)
+                    </option>
+                  </select>
+                  <button 
+                    type="button"
+                    @click="console.log('Assign button clicked for', person.personID); assignFaceToPersonByID(person.personID)"
+                    :disabled="!faceAssignments[person.personID] && faceAssignments[person.personID] !== 0"
+                    class="btn-assign-inline"
+                  >
+                    Assign
+                  </button>
+                </span>
+                <span v-else-if="detectedFaces.length === 0" class="no-faces-indicator">
+                  No faces detected
+                </span>
+                <span v-else-if="!person.personID" class="no-person-indicator">
+                  Select a person first
+                </span>
+              </div>
+              
+              <button type="button" @click="removePerson(index)" class="btn-remove" title="Remove person">×</button>
+            </div>
+            </div>
+            
+            <button type="button" @click="addPerson" class="btn-add">+ Add Person</button>
+            <small>Tip: Use Person Manager to add new people to the database</small>
+            
+            <!-- Summary of unassigned faces -->
+            <div v-if="getUnassignedFaces().length > 0" class="unassigned-faces-summary">
+              <strong>⚠️ {{ getUnassignedFaces().length }} face(s) not yet assigned:</strong>
+              <span v-for="face in getUnassignedFaces()" :key="face.faceIndex" class="face-badge">
+                Face #{{ face.faceIndex + 1 }}
+              </span>
+            </div>
+            
+            <!-- Find Similar Faces Button -->
+            <button 
+              v-if="item.type === 'photo' && getUnassignedFaces().length > 0"
+              type="button" 
+              @click="findSimilarFaces"
+              :disabled="searchingFaces"
+              class="btn-find-similar"
+            >
+              🔍 {{ searchingFaces ? 'Searching...' : 'Find Similar Faces' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Basic Info -->
+        <div class="form-section">
+          <div class="info-row">
+            <div class="info-item">
+              <label>Accession:</label>
+              <span class="info-value">{{ item.accession }}</span>
+            </div>
+            <div class="info-item">
+              <label>File:</label>
+              <span class="info-value">{{ item.link }}</span>
+            </div>
+            <div class="info-item">
+              <label>Type:</label>
+              <span class="info-value">{{ item.type }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <div class="form-section">
+          <label for="description">Description</label>
+          <textarea 
+            id="description"
+            v-model="item.description" 
+            rows="4"
+            placeholder="Describe the contents, context, or transcription..."
+          ></textarea>
+        </div>
+
+        <!-- Date -->
+        <div class="form-section">
+          <label>Date (when media was created)</label>
+          <div class="date-row">
+            <input 
+              v-model="item.date.year" 
+              type="text"
+              placeholder="YYYY"
+              class="date-year"
+            />
+            <input 
+              v-model="item.date.month" 
+              type="text"
+              placeholder="Jan, Feb, etc."
+              class="date-month"
+            />
+            <input 
+              v-model="item.date.day" 
+              type="text"
+              placeholder="1-31"
+              class="date-day"
+            />
+          </div>
+          <small>Partial dates allowed (e.g., year only)</small>
+        </div>
+
+        <!-- Location -->
+        <div class="form-section">
+          <label>Location (where media was taken)</label>
+          <div v-for="(loc, index) in item.location" :key="index" class="location-entry">
+            <div class="location-row">
+              <input 
+                v-model="loc.detail" 
+                type="text"
+                placeholder="Specific location (e.g., farm, living room)"
+                class="location-detail"
+              />
+              <input 
+                v-model="loc.city" 
+                type="text"
+                placeholder="City"
+                class="location-city"
+              />
+              <input 
+                v-model="loc.state" 
+                type="text"
+                placeholder="State"
+                maxlength="2"
+                class="location-state"
+              />
+              <button type="button" @click="removeLocation(index)" class="btn-remove" title="Remove location">×</button>
+            </div>
+            <div class="location-row location-gps">
+              <input 
+                v-model.number="loc.latitude" 
+                type="number"
+                step="any"
+                placeholder="Latitude (e.g., 45.523064)"
+                class="location-coordinate"
+              />
+              <input 
+                v-model.number="loc.longitude" 
+                type="number"
+                step="any"
+                placeholder="Longitude (e.g., -122.676483)"
+                class="location-coordinate"
+              />
+              <span class="gps-hint" v-if="loc.latitude && loc.longitude">
+                📍 <a :href="`https://maps.google.com?q=${loc.latitude},${loc.longitude}&t=k`" target="_blank">View on Map</a>
+              </span>
+            </div>
+          </div>
+          <button type="button" @click="addLocation" class="btn-add">+ Add Location</button>
+        </div>
+
+        <!-- Sources -->
+        <div class="form-section">
+          <label>Sources (who provided this item)</label>
+          <div v-for="(source, index) in item.source" :key="index" class="source-entry">
+            <div class="source-row">
+              <select v-model="source.personID" class="source-select">
+                <option value="">-- Select Person --</option>
+                <option v-for="p in persons" :key="p.personID" :value="p.personID">
+                  {{ getPersonDisplayName(p) }}
+                </option>
+              </select>
+              <div class="source-date">
+                <label class="inline-label">Received:</label>
+                <input 
+                  v-model="source.received.year" 
+                  type="text"
+                  placeholder="YYYY"
+                  class="date-year-small"
+                />
+                <input 
+                  v-model="source.received.month" 
+                  type="text"
+                  placeholder="Month"
+                  class="date-month-small"
+                />
+                <input 
+                  v-model="source.received.day" 
+                  type="text"
+                  placeholder="Day"
+                  class="date-day-small"
+                />
+              </div>
+              <button type="button" @click="removeSource(index)" class="btn-remove" title="Remove source">×</button>
+            </div>
+          </div>
+          <button type="button" @click="addSource" class="btn-add">+ Add Source</button>
+        </div>
+
+        <!-- Playlist -->
+        <div class="form-section">
+          <label>Playlist (references to other media)</label>
+          <div v-for="(entry, index) in item.playlist.entry" :key="index" class="playlist-entry">
+            <div class="playlist-row" :class="{ 'validation-error': playlistValidationErrors[index] }">
+              <select
+                v-model="entry.ref" 
+                class="playlist-ref"
+                @change="onPlaylistChange"
+              >
+                <option value="">-- Select Media --</option>
+                <option 
+                  v-for="mediaItem in audioVideoItems" 
+                  :key="mediaItem.link" 
+                  :value="mediaItem.link"
+                  :class="'option-' + (mediaItem.type === 'tape' ? 'tape' : mediaItem.type)"
+                >
+                  {{ mediaItem.link }} ({{ mediaItem.type === 'tape' || mediaItem.type === 'audio' ? 'Audio' : 'Video' }})
+                </option>
+              </select>
+              <input 
+                v-model="entry.starttime" 
+                type="text"
+                placeholder="00:00:00.0"
+                class="playlist-time"
+                title="Start time (HH:MM:SS.s)"
+                @input="onPlaylistChange"
+              />
+              <input 
+                v-model="entry.duration" 
+                type="text"
+                placeholder="00:01:30.0"
+                class="playlist-time"
+                title="Duration (HH:MM:SS.s)"
+                @input="onPlaylistChange"
+              />
+              <button type="button" @click="removePlaylistEntry(index)" class="btn-remove" title="Remove playlist entry">×</button>
+            </div>
+            <div v-if="playlistValidationErrors[index]" class="validation-errors">
+              <small class="error-text" v-for="(error, errorIdx) in playlistValidationErrors[index]" :key="errorIdx">
+                • {{ error }}
+              </small>
+            </div>
+          </div>
+          <button type="button" @click="addPlaylistEntry" class="btn-add">+ Add Playlist Entry</button>
+          <small class="format-hint">Time format: HH:MM:SS.s (e.g., 00:03:45.5 for 3 minutes 45.5 seconds)</small>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="form-actions">
+          <button type="submit" :disabled="saving" class="btn-primary">
+            {{ saving ? 'Saving...' : 'Save Changes' }}
+          </button>
+          <button type="button" @click="handleDelete" :disabled="saving || deleting" class="btn-danger">
+            {{ deleting ? 'Deleting...' : 'Delete Item' }}
+          </button>
+          <button type="button" @click="handleCancel" :disabled="saving || deleting" class="btn-secondary">
+            Cancel
+          </button>
+        </div>
+
+        <div v-if="statusMessage" :class="'status-message ' + statusMessage.type">
+          {{ statusMessage.text }}
+        </div>
+      </form>
+    </div>
+    
+    <!-- Face Selector Modal -->
+    <div v-if="showFaceSelector" class="modal-overlay" @click="closeFaceSelector">
+      <div class="modal-content modal-small" @click.stop>
+        <div class="modal-header">
+          <h2>Select Face to Search</h2>
+          <button type="button" @click="closeFaceSelector" class="modal-close">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <p class="face-selector-info">
+            Choose which unmatched face to search for in the Person Library:
+          </p>
+          
+          <div class="face-selector-list">
+            <label 
+              v-for="face in unmatchedFaces" 
+              :key="face.faceIndex"
+              class="face-selector-option"
+            >
+              <input 
+                type="radio" 
+                name="faceSelection" 
+                :value="face.faceIndex"
+                v-model="selectedFaceForSearch"
+              />
+              <span class="face-option-label">
+                Face #{{ face.faceIndex + 1 }} 
+                <span class="face-confidence">({{ Math.round(face.confidence * 100) }}%)</span>
+              </span>
+            </label>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button 
+            type="button" 
+            @click="searchSelectedFace"
+            class="btn-primary"
+          >
+            Search This Face
+          </button>
+          <button type="button" @click="closeFaceSelector" class="btn-secondary">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Face Similarity Search Modal -->
+    <div v-if="showSimilaritySearch" class="modal-overlay" @click="closeSimilaritySearch">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h2>Face Similarity Search</h2>
+          <button type="button" @click="closeSimilaritySearch" class="modal-close">&times;</button>
+        </div>
+        
+        <div class="modal-body">
+          <p class="search-info">
+            Searching for matches to <strong>Face #{{ currentSearchFaceIndex + 1 }}</strong>
+            ({{ unmatchedFaces.findIndex(f => f.faceIndex === currentSearchFaceIndex) + 1 }} of {{ unmatchedFaces.length }} unmatched)
+          </p>
+          
+          <div v-if="searchingFaces" class="searching">
+            Searching Person Library...
+          </div>
+          
+          <div v-else-if="similarityMatches.length === 0" class="no-matches">
+            No similar faces found in Person Library above threshold.
+            <br><small>Try tagging more photos to build the face library.</small>
+          </div>
+          
+          <div v-else class="matches-list">
+            <div class="matches-header">
+              <strong>{{ similarityMatches.length }} potential match(es) found</strong>
+              <small>Select one or more to add to this photo</small>
+            </div>
+            
+            <div 
+              v-for="match in similarityMatches" 
+              :key="match.personID"
+              class="match-item"
+              :class="{ 
+                'match-selected': selectedMatches.has(match.personID),
+                'match-in-photo': match.alreadyInPhoto
+              }"
+              @click="toggleMatchSelection(match.personID)"
+            >
+              <div class="match-checkbox">
+                <input 
+                  type="checkbox" 
+                  :checked="selectedMatches.has(match.personID)"
+                  @click.stop="toggleMatchSelection(match.personID)"
+                />
+              </div>
+              
+              <div class="match-info">
+                <div class="match-name">
+                  {{ getPersonDisplayName({ first: match.first, last: match.last }) }}
+                  <span v-if="match.alreadyInPhoto" class="badge-in-photo">Already in photo</span>
+                </div>
+                <div class="match-details">
+                  <span class="match-confidence">Confidence: {{ match.confidence }}%</span>
+                  <span class="match-reference">Reference: {{ match.referenceAccession }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button 
+            type="button" 
+            @click="addSelectedMatches"
+            :disabled="selectedMatches.size === 0"
+            class="btn-primary"
+          >
+            Add Selected ({{ selectedMatches.size }})
+          </button>
+          
+          <button 
+            v-if="unmatchedFaces.length > 1 && unmatchedFaces.findIndex(f => f.faceIndex === currentSearchFaceIndex) < unmatchedFaces.length - 1"
+            type="button" 
+            @click="searchNextFace"
+            class="btn-secondary"
+          >
+            Next Face →
+          </button>
+          
+          <button type="button" @click="closeSimilaritySearch" class="btn-secondary">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue';
+
+const item = ref({
+  accession: '',
+  link: '',
+  type: '',
+  description: '',
+  date: { year: '', month: '', day: '' },
+  location: [],
+  person: [],
+  source: [],
+  playlist: { entry: [] }
+});
+
+const persons = ref([]);
+const personListKey = ref(0); // Used to force re-render of person dropdowns
+const loading = ref(true);
+const saving = ref(false);
+const deleting = ref(false);
+const error = ref(null);
+const statusMessage = ref(null);
+const mediaPreviewPath = ref(null);
+
+// Face detection state
+const imageElement = ref(null);
+const faceCanvas = ref(null);
+const detectedFaces = ref([]);
+const detectingFaces = ref(false);
+const showFaceOverlays = ref(false);
+const faceDetectionStatus = ref('');
+const imageDimensions = ref({ width: 0, height: 0 });
+
+// Face detection advanced settings
+const showAdvancedSettings = ref(false);
+const availableModels = ref([]);
+const selectedModels = ref(['ssd']); // Default to SSD only
+const confidenceThreshold = ref(0.5); // Default 0.5
+const lastUsedModel = ref('ssd');
+
+// Face matching state
+const matchedFaces = ref([]);
+const unmatchedFaces = ref([]);
+const faceAssignments = ref({});
+
+// Face similarity search state
+const showFaceSelector = ref(false);
+const showSimilaritySearch = ref(false);
+const searchingFaces = ref(false);
+const similarityMatches = ref([]);
+const selectedMatches = ref(new Set());
+const currentSearchFaceIndex = ref(null);
+const selectedFaceForSearch = ref(null);
+
+// Playlist validation state
+const playlistValidationErrors = ref([]);
+
+// Audio/video items for playlist dropdown
+const audioVideoItems = ref([]);
+
+const getPersonDisplayName = (person) => {
+  if (!person) return 'Unknown';
+  
+  const first = person.displayFirstName || person.first || '';
+  
+  // If this is a transformed entry with displayLastName, use it
+  if (person.displayLastName) {
+    const lastName = person.displayLastName;
+    const secondary = person.secondaryNames ? ` (${person.secondaryNames})` : '';
+    return `${first} ${lastName}${secondary}`.trim();
+  }
+  
+  // Fallback for non-transformed entries
+  const lastNames = person.last?.map(ln => ln.last).join(', ') || '';
+  const fullName = `${first} ${lastNames}`.trim();
+  
+  if (fullName) {
+    return fullName;
+  } else if (person.TMGID || person.tmgID) {
+    return `TMG ID: ${person.TMGID || person.tmgID}`;
+  } else {
+    return `Person ${person.personID?.substring(0, 8) || 'Unknown'}`;
+  }
+};
+
+// Get available persons for a specific person entry (excludes already-assigned persons)
+// Get available persons for a specific dropdown (excluding already assigned persons)
+const getAvailablePersons = (currentIndex) => {
+  // Force dependency on personListKey to trigger reactivity
+  personListKey.value; // eslint-disable-line no-unused-expressions
+  
+  // Get all personIDs already assigned in this item (except the current entry being edited)
+  const assignedPersonIDs = item.value.person
+    .map((p, idx) => idx !== currentIndex ? p.personID : null)
+    .filter(id => id); // Remove nulls and empty strings
+  
+  // Filter out persons who are already assigned
+  return persons.value.filter(p => !assignedPersonIDs.includes(p.personID));
+};
+
+// Get available persons for face assignment (from item.person, excluding persons who already have faceTag assigned)
+const getAvailablePersonsForFaceAssignment = (faceIndex) => {
+  personListKey.value; // Force reactivity
+  
+  // Get personIDs that already have faceTags assigned (to prevent duplicates)
+  const personsWithFaceTags = item.value.person
+    .filter(p => p.faceTag && p.faceTag.region)
+    .map(p => p.personID)
+    .filter(id => id);
+  
+  // Return item.person entries that don't have faceTags yet
+  return item.value.person.filter(p => p.personID && !personsWithFaceTags.includes(p.personID));
+};
+
+const addLocation = () => {
+  item.value.location.push({ detail: '', city: '', state: '', latitude: null, longitude: null });
+};
+
+const removeLocation = (index) => {
+  item.value.location.splice(index, 1);
+};
+
+const addPerson = () => {
+  try {
+    item.value.person.push({ personID: '', context: '' });
+  } catch (err) {
+    console.error('Error adding person:', err);
+  }
+};
+
+const removePerson = (index) => {
+  try {
+    item.value.person.splice(index, 1);
+  } catch (err) {
+    console.error('Error removing person:', err);
+  }
+};
+
+const addSource = () => {
+  item.value.source.push({ 
+    personID: '', 
+    received: { year: '', month: '', day: '' } 
+  });
+};
+
+const removeSource = (index) => {
+  item.value.source.splice(index, 1);
+};
+
+const addPlaylistEntry = () => {
+  if (!item.value.playlist) {
+    item.value.playlist = { entry: [] };
+  }
+  item.value.playlist.entry.push({ 
+    ref: '', 
+    starttime: '00:00:00.0', 
+    duration: '00:01:30.0' 
+  });
+};
+
+const removePlaylistEntry = (index) => {
+  item.value.playlist.entry.splice(index, 1);
+  validatePlaylist(); // Revalidate after removal
+};
+
+// Validate playlist entries
+const validatePlaylist = () => {
+  const errors = [];
+  const timeFormat = /^\d{1,2}:\d{2}:\d{2}\.\d$/; // HH:MM:SS.s format
+  
+  if (!item.value.playlist || !item.value.playlist.entry) {
+    playlistValidationErrors.value = [];
+    return true;
+  }
+  
+  item.value.playlist.entry.forEach((entry, index) => {
+    const entryErrors = [];
+    
+    // Check if all fields are filled
+    if (!entry.ref) {
+      entryErrors.push('Missing filename');
+    }
+    if (!entry.starttime) {
+      entryErrors.push('Missing start time');
+    } else if (!timeFormat.test(entry.starttime)) {
+      entryErrors.push('Invalid start time format (use HH:MM:SS.s)');
+    }
+    if (!entry.duration) {
+      entryErrors.push('Missing duration');
+    } else if (!timeFormat.test(entry.duration)) {
+      entryErrors.push('Invalid duration format (use HH:MM:SS.s)');
+    }
+    
+    if (entryErrors.length > 0) {
+      errors[index] = entryErrors;
+    }
+  });
+  
+  playlistValidationErrors.value = errors;
+  return errors.length === 0 || errors.every(e => !e);
+};
+
+// Validate playlist on input change
+const onPlaylistChange = () => {
+  validatePlaylist();
+};
+
+// Face Detection Functions
+const onImageLoad = () => {
+  try {
+    if (imageElement.value) {
+      imageDimensions.value = {
+        width: imageElement.value.naturalWidth,
+        height: imageElement.value.naturalHeight
+      };
+      
+      // Set canvas size to match displayed image
+      if (faceCanvas.value) {
+        faceCanvas.value.width = imageElement.value.clientWidth;
+        faceCanvas.value.height = imageElement.value.clientHeight;
+      }
+    }
+  } catch (err) {
+    console.error('Error in onImageLoad:', err);
+  }
+};
+
+const handleDetectFaces = async () => {
+  if (!item.value.accession) {
+    faceDetectionStatus.value = 'Error: No accession number';
+    return;
+  }
+  
+  if (selectedModels.value.length === 0) {
+    faceDetectionStatus.value = 'Error: Select at least one detection model';
+    return;
+  }
+  
+  detectingFaces.value = true;
+  const modelNames = selectedModels.value.map(key => {
+    const model = availableModels.value.find(m => m.key === key);
+    return model ? model.name : key;
+  }).join(' + ');
+  faceDetectionStatus.value = `Detecting faces using ${modelNames}...`;
+  detectedFaces.value = [];
+  matchedFaces.value = [];
+  unmatchedFaces.value = [];
+  faceAssignments.value = {};
+  
+  // Clear all existing face assignments from people since regions will be regenerated
+  item.value.person.forEach(person => {
+    if (person.faceTag) {
+      delete person.faceTag;
+    }
+  });
+  
+  try {
+    // Step 1: Detect faces with selected models
+    const result = await window.electronAPI.detectFaces(item.value.accession, {
+      models: [...selectedModels.value] // Create plain array copy
+    });
+    
+    if (result.success) {
+      detectedFaces.value = result.faces || [];
+      lastUsedModel.value = modelNames; // Store for display
+      
+      if (detectedFaces.value.length === 0) {
+        faceDetectionStatus.value = `No faces detected (${modelNames})`;
+        showFaceOverlays.value = false;
+      } else {
+        // Step 2: Try to match faces to existing persons in the item
+        faceDetectionStatus.value = 'Matching faces to people...';
+        
+        // Send only necessary data for matching, ensuring it's JSON-serializable
+        const facesForMatching = detectedFaces.value.map((face, index) => ({
+          faceIndex: index,
+          descriptor: [...face.descriptor], // Ensure it's a plain array
+          region: { ...face.region }, // Clone object
+          confidence: face.confidence
+        }));
+        
+        const matchResult = await window.electronAPI.matchFaces(
+          item.value.accession,
+          facesForMatching
+        );
+        
+        if (matchResult.success) {
+          matchedFaces.value = matchResult.matches || [];
+          unmatchedFaces.value = matchResult.unmatchedFaces || [];
+          
+          const totalFaces = detectedFaces.value.length;
+          const matched = matchedFaces.value.length;
+          const unmatched = unmatchedFaces.value.length;
+          
+          if (unmatched > 0) {
+            faceDetectionStatus.value = `${modelNames}: ${totalFaces} ${totalFaces === 1 ? 'face' : 'faces'} (${matched} matched, ${unmatched} need assignment)`;
+          } else {
+            faceDetectionStatus.value = `${modelNames}: ${matched} ${matched === 1 ? 'face matched' : 'faces matched'}`;
+          }
+        } else {
+          faceDetectionStatus.value = `${modelNames}: ${detectedFaces.value.length} ${detectedFaces.value.length === 1 ? 'face' : 'faces'} detected`;
+        }
+        
+        showFaceOverlays.value = true;
+        
+        // Wait for next tick to ensure canvas is rendered
+        setTimeout(() => {
+          drawFaceOverlays();
+        }, 50);
+      }
+    } else {
+      faceDetectionStatus.value = `Error: ${result.error}`;
+      detectedFaces.value = [];
+      showFaceOverlays.value = false;
+    }
+  } catch (err) {
+    faceDetectionStatus.value = `Error: ${err.message}`;
+    detectedFaces.value = [];
+    showFaceOverlays.value = false;
+  } finally {
+    detectingFaces.value = false;
+  }
+};
+
+const assignFaceToPerson = async (faceIndex) => {
+  const personID = faceAssignments.value[faceIndex];
+  if (!personID) {
+    alert('Please select a person first');
+    return;
+  }
+  
+  // Get the person from the local item data by personID
+  const person = item.value.person.find(p => p.personID === personID);
+  if (!person) {
+    alert('Person not found');
+    return;
+  }
+  
+  // Check if this person already has a faceTag assigned (prevent duplicates)
+  if (person.faceTag && person.faceTag.region) {
+    alert('This person already has a face assigned. Please unmatch the existing face first.');
+    return;
+  }
+  
+  const unmatchedFace = unmatchedFaces.value.find(f => f.faceIndex === faceIndex);
+  if (!unmatchedFace) {
+    alert('Face not found');
+    return;
+  }
+  
+  // Get the full face data (with descriptor) from the original detectedFaces
+  const fullFace = detectedFaces.value[faceIndex];
+  if (!fullFace) {
+    alert('Face descriptor not found');
+    return;
+  }
+  
+  // Update the local item.value.person array with face tag
+  // Include model so it can be migrated to faceBioData on save
+  person.faceTag = {
+    region: fullFace.region,
+    confidence: fullFace.confidence,
+    descriptor: Array.from(fullFace.descriptor),
+    model: fullFace.model || selectedModels.value[0] || 'ssd',
+    detectionDate: new Date().toISOString(),
+    verified: true,
+    faceIndex: faceIndex
+  };
+  
+  // Move from unmatched to matched
+  matchedFaces.value.push({
+    faceIndex,
+    personID: person.personID,
+    confidence: unmatchedFace.confidence,
+    region: unmatchedFace.region
+  });
+  
+  // Remove from unmatched
+  unmatchedFaces.value = unmatchedFaces.value.filter(f => f.faceIndex !== faceIndex);
+  delete faceAssignments.value[faceIndex];
+  
+  // Force reactivity update
+  personListKey.value++;
+  
+  // Update status
+  const unmatched = unmatchedFaces.value.length;
+  if (unmatched > 0) {
+    faceDetectionStatus.value = `${matchedFaces.value.length} matched, ${unmatched} need assignment`;
+  } else {
+    faceDetectionStatus.value = `All ${matchedFaces.value.length} faces assigned!`;
+  }
+  
+  // Redraw overlays
+  if (showFaceOverlays.value) {
+    drawFaceOverlays();
+  }
+};
+
+const handleFaceAssignment = (faceIndex) => {
+  // Optional: Could trigger auto-save or preview here
+};
+
+const unmatchFace = async (match) => {
+  if (!confirm(`Are you sure you want to unmatch Face #${match.faceIndex + 1} from this person? You can reassign it after.`)) {
+    return;
+  }
+  
+  // Find the person in the local item data
+  const person = item.value.person.find(p => p.personID === match.personID);
+  if (!person) {
+    alert('Person not found');
+    return;
+  }
+  
+  // Remove the faceTag from the local item data
+  delete person.faceTag;
+  
+  // Move from matched to unmatched
+  matchedFaces.value = matchedFaces.value.filter(m => m.faceIndex !== match.faceIndex);
+  
+  // Add to unmatched faces
+  const face = detectedFaces.value[match.faceIndex];
+  if (face) {
+    unmatchedFaces.value.push({
+      faceIndex: match.faceIndex,
+      region: match.region,
+      confidence: face.confidence
+    });
+  }
+  
+  // Force reactivity update
+  personListKey.value++;
+  
+  // Update status
+  const unmatched = unmatchedFaces.value.length;
+  if (unmatched > 0) {
+    faceDetectionStatus.value = `${matchedFaces.value.length} matched, ${unmatched} need assignment`;
+  } else {
+    faceDetectionStatus.value = matchedFaces.value.length > 0 
+      ? `All ${matchedFaces.value.length} faces matched`
+      : 'No faces detected';
+  }
+  
+  // Redraw overlays
+  if (showFaceOverlays.value) {
+    drawFaceOverlays();
+  }
+};
+
+// Unmatch by personID (for inline unmatch button)
+const unmatchPersonFace = (personID) => {
+  const person = item.value.person.find(p => p.personID === personID);
+  if (!person || !person.faceTag) {
+    return;
+  }
+  
+  const faceIndex = person.faceTag.faceIndex;
+  const match = matchedFaces.value.find(m => m.personID === personID);
+  if (match) {
+    unmatchFace(match);
+  }
+};
+
+// Assign face to person by personID (for inline assign)
+const assignFaceToPersonByID = (personID) => {
+  console.log('assignFaceToPersonByID called with personID:', personID);
+  console.log('faceAssignments:', faceAssignments.value);
+  
+  const faceIndex = faceAssignments.value[personID];
+  console.log('faceIndex for this person:', faceIndex);
+  
+  if (faceIndex === undefined || faceIndex === null || faceIndex === '') {
+    alert('Please select a face first');
+    return;
+  }
+  
+  // Find the person
+  const person = item.value.person.find(p => p.personID === personID);
+  if (!person) {
+    alert('Person not found');
+    return;
+  }
+  
+  // Check if this person already has a faceTag assigned (prevent duplicates)
+  if (person.faceTag && person.faceTag.region) {
+    alert('This person already has a face assigned. Please unmatch the existing face first.');
+    return;
+  }
+  
+  const unmatchedFace = unmatchedFaces.value.find(f => f.faceIndex === faceIndex);
+  if (!unmatchedFace) {
+    alert('Face not found');
+    return;
+  }
+  
+  // Get the full face data (with descriptor) from the original detectedFaces
+  const fullFace = detectedFaces.value[faceIndex];
+  if (!fullFace) {
+    alert('Face descriptor not found');
+    return;
+  }
+  
+  // Update the local item.value.person array with face tag
+  // Include model so it can be migrated to faceBioData on save
+  person.faceTag = {
+    region: fullFace.region,
+    confidence: fullFace.confidence,
+    descriptor: Array.from(fullFace.descriptor),
+    model: fullFace.model || selectedModels.value[0] || 'ssd',
+    detectionDate: new Date().toISOString(),
+    verified: true,
+    faceIndex: faceIndex
+  };
+  
+  // Move from unmatched to matched
+  matchedFaces.value.push({
+    faceIndex,
+    personID: person.personID,
+    confidence: unmatchedFace.confidence,
+    region: unmatchedFace.region
+  });
+  
+  // Remove from unmatched
+  unmatchedFaces.value = unmatchedFaces.value.filter(f => f.faceIndex !== faceIndex);
+  delete faceAssignments.value[personID];
+  
+  // Force reactivity update
+  personListKey.value++;
+  
+  // Update status
+  const unmatched = unmatchedFaces.value.length;
+  if (unmatched > 0) {
+    faceDetectionStatus.value = `${matchedFaces.value.length} matched, ${unmatched} need assignment`;
+  } else {
+    faceDetectionStatus.value = `All ${matchedFaces.value.length} faces assigned!`;
+  }
+  
+  // Redraw overlays
+  if (showFaceOverlays.value) {
+    drawFaceOverlays();
+  }
+  
+  // Auto-select if only one unmatched person and one unmatched face remain
+  if (unmatchedFaces.value.length === 1) {
+    const unmatchedPersons = item.value.person.filter(p => !p.faceTag || !p.faceTag.region);
+    if (unmatchedPersons.length === 1) {
+      const lastPerson = unmatchedPersons[0];
+      const lastFace = unmatchedFaces.value[0];
+      
+      // Auto-select the face in the dropdown (let user press Assign)
+      faceAssignments.value[lastPerson.personID] = lastFace.faceIndex;
+    }
+  }
+};
+
+// Get list of faces that haven't been assigned yet
+const getUnassignedFaces = () => {
+  return unmatchedFaces.value;
+};
+
+// Face Similarity Search Functions
+const findSimilarFaces = async () => {
+  if (unmatchedFaces.value.length === 0) {
+    alert('No unmatched faces to search for');
+    return;
+  }
+  
+  // Show face selector dialog if multiple unmatched faces
+  if (unmatchedFaces.value.length > 1) {
+    selectedFaceForSearch.value = unmatchedFaces.value[0].faceIndex; // Default to first
+    showFaceSelector.value = true;
+  } else {
+    // Only one face, search it directly
+    await performFaceSimilaritySearch(unmatchedFaces.value[0].faceIndex);
+  }
+};
+
+// Perform the actual similarity search for a specific face
+const performFaceSimilaritySearch = async (faceIndex) => {
+  searchingFaces.value = true;
+  selectedMatches.value = new Set();
+  showFaceSelector.value = false;
+  
+  try {
+    // Get all persons with descriptors from the Person Library
+    const personsWithDescriptors = await window.electronAPI.getPersonsWithDescriptors();
+    
+    if (personsWithDescriptors.length === 0) {
+      alert('No persons with face descriptors found in the Person Library. Tag some faces first!');
+      searchingFaces.value = false;
+      return;
+    }
+    
+    // Search for selected face
+    currentSearchFaceIndex.value = faceIndex;
+    const matches = await searchPersonLibrary(faceIndex, personsWithDescriptors);
+    
+    similarityMatches.value = matches;
+    showSimilaritySearch.value = true;
+  } catch (error) {
+    console.error('Error searching for similar faces:', error);
+    alert('Error searching for similar faces: ' + error.message);
+  } finally {
+    searchingFaces.value = false;
+  }
+};
+
+// Start search from face selector dialog
+const searchSelectedFace = () => {
+  if (selectedFaceForSearch.value !== null) {
+    performFaceSimilaritySearch(selectedFaceForSearch.value);
+  }
+};
+
+// Close face selector dialog
+const closeFaceSelector = () => {
+  showFaceSelector.value = false;
+  selectedFaceForSearch.value = null;
+};
+
+// Search person library for matches to a specific face
+const searchPersonLibrary = async (faceIndex, personsWithDescriptors) => {
+  const face = detectedFaces.value[faceIndex];
+  if (!face || !face.descriptor) {
+    return [];
+  }
+  
+  const faceDescriptor = face.descriptor;
+  const matches = [];
+  const threshold = 0.6; // Match threshold - lower is more similar
+  
+  // Compare against all persons with descriptors
+  for (const person of personsWithDescriptors) {
+    if (!person.descriptors || !Array.isArray(person.descriptors)) continue;
+    
+    // Get all descriptors for this person (from different photos)
+    for (const descriptorEntry of person.descriptors) {
+      const storedDescriptor = new Float32Array(descriptorEntry.descriptor);
+      const distance = euclideanDistance(faceDescriptor, storedDescriptor);
+      
+      if (distance < threshold) {
+        // Check if person already in item.person list
+        const alreadyInPhoto = item.value.person.some(p => p.personID === person.personID);
+        
+        matches.push({
+          personID: person.personID,
+          first: person.first,
+          last: person.last,
+          distance: distance,
+          confidence: Math.round((1 - distance) * 100), // Convert distance to confidence %
+          referenceAccession: descriptorEntry.accession,
+          alreadyInPhoto: alreadyInPhoto
+        });
+      }
+    }
+  }
+  
+  // Sort by distance (best matches first) and limit to top 10
+  matches.sort((a, b) => a.distance - b.distance);
+  return matches.slice(0, 10);
+};
+
+// Calculate Euclidean distance between two face descriptors
+const euclideanDistance = (descriptor1, descriptor2) => {
+  let sum = 0;
+  for (let i = 0; i < descriptor1.length; i++) {
+    const diff = descriptor1[i] - descriptor2[i];
+    sum += diff * diff;
+  }
+  return Math.sqrt(sum);
+};
+
+// Toggle match selection
+const toggleMatchSelection = (personID) => {
+  if (selectedMatches.value.has(personID)) {
+    selectedMatches.value.delete(personID);
+  } else {
+    selectedMatches.value.add(personID);
+  }
+  // Force reactivity
+  selectedMatches.value = new Set(selectedMatches.value);
+};
+
+// Add selected matches to photo
+const addSelectedMatches = () => {
+  if (selectedMatches.value.size === 0) {
+    alert('No matches selected');
+    return;
+  }
+  
+  let addedCount = 0;
+  
+  // Add each selected person to item.person if not already present
+  selectedMatches.value.forEach(personID => {
+    const alreadyExists = item.value.person.some(p => p.personID === personID);
+    if (!alreadyExists) {
+      const match = similarityMatches.value.find(m => m.personID === personID);
+      if (match) {
+        // Add person with proper structure
+        const newPerson = {
+          personID: personID,
+          context: ''
+        };
+        // Don't add faceTag property at all - let it be added when assigned
+        item.value.person.push(newPerson);
+        addedCount++;
+      }
+    }
+  });
+  
+  // Force reactivity
+  personListKey.value++;
+  item.value.person = [...item.value.person]; // Force Vue to detect the change
+  
+  // Clear selection and close modal
+  selectedMatches.value = new Set();
+  showSimilaritySearch.value = false;
+  
+  alert(`Added ${addedCount} person(s) to the photo. Now assign faces using the dropdowns.`);
+};
+
+// Close similarity search modal
+const closeSimilaritySearch = () => {
+  showSimilaritySearch.value = false;
+  selectedMatches.value = new Set();
+};
+
+// Search for next unmatched face
+const searchNextFace = async () => {
+  const currentIndex = unmatchedFaces.value.findIndex(f => f.faceIndex === currentSearchFaceIndex.value);
+  if (currentIndex < unmatchedFaces.value.length - 1) {
+    searchingFaces.value = true;
+    try {
+      const personsWithDescriptors = await window.electronAPI.getPersonsWithDescriptors();
+      currentSearchFaceIndex.value = unmatchedFaces.value[currentIndex + 1].faceIndex;
+      const matches = await searchPersonLibrary(currentSearchFaceIndex.value, personsWithDescriptors);
+      similarityMatches.value = matches;
+      selectedMatches.value = new Set();
+    } catch (error) {
+      console.error('Error searching next face:', error);
+    } finally {
+      searchingFaces.value = false;
+    }
+  } else {
+    alert('No more unmatched faces');
+    closeSimilaritySearch();
+  }
+};
+
+const drawFaceOverlays = () => {
+  try {
+    if (!faceCanvas.value || !imageElement.value || !showFaceOverlays.value) {
+      // Clear canvas if hiding overlays
+      if (faceCanvas.value) {
+        const ctx = faceCanvas.value.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, faceCanvas.value.width, faceCanvas.value.height);
+        }
+      }
+      return;
+    }
+    
+    const canvas = faceCanvas.value;
+    const ctx = canvas.getContext('2d');
+    const img = imageElement.value;
+    
+    if (!ctx || !img) {
+      console.warn('drawFaceOverlays: Missing context or image element');
+      return;
+    }
+    
+    // Ensure canvas matches displayed image size
+    canvas.width = img.clientWidth;
+    canvas.height = img.clientHeight;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw rectangles for each detected face
+    detectedFaces.value.forEach((face, index) => {
+      if (!face || !face.region) {
+        console.warn(`drawFaceOverlays: Invalid face data at index ${index}`);
+        return;
+      }
+      
+      // Check if this face is matched or unmatched
+      const isMatched = matchedFaces.value.some(m => m.faceIndex === index);
+      const isUnmatched = unmatchedFaces.value.some(u => u.faceIndex === index);
+      
+      // MWG Regions format: x, y are center coordinates (normalized 0-1)
+      // w, h are width and height (normalized 0-1)
+      const region = face.region;
+      
+      // Convert normalized coordinates to pixel coordinates
+      const centerX = region.x * canvas.width;
+      const centerY = region.y * canvas.height;
+      const width = region.w * canvas.width;
+      const height = region.h * canvas.height;
+      
+      // Calculate top-left corner
+      const x = centerX - (width / 2);
+      const y = centerY - (height / 2);
+      
+      // Draw rectangle - different color for matched vs unmatched
+      if (isMatched) {
+        ctx.strokeStyle = '#0080ff'; // Blue for matched faces
+      } else {
+        ctx.strokeStyle = '#00ff00'; // Green for unmatched faces
+      }
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, width, height);
+      
+      // Draw face number with background for better visibility
+      ctx.font = 'bold 16px sans-serif';
+      const faceNumText = `${index + 1}`;
+      const faceNumMetrics = ctx.measureText(faceNumText);
+      
+      // Background for face number
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(x + 2, y + 2, faceNumMetrics.width + 8, 22);
+      
+      // Face number text - match color to border
+      ctx.fillStyle = isMatched ? '#0080ff' : '#00ff00';
+      ctx.fillText(faceNumText, x + 6, y + 18);
+    });
+  } catch (err) {
+    console.error('Error drawing face overlays:', err);
+  }
+};
+
+const handleSave = async () => {
+  // Check for unassigned faces (using unmatchedFaces which is already maintained)
+  if (unmatchedFaces.value.length > 0) {
+    const proceed = confirm(
+      'Warning: You have ' + unmatchedFaces.value.length + ' detected face(s) that are not assigned to anyone.\n\n' +
+      'This may mean you forgot to press the "Assign" button.\n\n' +
+      'Do you want to save anyway?'
+    );
+    if (!proceed) {
+      return; // User canceled save to fix assignments
+    }
+  }
+  
+  saving.value = true;
+  statusMessage.value = { type: 'info', text: 'Saving changes...' };
+
+  try {
+    // Defensive: Ensure item.value is a valid object
+    if (!item.value || typeof item.value !== 'object') {
+      statusMessage.value = { type: 'error', text: 'Error: Item data is invalid (null or not an object). Cannot save.' };
+      saving.value = false;
+      return;
+    }
+
+    // Validate no duplicate person assignments
+    const personIDs = item.value.person
+      .map(p => p.personID)
+      .filter(id => id);
+    const hasDuplicates = personIDs.length !== new Set(personIDs).size;
+
+    if (hasDuplicates) {
+      statusMessage.value = { type: 'error', text: 'Cannot save: same person appears multiple times' };
+      saving.value = false;
+      return;
+    }
+    
+    // Validate playlist entries
+    if (!validatePlaylist()) {
+      statusMessage.value = { type: 'error', text: 'Cannot save: playlist entries have validation errors (see red highlights)' };
+      saving.value = false;
+      return;
+    }
+
+    // Clean up empty objects before saving
+    const cleanedItem = {
+      ...item.value,
+      location: item.value.location.filter(loc => 
+        loc.detail || loc.city || loc.state || (loc.latitude && loc.longitude)
+      ),
+      person: item.value.person.filter(p => p.personID),
+      source: item.value.source.filter(s => s.personID)
+    };
+
+    // Clean up playlist entries
+    if (item.value.playlist && item.value.playlist.entry) {
+      const filteredEntries = item.value.playlist.entry.filter(e => e.ref && e.starttime && e.duration);
+      if (filteredEntries.length > 0) {
+        cleanedItem.playlist = { entry: filteredEntries };
+      } else {
+        delete cleanedItem.playlist;
+      }
+    }
+
+    // Remove empty date if no fields filled
+    if (!cleanedItem.date.year && !cleanedItem.date.month && !cleanedItem.date.day) {
+      delete cleanedItem.date;
+    }
+
+    // Convert to plain object to avoid IPC cloning issues
+    const plainItem = JSON.parse(JSON.stringify(cleanedItem));
+
+    const result = await window.electronAPI.saveItem(plainItem);
+
+    if (result.success) {
+      statusMessage.value = { type: 'success', text: 'Changes saved successfully!' };
+      setTimeout(() => {
+        window.close();
+      }, 1500);
+    } else {
+      statusMessage.value = { type: 'error', text: 'Error: ' + result.error };
+      saving.value = false;
+    }
+  } catch (err) {
+    statusMessage.value = { type: 'error', text: 'Error saving: ' + err.message };
+    saving.value = false;
+  }
+};
+
+const handleDelete = async () => {
+  if (!confirm(`Are you sure you want to delete item ${item.value.accession}? This cannot be undone.`)) {
+    return;
+  }
+  
+  deleting.value = true;
+  statusMessage.value = { type: 'info', text: 'Deleting item...' };
+  
+  try {
+    const result = await window.electronAPI.deleteItem(item.value.accession);
+    
+    if (result.success) {
+      statusMessage.value = { type: 'success', text: 'Item deleted successfully!' };
+      setTimeout(() => {
+        window.close();
+      }, 1500);
+    } else {
+      statusMessage.value = { type: 'error', text: 'Error: ' + result.error };
+      deleting.value = false;
+    }
+  } catch (err) {
+    statusMessage.value = { type: 'error', text: 'Error deleting: ' + err.message };
+    deleting.value = false;
+  }
+};
+
+const handleCancel = () => {
+  window.close();
+};
+
+onMounted(async () => {
+  try {
+    // Get item identifier from query string or window property
+    const urlParams = new URLSearchParams(window.location.search);
+    const identifier = urlParams.get('accession') || urlParams.get('link');
+    
+    if (!identifier) {
+      error.value = 'No item identifier provided';
+      loading.value = false;
+      return;
+    }
+    
+    // Load persons and audio/video items in parallel
+    const [loadedPersons, loadedAudioVideo] = await Promise.all([
+      window.electronAPI.getExistingPersons(),
+      window.electronAPI.getAudioVideoItems()
+    ]);
+    
+    // Transform and sort persons like sortByPerson - create entries for each last name
+    // This matches the nav column when Name Filter is selected
+    persons.value = loadedPersons.flatMap(person => {
+      if (!person.last || !Array.isArray(person.last) || person.last.length === 0) {
+        return [];
+      }
+      
+      // Collect all married names and concatenate them
+      const marriedNames = person.last
+        .filter(ln => ln.type === 'married')
+        .map(ln => ln.last)
+        .sort()
+        .join(' ');
+      
+      // Collect all maiden/non-married names
+      const maidenNames = person.last
+        .filter(ln => !ln.type || ln.type !== 'married')
+        .map(ln => ln.last)
+        .sort()
+        .join(' ');
+      
+      // Create an entry for each last name
+      return person.last.map(lastName => {
+        const secondaryNames = lastName.type === 'married' ? maidenNames : marriedNames;
+        
+        return {
+          ...person, // Preserve all person data
+          displayLastName: lastName.last,
+          displayFirstName: person.first || '',
+          secondaryNames: secondaryNames,
+          lastNameType: lastName.type
+        };
+      });
+    }).sort((a, b) => {
+      // Sort by last name, then first name, then secondary names (same as sortByPerson)
+      const lastComparison = a.displayLastName.localeCompare(b.displayLastName);
+      if (lastComparison !== 0) {
+        return lastComparison;
+      }
+      
+      const firstComparison = a.displayFirstName.localeCompare(b.displayFirstName);
+      if (firstComparison !== 0) {
+        return firstComparison;
+      }
+      
+      return a.secondaryNames.localeCompare(b.secondaryNames);
+    });
+    
+    // Store audio/video items for playlist dropdown
+    audioVideoItems.value = loadedAudioVideo;
+    
+    console.log('[TIMING] Starting item load for:', identifier);
+    const itemLoadStart = performance.now();
+    
+    // Load the item
+    const loadedItem = await window.electronAPI.loadItem(identifier);
+    console.log('[TIMING] Item loaded in:', (performance.now() - itemLoadStart).toFixed(2), 'ms');
+    
+    if (!loadedItem) {
+      error.value = 'Item not found';
+      loading.value = false;
+      return;
+    }
+    
+    // Initialize item with defaults for missing arrays/objects
+    item.value = {
+      accession: loadedItem.accession || '',
+      link: loadedItem.link || '',
+      type: loadedItem.type || '',
+      description: loadedItem.description || '',
+      date: loadedItem.date || { year: '', month: '', day: '' },
+      location: loadedItem.location || [],
+      person: loadedItem.person || [],
+      source: loadedItem.source || [],
+      playlist: loadedItem.playlist || { entry: [] }
+    };
+    
+    // Get media preview path
+    if (item.value.type && item.value.link) {
+      console.log('[TIMING] Starting media path load');
+      const mediaStart = performance.now();
+      mediaPreviewPath.value = await window.electronAPI.getMediaPath(item.value.type, item.value.link);
+      console.log('[TIMING] Media path loaded in:', (performance.now() - mediaStart).toFixed(2), 'ms');
+    }
+    
+    // Load available face detection models and pre-select based on prior usage
+    if (item.value.type === 'photo') {
+      console.log('[TIMING] Starting models load');
+      const modelsStart = performance.now();
+      const modelsResult = await window.electronAPI.getFaceDetectionModels();
+      console.log('[TIMING] Models loaded in:', (performance.now() - modelsStart).toFixed(2), 'ms');
+      
+      if (modelsResult.success) {
+        availableModels.value = modelsResult.models;
+      }
+      
+      // Pre-select model based on prior descriptors for this link
+      if (item.value.link) {
+        try {
+          console.log('[TIMING] Starting descriptors load for link:', item.value.link);
+          const descriptorsStart = performance.now();
+          const descriptors = await window.electronAPI.getDescriptorsForLink(item.value.link);
+          console.log('[TIMING] Descriptors loaded in:', (performance.now() - descriptorsStart).toFixed(2), 'ms', 'Found:', descriptors?.length || 0);
+          if (descriptors && descriptors.length > 0) {
+            // Count model usage for this link
+            const modelCounts = {};
+            descriptors.forEach(desc => {
+              const model = desc.model || 'ssd';
+              modelCounts[model] = (modelCounts[model] || 0) + 1;
+            });
+            
+            // Find most common model
+            let maxCount = 0;
+            let mostCommonModel = null;
+            Object.entries(modelCounts).forEach(([model, count]) => {
+              if (count > maxCount) {
+                maxCount = count;
+                mostCommonModel = model;
+              }
+            });
+            
+            // Pre-select the most common model
+            if (mostCommonModel && availableModels.value.includes(mostCommonModel)) {
+              selectedModels.value = [mostCommonModel];
+              console.log(`Pre-selected model ${mostCommonModel} based on ${maxCount} prior descriptor(s) for this photo`);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load descriptors for model pre-selection:', err);
+          // Continue without pre-selection
+        }
+      }
+    }
+    
+    loading.value = false;
+  } catch (err) {
+    error.value = err.message;
+    loading.value = false;
+  }
+});
+</script>
+
+<style scoped>
+.media-manager {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: #f5f5f5;
+}
+
+header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1rem 2rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.subtitle {
+  margin: 0.25rem 0 0 0;
+  opacity: 0.9;
+  font-size: 0.9rem;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem;
+}
+
+.loading,
+.error-box {
+  padding: 2rem;
+  text-align: center;
+  font-size: 1.1rem;
+}
+
+.error-box {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+  border-radius: 6px;
+}
+
+.media-form {
+  max-width: 900px;
+  margin: 0 auto;
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.preview-section {
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.preview-and-controls {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.preview-container {
+  flex-shrink: 0;
+}
+
+.media-preview {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.form-section {
+  margin-bottom: 1rem;
+}
+
+.form-section label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.inline-label {
+  display: inline;
+  margin-right: 0.5rem;
+  font-weight: normal;
+  font-size: 0.9rem;
+}
+
+.info-row {
+  display: flex;
+  gap: 2rem;
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 6px;
+}
+
+.info-item {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.info-item label {
+  font-weight: 600;
+  margin: 0;
+}
+
+.info-value {
+  font-family: 'Courier New', monospace;
+  color: #666;
+}
+
+.form-section input,
+.form-section textarea,
+.form-section select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.form-section input:focus,
+.form-section textarea:focus,
+.form-section select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-section small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.date-row {
+  display: grid;
+  grid-template-columns: 120px 120px 80px;
+  gap: 0.5rem;
+}
+
+.location-entry,
+.person-entry,
+.source-entry,
+.playlist-entry {
+  margin-bottom: 0.75rem;
+}
+
+.location-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 80px 40px;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.location-gps {
+  grid-template-columns: 1fr 1fr 1fr;
+  margin-top: 0.25rem;
+}
+
+.location-coordinate {
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.gps-hint {
+  font-size: 0.85rem;
+  color: #666;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.gps-hint a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.gps-hint a:hover {
+  text-decoration: underline;
+}
+
+.person-row {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 40px;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.source-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr 40px;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.playlist-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 40px;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.playlist-row.validation-error input,
+.playlist-row.validation-error select {
+  border-color: #dc3545;
+  background-color: #fff5f5;
+}
+
+/* Playlist dropdown option colors - matching main window */
+.playlist-ref option.option-tape,
+.playlist-ref option.option-audio {
+  background-color: #f1e6c2;
+}
+
+.playlist-ref option.option-video {
+  background-color: #fab2b8;
+}
+
+.validation-errors {
+  margin-top: 0.25rem;
+  margin-left: 0.5rem;
+}
+
+.error-text {
+  display: block;
+  color: #dc3545;
+  font-size: 0.8rem;
+  margin-top: 0.1rem;
+}
+
+.format-hint {
+  display: block;
+  margin-top: 0.5rem;
+  color: #666;
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.playlist-ref {
+  flex: 1;
+}
+
+.playlist-time {
+  width: 110px;
+}
+
+.source-date {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.date-year-small,
+.date-month-small,
+.date-day-small {
+  width: auto !important;
+}
+
+.date-year-small {
+  width: 80px !important;
+}
+
+.date-month-small {
+  width: 70px !important;
+}
+
+.date-day-small {
+  width: 50px !important;
+}
+
+.btn-add {
+  margin-top: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-add:hover {
+  background: #218838;
+}
+
+.btn-remove {
+  padding: 0.5rem;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1.2rem;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s;
+  width: 40px;
+  height: 40px;
+}
+
+.btn-remove:hover {
+  background: #c82333;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #dee2e6;
+}
+
+.btn-primary {
+  padding: 0.875rem 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  padding: 0.875rem 2rem;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  padding: 0.875rem 2rem;
+  background: white;
+  color: #6c757d;
+  border: 1px solid #6c757d;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status-message {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.status-message.success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-message.error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.status-message.info {
+  background: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+/* Face Detection Styles */
+.preview-container {
+  position: relative;
+  display: inline-block;
+}
+
+.face-overlay-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.face-detection-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+  min-width: 150px;
+}
+
+.face-detection-controls .btn-secondary {
+  width: 100%;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+}
+
+/* Advanced Settings */
+.advanced-settings {
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #667eea;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.25rem 0;
+  text-align: left;
+}
+
+.btn-link:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+
+.settings-panel {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.setting-group {
+  margin-bottom: 0.75rem;
+}
+
+.setting-group:last-child {
+  margin-bottom: 0;
+}
+
+.setting-group label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 0.5rem;
+}
+
+.model-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.model-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.model-option input[type="checkbox"] {
+  margin-top: 0.15rem;
+  cursor: pointer;
+}
+
+.model-option input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
+.model-option span {
+  flex: 1;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.model-option span.disabled {
+  color: #adb5bd;
+  cursor: not-allowed;
+}
+
+.model-desc {
+  display: block;
+  color: #6c757d;
+  font-size: 0.75rem;
+  margin-top: 0.15rem;
+}
+
+.hint-small {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.75rem;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.confidence-slider {
+  width: 100%;
+  margin: 0.5rem 0;
+}
+
+.toggle-overlay {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.toggle-overlay input[type="checkbox"] {
+  width: auto;
+  cursor: pointer;
+}
+
+.detection-status {
+  font-size: 0.9rem;
+  color: #666;
+  font-style: italic;
+}
+
+/* Face Assignment Styles */
+.face-people-section {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+}
+
+.face-people-section h3 {
+  margin: 0 0 0.25rem 0;
+  color: #495057;
+  font-size: 1rem;
+}
+
+.hint {
+  margin: 0 0 0.75rem 0;
+  color: #6c757d;
+  font-size: 0.85rem;
+}
+
+/* Scrollable people list when more than 3 people */
+.people-list-container.scrollable {
+  max-height: 280px;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+  padding-right: 0.5rem;
+}
+
+.people-list-container.scrollable::-webkit-scrollbar {
+  width: 8px;
+}
+
+.people-list-container.scrollable::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.people-list-container.scrollable::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.people-list-container.scrollable::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+.person-face-row {
+  display: grid;
+  grid-template-columns: 1fr auto 40px;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.6rem;
+  background: white;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  border: 1px solid #dee2e6;
+}
+
+.person-info {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.face-match-indicator {
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.matched-indicator {
+  color: #155724;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.unmatched-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.no-person-indicator {
+  color: #6c757d;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.face-select-small {
+  padding: 0.4rem;
+  font-size: 0.85rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.btn-unmatch-inline,
+.btn-assign-inline {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.btn-unmatch-inline {
+  background: #ffc107;
+  color: #000;
+}
+
+.btn-unmatch-inline:hover {
+  background: #e0a800;
+}
+
+.btn-assign-inline {
+  background: #28a745;
+  color: white;
+}
+
+.btn-assign-inline:hover {
+  background: #218838;
+}
+
+.btn-assign-inline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.unassigned-faces-summary {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  color: #856404;
+}
+
+.face-badge {
+  display: inline-block;
+  margin: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: #007bff;
+  color: white;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.face-assignment-section,
+.face-matches-section {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+}
+
+.face-assignment-section h3,
+.face-matches-section h3 {
+  margin: 0 0 0.5rem 0;
+  color: #495057;
+  font-size: 1.1rem;
+}
+
+.face-assignment-row {
+  display: grid;
+  grid-template-columns: 150px 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  border: 1px solid #dee2e6;
+}
+
+.face-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.confidence-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background: #28a745;
+  color: white;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  width: fit-content;
+}
+
+.btn-small {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+.face-match-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem;
+  background: #d4edda;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+}
+
+.match-info {
+  flex: 1;
+}
+
+.btn-unmatch {
+  padding: 0.5rem 1rem;
+  background: #ffc107;
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-unmatch:hover {
+  background: #e0a800;
+}
+
+/* Find Similar Faces Button */
+.btn-find-similar {
+  margin-top: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.btn-find-similar:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-find-similar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Similarity Search Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  max-width: 700px;
+  width: 90%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.modal-small {
+  max-width: 450px;
+}
+
+.modal-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid #dee2e6;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: #999;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+}
+
+.modal-close:hover {
+  color: #333;
+}
+
+.modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.search-info {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: #e7f3ff;
+  border-radius: 6px;
+  color: #004085;
+}
+
+.searching {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+  font-style: italic;
+}
+
+.no-matches {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+}
+
+.matches-header {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.matches-header strong {
+  display: block;
+  font-size: 1.1rem;
+  margin-bottom: 0.25rem;
+}
+
+.matches-header small {
+  color: #666;
+}
+
+.matches-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.match-item {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  align-items: center;
+}
+
+.match-item:hover {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+.match-item.match-selected {
+  border-color: #667eea;
+  background: #e7f3ff;
+}
+
+.match-item.match-in-photo {
+  border-color: #ffc107;
+  background: #fffbf0;
+}
+
+.match-checkbox input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.match-info {
+  flex: 1;
+}
+
+.match-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: #333;
+}
+
+.badge-in-photo {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: #ffc107;
+  color: #000;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.match-details {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.match-confidence {
+  font-weight: 500;
+  color: #28a745;
+}
+
+.match-reference {
+  font-style: italic;
+}
+
+/* Face Selector Dialog Styles */
+.face-selector-info {
+  margin-bottom: 1.5rem;
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.face-selector-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.face-selector-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.face-selector-option:hover {
+  border-color: #007bff;
+  background: #f8f9fa;
+}
+
+.face-selector-option input[type="radio"] {
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+}
+
+.face-option-label {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #333;
+  user-select: none;
+}
+
+.face-confidence {
+  color: #28a745;
+  font-weight: 400;
+  margin-left: 0.5rem;
+}
+
+.modal-footer {
+  padding: 1.5rem;
+  border-top: 1px solid #dee2e6;
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.modal-footer .btn-primary,
+.modal-footer .btn-secondary {
+  padding: 0.75rem 1.5rem;
+}
+</style>

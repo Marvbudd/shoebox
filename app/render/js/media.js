@@ -60,7 +60,7 @@ function mediaContent(itemString) {
   a = 0
   const $editMedia = document.getElementById("editMedia")
   $editMedia.addEventListener('click', (e) => {
-    const keyData = { accession: document.getElementById('accession').innerText }
+    const keyData = { link: document.getElementById('link').innerText }
     TACO.sendToMain(TACO.req.ITEMEDIT, JSON.stringify({keyData}))
   })
   const $openWebsite = document.getElementById("openWebsite")
