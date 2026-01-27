@@ -33,6 +33,8 @@ jobs:
 
       - name: Install dependencies
         run: yarn install
+        env:
+          YARN_ENABLE_SCRIPTS: "false"
 
       - name: Build/release Electron app
         run: yarn run dist
