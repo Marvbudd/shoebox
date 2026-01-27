@@ -133,7 +133,7 @@ Latest release highlights:
 - 🐛 Fixed metadata display persistence and UI bugs
 - 📚 Improved documentation and keyboard shortcuts
 
-[Release Notes](../../CHANGELOG.md)
+[Release Notes](https://github.com/Marvbudd/shoebox/blob/main/CHANGELOG.md)
 
 ## Getting Help
 
