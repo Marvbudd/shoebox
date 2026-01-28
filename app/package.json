@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",

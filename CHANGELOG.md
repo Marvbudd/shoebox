@@ -5,6 +5,15 @@ All notable changes to Shoebox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-01-27
+
+### Fixed
+- Bundled `face-api.js` with the app package to prevent missing-module errors after auto-update on Windows.
+- Made Vue build scripts compatible with macOS default shell tools.
+
+### CI
+- Improved release build workflow reliability for Yarn 4 and cross-platform builds.
+
 ## [3.0.0] - 2026-01-20
 
 ### Code refactoring
