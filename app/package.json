@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",
@@ -14,6 +14,7 @@
   "license": "MIT",
   "copyright": "Copyright © 2001-2026, Marvin E Budd",
   "dependencies": {
+    "canvas": "^3.2.1",
     "electron-updater": "6.7.3",
     "exifr": "^7.1.3",
     "face-api.js": "^0.22.2",
