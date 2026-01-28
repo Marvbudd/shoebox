@@ -32,6 +32,18 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      - name: Install canvas build deps (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+
+      - name: Install canvas build deps (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install pkg-config cairo pango libpng jpeg giflib librsvg
+
       - name: Install dependencies
         run: yarn install
         env:
