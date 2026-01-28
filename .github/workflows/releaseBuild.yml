@@ -16,6 +16,9 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
+    env:
+      YARN_ENABLE_IMMUTABLE_INSTALLS: "false"
+      NODE_ENV: development
 
     steps:
       - name: Check out Git repository
@@ -26,11 +29,13 @@ jobs:
         with:
           node-version: 20
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Install dependencies
         run: yarn install
-
-      - name: Install electron-builder
-        run: yarn global add electron-builder
+        env:
+          YARN_ENABLE_SCRIPTS: "false"
 
       - name: Build/release Electron app
         run: yarn run dist

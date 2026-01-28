@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "2.2.3",
+  "version": "3.0.1",
   "description": "Multimedia browser",
   "main": "app/main/main.js",
   "type": "module",
@@ -49,12 +49,26 @@
     }
   },
   "scripts": {
-    "start": "electron app/main/index.js",
+    "start": "electron app/main/main.js",
+    "dev": "vite",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
+    "build:vue": "yarn build:personManager && yarn build:createAccessions && yarn build:mediaManager && yarn build:updateCollection && yarn build:collectionManager && yarn build:mainWindow && yarn build:mediaPlayer && yarn build:collectionSetOperations",
+    "build:mainWindow": "./scripts/build-vue.sh mainWindow",
+    "build:mediaManager": "./scripts/build-vue.sh mediaManager",
+    "build:personManager": "./scripts/build-vue.sh personManager",
+    "build:createAccessions": "./scripts/build-vue.sh createAccessions",
+    "build:updateCollection": "./scripts/build-vue.sh updateCollection",
+    "build:collectionManager": "./scripts/build-vue.sh collectionManager",
+    "build:mediaPlayer": "./scripts/build-vue.sh mediaPlayer",
+    "build:collectionSetOperations": "./scripts/build-vue.sh collectionSetOperations",
+    "preview": "vite preview",
     "pack": "electron-builder --dir",
     "electron-builder": "electron-builder",
-    "build": "electron-builder build --publish never",
-    "deploy": "electron-builder build --publish always",
-    "dist": "electron-builder --publish always",
+    "build": "yarn build:vue && electron-builder build --publish never",
+    "deploy": "yarn build:vue && electron-builder build --publish always",
+    "dist": "yarn build:vue && electron-builder --publish always",
     "dist:dir": "yarn dist --dir -c.compression=store -c.mac.identity=null",
     "cert": "electron-builder create-self-signed-cert",
     "postinstall": "electron-builder install-app-deps",
@@ -77,15 +91,22 @@
     "email": "marvbudd@gmail.com"
   },
   "license": "MIT",
-  "copyright": "Copyright © 2001-2024",
+  "copyright": "Copyright © 2001-2026, Marvin E Budd",
   "dependencies": {
-    "electron-updater": "^6.0.0",
-    "exifr": "^7.0.0",
-    "handlebars": "^4.0.0",
-    "nconf": "^0.12.0"
+    "canvas": "^3.2.1",
+    "electron-builder": "26.4.0",
+    "electron-updater": "6.7.3",
+    "exifr": "^7.1.3",
+    "face-api.js": "^0.22.2",
+    "handlebars": "^4.7.8",
+    "nconf": "^0.13.0",
+    "vite": "^7.3.1",
+    "vitepress": "^1.6.4",
+    "vue": "^3.5.27"
   },
+  "packageManager": "yarn@4.12.0",
   "devDependencies": {
-    "electron": "^29.0.0",
-    "electron-builder": "^24.0.0"
+    "@vitejs/plugin-vue": "^6.0.3",
+    "electron": "^40.0.0"
   }
 }

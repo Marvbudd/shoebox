@@ -60,6 +60,7 @@ A:visited {
 
 .date {
   text-align: left;
+  white-space: nowrap;
 }
 
 .dateRight {
@@ -69,6 +70,7 @@ A:visited {
 
 .dateData {
   text-align: right;
+  white-space: nowrap;
 }
 
 .descData {
@@ -84,8 +86,9 @@ A:visited {
   accent-color: #eeeeff;
 }
 
-.tape {
+.audio {
   background: #f1e6c2;
+  cursor: pointer;
 }
 
 .bottomLeft .tapeInput {
@@ -95,6 +98,7 @@ A:visited {
 
 .video {
   background: #fab2b8;
+  cursor: pointer;
 }
 
 .bottomLeft .videoInput {
@@ -204,4 +208,156 @@ A:visited {
   background: none;
   font-weight: bold;
   color: Navy;
+}
+
+/* Person links to Second Site pedigree pages */
+.person-link {
+  color: Navy;
+  text-decoration: none;
+  cursor: pointer;
+  border-bottom: 1px dotted Navy;
+}
+
+.person-link:hover {
+  color: #0066CC;
+  border-bottom: 1px solid #0066CC;
+}
+
+.person-link:visited {
+  color: Navy;
+}
+
+/* Face Tags Overlay */
+#faceTagsContainer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.face-tag-box {
+  position: absolute;
+  border: 2px solid #FF6600;
+  background: rgba(255, 102, 0, 0.1);
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.face-tag-number {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  background: #FF6600;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: bold;
+  font-family: Arial, sans-serif;
+}
+
+.face-tag-box:hover {
+  background: rgba(255, 102, 0, 0.3);
+  border-color: #FF3300;
+}
+
+.face-tag-tooltip {
+  position: absolute;
+  top: -45px;
+  left: 0;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  display: none;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.face-tag-box:hover .face-tag-tooltip {
+  display: block;
+}
+
+/* Playlist reference links */
+.playEntry {
+  color: #0066CC;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.playEntry:hover {
+  text-decoration: underline;
+  color: #0052A3;
+}
+
+/* Reference banner */
+.reference-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #E8F4F8;
+  border: 1px solid #4A90A4;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #2C5F6F;
+}
+
+/* MainWindow banner - positioned fixed to overlay without affecting layout */
+.reference-banner-mainwindow {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  z-index: 99999 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+  pointer-events: auto !important;
+  display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.reference-banner-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.reference-banner-text {
+  flex-grow: 1;
+}
+
+.reference-banner-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  font-weight: bold;
+  color: #4A90A4;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.reference-banner-close:hover {
+  background-color: #D0E8EF;
+  color: #2C5F6F;
+}
+
+/* Make preview div relative for absolute positioning */
+#previewDiv {
+  position: relative;
+}
 }

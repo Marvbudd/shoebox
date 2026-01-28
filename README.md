@@ -1,42 +1,220 @@
-As I was collecting photos, videos of interviews with older living relatives, and recordings of interviews and visits to historic sites with significant relevance to my family history, I put them in a big "shoebox" until I could curate them for others to use. It was difficult to share these items with others who wanted them along with my discoveries about them.
+# Shoebox
 
-This project is my answer to the need to make this information available without paying a subscription fee. I started this during the 9/11 era when I was off work for a year. Initially, it was written for Windows 98 and Internet Explorer. However, Shoebox has evolved into a modern software application built with Electron and Node.js.
+> Personal Family History Archive Manager
 
-To install Shoebox, simply visit the [GitHub repository](https://github.com/Marvbudd/shoebox) and navigate to the "Latest release" section on the right side of the page. Choose the installer that matches your operating system:
+Organize, preserve, and share your family's multimedia memories with a powerful desktop application that keeps your data private and under your control.
 
-- For Apple Mac: shoebox-x.x.x.dmg
-- For Windows 10: shoebox-Setup-x.x.x.exe
-- For Linux: shoebox-x.x.x.AppImage
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](https://github.com/Marvbudd/shoebox/releases)
 
-Once the installer is downloaded, follow these steps to install Shoebox:
+## 🎯 What is Shoebox?
 
-- **Apple Mac**: Run the .dmg file, drag Shoebox to the Applications folder, and then launch it.
-- **Windows 10**: Double-click on the downloaded .exe file and follow the installation prompts.
-- **Linux**: Double-click on the downloaded .AppImage file to install Shoebox.
+Shoebox is a cross-platform desktop application for managing your family archive—photos, videos, and audio recordings with rich metadata. Unlike cloud-based services, Shoebox keeps everything local, giving you complete control and privacy.
 
-After the installation is complete, a sample set of files will be installed. Now you can view the complete collection of media files in Shoebox. The application provides separate windows for photos and audio/video files. Resize and arrange these windows to suit your preferences.
+### Key Features
 
-If you want to create custom subsets of the media, Shoebox offers a feature called "Collections." To create a Collection, use the Edit menu. Once a Collection is created, you can toggle whether an item is included in the Collection by double-clicking on the left-hand column. Green text indicates that an item is part of the selected Collection. You can also export a Collection to a subdirectory using the ALT-F menu.
+- 📸 **Multimedia Archive**: Organize photos, videos, and audio in one place
+- 🎞️ **Slideshow Mode**: Auto-cycling photo frame for displaying your memories
+- 👤 **Face Detection**: AI-powered face recognition and tagging
+- 🗂️ **Collections**: Create themed subsets for sharing or presentations
+- 📝 **Rich Metadata**: Document people, places, dates, and stories
+- ⌨️ **Keyboard Shortcuts**: Efficient navigation without the mouse
+- 🔒 **Privacy-Focused**: No cloud uploads, your data stays yours
+- 🌐 **Cross-Platform**: macOS, Windows, and Linux
 
-For more information on installing and using Shoebox, I have created a playlist of basic tutorial videos on YouTube. You can find the playlist [here](https://www.youtube.com/playlist?list=PL8z7p1h74xBqbjDLCWjncm9EF5RL7oTDP).
+## 🚀 Quick Start
 
-If you would like the media files for my family, please email me and tell me how you are related. Download the .zip file and extract its contents to a clean directory on your computer.
+### Download
 
-To run Shoebox and access the downloaded media, follow these steps:
+Get the latest version (3.0.0) from [GitHub Releases](https://github.com/Marvbudd/shoebox/releases):
 
-1. Launch Shoebox.
-2. Hold down the ALT key and press F (Windows/Linux) or CMD-F (Mac) to access the menu.
-3. Select "Choose Accessions.json file" from the File menu.
-4. Use the dialog to locate and double-click on the accessions.json file on your computer or DVD.
+- **macOS**: [Shoebox-3.0.0.dmg](https://github.com/Marvbudd/shoebox/releases)
+- **Windows**: [Shoebox-3.0.0.exe](https://github.com/Marvbudd/shoebox/releases)
+- **Linux**: [Shoebox-3.0.0.AppImage](https://github.com/Marvbudd/shoebox/releases)
 
-Here is the directory structure for the accessions.json file and the media that I provide in the .zip file.
+### Install
 
-accessions.json<br>
-./photo <-- jpg files here<br>
-./video <-- mp4 files here<br>
-./audio <-- mp3 files here<br>
-./collections <-- optional - key.json files for lists<br>
-./website/index.htm <-- Second Site<br>
+**macOS**
+```bash
+# Open the DMG file
+# Drag Shoebox to Applications folder
+# Launch from Applications
+```
 
-Marvin E Budd
-marvbudd@gmail.com
+**Windows**
+```bash
+# Run the .exe installer
+# Follow installation wizard
+# Launch from Start menu
+```
+
+**Linux**
+```bash
+chmod +x Shoebox-3.0.0.AppImage
+./Shoebox-3.0.0.AppImage
+```
+
+### First Launch
+
+When you open Shoebox for the first time, you'll see a **sample archive** pre-loaded. Explore the interface, try features, and get comfortable before creating your own archive.
+
+## 📚 Documentation
+
+Comprehensive documentation is available at our [documentation site](https://marvbudd.github.io/shoebox/):
+
+- [Getting Started Guide](https://marvbudd.github.io/shoebox/guide/getting-started)
+- [Creating Your Archive](https://marvbudd.github.io/shoebox/guide/creating-archive)
+- [Keyboard Shortcuts](https://marvbudd.github.io/shoebox/guide/keyboard-shortcuts)
+- [Slideshow Mode](https://marvbudd.github.io/shoebox/features/slideshow)
+- [Face Detection](https://marvbudd.github.io/shoebox/features/face-detection)
+
+### Video Tutorials
+
+Watch the [YouTube playlist](https://www.youtube.com/playlist?list=PL8z7p1h74xBqbjDLCWjncm9EF5RL7oTDP) for video tutorials covering installation and basic usage.
+
+## ✨ What's New in 3.0.0
+
+- 🎉 **Slideshow & Photo Frame Mode**: Auto-cycling slideshow with speed control, random mode, and direction reversal
+- 📋 **Collections Menu**: Reorganized menu structure for better discoverability
+- 🎨 **Archive Menu**: Renamed from "Database" for consistency with documentation terminology
+- 🐛 **Bug Fixes**: Improved metadata display persistence and UI polish
+- 📚 **Documentation**: New VitePress documentation site with comprehensive guides
+
+### Established Features
+
+- 👤 **Face Recognition**: AI-powered face detection and matching under user control
+- 📇 **Person Manager**: Centralized biographical data for consistent maintenance across archive
+- 🔗 **TMG Integration**: Links to The Master Genealogist data in Second Site websites via TMG ID
+- 🎛️ **Management Screens**: Dedicated Media and Person Manager windows with detailed help
+
+See the [Release Notes](docs/RELEASE-NOTES-3.0.0.md) for complete details.
+
+## 💡 Use Cases
+
+### Digital Photo Frame
+Set up a continuous slideshow of family photos for display at home or events.
+
+### Family History Research
+Document people, dates, locations, and sources for genealogy work.
+
+### Event Sharing
+Create collections of specific events to share with family members.
+
+### Memory Preservation
+Organize and preserve multimedia memories for future generations.
+
+## 🏗️ Architecture
+
+Built with modern web technologies:
+
+- **Electron**: Cross-platform desktop framework
+- **Vue 3**: Reactive user interface
+- **face-api.js**: AI-powered face detection
+- **Vite**: Fast build tooling
+
+Data stored in:
+- **JSON format**: Human-readable accessions.json file
+- **Local files**: Photos, videos, audio in organized directories
+- **Portable**: Entire archive can be moved or backed up as a unit
+
+## 🛠️ Development
+
+### Prerequisites
+
+- Node.js 18+ (with npm/yarn)
+- Git
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/Marvbudd/shoebox.git
+cd shoebox
+
+# Install dependencies
+yarn install
+
+# Run development server
+yarn start
+```
+
+### Building
+
+```bash
+# Build Vue components
+yarn build:vue
+
+# Package for distribution
+yarn build
+```
+
+### Documentation
+
+```bash
+# Run documentation site locally
+yarn docs:dev
+
+# Build documentation
+yarn docs:build
+```
+
+## 📂 Archive Structure
+
+Your Shoebox archive consists of:
+
+```
+my-archive/
+├── accessions.json      # Metadata for all items
+├── photo/              # All photos (.jpg, .png, .gif)
+├── video/              # All videos (.mp4, .mov)
+└── audio/              # All audio (.mp3, .wav)
+```
+
+See the [Data Structure Guide](https://marvbudd.github.io/shoebox/guide/data-structure) for complete details.
+
+## 🔐 Privacy & Data Ownership
+
+- **No Cloud Required**: Everything stored locally on your computer
+- **No Accounts**: No sign-up, no login, no tracking
+- **No Uploads**: Files never leave your device
+- **Open Format**: JSON-based data you can access directly
+- **Complete Control**: Your data, your rules
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+For major changes, please open an issue first to discuss.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 📞 Support
+
+- **Documentation**: [https://marvbudd.github.io/shoebox/](https://marvbudd.github.io/shoebox/)
+- **Issues**: [GitHub Issues](https://github.com/Marvbudd/shoebox/issues)
+- **Email**: marvbudd@gmail.com
+- **Videos**: [YouTube Playlist](https://www.youtube.com/playlist?list=PL8z7p1h74xBqbjDLCWjncm9EF5RL7oTDP)
+
+## 👨‍💻 Author
+
+**Marvin E Budd**
+- Email: marvbudd@gmail.com
+- GitHub: [@Marvbudd](https://github.com/Marvbudd)
+
+## 🙏 Acknowledgments
+
+Thank you to all users who have provided feedback and feature requests over the years. Shoebox has evolved from a Windows 98/Internet Explorer application during the 9/11 era into a modern cross-platform tool thanks to your input.
+
+---
+
+**Happy Archiving!** 📸
+
+For questions about accessing the author's family archive, please email with information about how you're related.
+
