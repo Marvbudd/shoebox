@@ -112,7 +112,7 @@
     "@isaacs/brace-expansion": "^5.0.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.3",
+    "@vitejs/plugin-vue": "^6.0.4",
     "electron": "^40.0.0"
   }
 }
