@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # Root package dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # tar 7.x breaks @electron/rebuild compatibility
+      # tar 6.2.1 vulnerabilities are build-time only, not exploitable
+      # See CHANGELOG.md for full security analysis
+      - dependency-name: "tar"
+        update-types: ["version-update:semver-major"]
+
+  # App package dependencies
+  - package-ecosystem: "npm"
+    directory: "/app"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # Same tar compatibility issue as root
+      - dependency-name: "tar"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
