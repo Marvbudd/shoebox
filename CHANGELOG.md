@@ -7,9 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.5] - 2026-02-16
+
 ### Fixed
 - Downgraded tar from 7.5.3 to 6.2.1 to fix build compatibility with @electron/rebuild (tar 7.x removed default export causing "does not provide an export named 'default'" error).
 - Added resolutions to app/package.json to force security updates for transitive dependencies (node-fetch ^2.7.0, @isaacs/brace-expansion ^5.0.1) used by face-api.js.
+- Added explicit permissions to GitHub Actions workflows to address code scanning alert.
+- Updated documentation copyright year to 2026.
+
+### Security Note
+- tar 6.2.1 has known vulnerabilities (CVE-2024-28863, CVE-2024-45590, CVE-2024-45591) related to path traversal and symlink attacks during archive extraction. These vulnerabilities are not exploitable in Shoebox because:
+  - tar is a build-time dependency used by @electron/rebuild and electron-builder
+  - No user-provided tar archives are extracted at runtime
+  - The application does not process or extract tar files
+  - Upgrading to tar 7.x breaks compatibility with required build tools
+  - Risk is limited to build environment compromise, which is protected by CI/CD controls
 
 ## [3.0.4] - 2026-02-16
 
