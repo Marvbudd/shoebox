@@ -55,7 +55,7 @@ export default defineConfig({
 
     footer: {
       message: 'Released under the MIT License.',
-      copyright: 'Copyright © 2001-2025 Marvin E Budd'
+      copyright: 'Copyright © 2001-2026 Marvin E Budd'
     },
 
     search: {

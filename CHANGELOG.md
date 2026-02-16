@@ -5,6 +5,12 @@ All notable changes to Shoebox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Downgraded tar from 7.5.3 to 6.2.1 to fix build compatibility with @electron/rebuild (tar 7.x removed default export causing "does not provide an export named 'default'" error).
+- Added resolutions to app/package.json to force security updates for transitive dependencies (node-fetch ^2.7.0, @isaacs/brace-expansion ^5.0.1) used by face-api.js.
+
 ## [3.0.4] - 2026-02-16
 
 ### Documentation

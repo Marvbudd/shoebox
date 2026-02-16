@@ -21,6 +21,10 @@
     "handlebars": "^4.7.8",
     "nconf": "^0.13.0"
   },
+  "resolutions": {
+    "node-fetch": "^2.7.0",
+    "@isaacs/brace-expansion": "^5.0.1"
+  },
   "devDependencies": {
     "electron": "^40.0.0"
   }
