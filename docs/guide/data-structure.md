@@ -274,6 +274,8 @@ Centralized person library storing biographical data once per unique individual.
       {"last": "Smith"},
       {"type": "married", "last": "Jones"}
     ],
+    "notes": "Optional biographical information",
+    "living": true,
     "faceBioData": [ /* array */ ]
   }
 }
@@ -324,7 +326,48 @@ TMGID is NOT an ID number - it is a **stable page reference** (filename) from Se
 | `first` | string/null | Yes | First/given name(s) |
 | `last` | array | Yes | Array of last name objects |
 | `notes` | string | No | Optional textual details about the person |
+| `living` | boolean | No | Optional - true if person is still alive (omitted when false) |
 | `faceBioData` | array | No | Face recognition data |
+
+### Living Status (Privacy Management)
+
+The optional `living` attribute helps identify items containing people who are still alive, for privacy and permission management.
+
+**Storage Pattern:**
+- **When true:** Attribute is explicitly stored: `"living": true`
+- **When false:** Attribute is omitted from JSON (not stored)
+- **In UI:** Checkbox always appears, defaults to unchecked when attribute is absent
+
+**Purpose:**
+- Privacy considerations before sharing archives publicly
+- Legal compliance with privacy regulations
+- Permission management for contemporary content
+- Distinguishing historical from current content
+
+**Example:**
+```json
+// Person who is living (attribute present)
+{
+  "personID": "550e8400-e29b-41d4-a716-446655440000",
+  "TMGID": null,
+  "first": "Jane",
+  "last": [{"last": "Doe"}],
+  "living": true
+}
+
+// Deceased person (attribute omitted)
+{
+  "personID": "c8f5b3be-4feb-41d4-a716-446655440000",
+  "TMGID": "123",
+  "first": "John",
+  "last": [{"last": "Smith"}]
+}
+```
+
+**Finding Items with Living People:**
+- Use **Collections > Create Maintenance Collections** to generate the "Living People" collection
+- Collection automatically identifies all items containing persons marked as living
+- Useful for privacy reviews before sharing or publishing archives
 
 ### Face Biometric Data
 

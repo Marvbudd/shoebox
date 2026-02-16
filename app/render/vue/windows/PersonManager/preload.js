@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // IPC event listeners
   onPersonSelect: (callback) => {
     ipcRenderer.on('person:select', (event, personID) => callback(personID));
+  },
+  onPersonsRefresh: (callback) => {
+    ipcRenderer.on('persons:refresh', () => callback());
   }
 });
 

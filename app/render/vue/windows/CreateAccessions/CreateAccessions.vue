@@ -117,11 +117,12 @@
 
           <!-- Date received (shown for both existing and new) -->
           <div v-if="sourceMode !== 'none'" class="form-section">
-            <label for="dateReceived">Date Received</label>
-            <input 
-              id="dateReceived"
-              v-model="formData.dateReceived" 
-              type="date"
+            <label>Date Received</label>
+            <DateInput
+              v-model:year="formData.dateReceivedYear"
+              v-model:month="formData.dateReceivedMonth"
+              v-model:day="formData.dateReceivedDay"
+              :show-hint="false"
             />
             <small>When the media was received from the source person</small>
           </div>
@@ -136,48 +137,13 @@
             ></textarea>
           </div>
 
-          <div class="form-row">
-            <div class="form-section">
-              <label for="dateYear">Year</label>
-              <input 
-                id="dateYear"
-                v-model="formData.dateYear" 
-                type="text"
-                placeholder="YYYY"
-                pattern="\\d{4}"
-              />
-            </div>
-            <div class="form-section">
-              <label for="dateMonth">Month</label>
-              <select 
-                id="dateMonth"
-                v-model="formData.dateMonth"
-              >
-                <option value="">Select month</option>
-                <option value="Jan">Jan</option>
-                <option value="Feb">Feb</option>
-                <option value="Mar">Mar</option>
-                <option value="Apr">Apr</option>
-                <option value="May">May</option>
-                <option value="Jun">Jun</option>
-                <option value="Jul">Jul</option>
-                <option value="Aug">Aug</option>
-                <option value="Sep">Sep</option>
-                <option value="Oct">Oct</option>
-                <option value="Nov">Nov</option>
-                <option value="Dec">Dec</option>
-              </select>
-            </div>
-            <div class="form-section">
-              <label for="dateDay">Day</label>
-              <input 
-                id="dateDay"
-                v-model="formData.dateDay" 
-                type="text"
-                placeholder="1-31"
-                pattern="\\d{1,2}"
-              />
-            </div>
+          <div class="form-section">
+            <label>Default Date</label>
+            <DateInput
+              v-model:year="formData.dateYear"
+              v-model:month="formData.dateMonth"
+              v-model:day="formData.dateDay"
+            />
           </div>
 
           <div class="form-section">
@@ -231,6 +197,8 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import DateInput from '../../components/DateInput.vue';
+import { formatPersonName } from '../../../../shared/personHelpers.js';
 
 const formData = ref({
   directory: '',
@@ -239,7 +207,9 @@ const formData = ref({
   sourceFirstName: '',
   sourceLastName: '',
   sourceTMGID: '',
-  dateReceived: '',
+  dateReceivedYear: '',
+  dateReceivedMonth: '',
+  dateReceivedDay: '',
   description: '',
   dateYear: '',
   dateMonth: '',
@@ -259,21 +229,21 @@ const isValid = computed(() => {
 });
 
 const getPersonDisplayName = (person) => {
-  // Handle both old (givenName/surname) and new (first/last) formats
-  const firstName = person.first || person.givenName || '';
-  const lastName = Array.isArray(person.last) ? person.last[0]?.last : (person.last || person.surname || '');
+  if (!person) return 'Unknown';
   
-  if (firstName && lastName) {
-    return `${firstName} ${lastName}`;
-  } else if (firstName) {
-    return firstName;
-  } else if (lastName) {
-    return lastName;
-  } else if (person.TMGID || person.tmgID) {
-    return `TMG ID: ${person.TMGID || person.tmgID}`;
-  } else {
-    return `Person ${person.personID.substring(0, 8)}`;
+  // Use shared formatting helper
+  const baseName = formatPersonName(person, false);
+  
+  // Fallback for missing data
+  if (!baseName) {
+    if (person.TMGID || person.tmgID) {
+      return `TMG ID: ${person.TMGID || person.tmgID}`;
+    } else {
+      return `Person ${person.personID?.substring(0, 8) || 'Unknown'}`;
+    }
   }
+  
+  return baseName;
 };
 
 // Watch directory changes to load existing persons
@@ -304,24 +274,18 @@ const selectDirectory = async () => {
   }
 };
 
-const parseDateReceived = (dateString) => {
-  if (!dateString) return null;
+const buildDateReceived = () => {
+  const year = formData.value.dateReceivedYear;
+  const month = formData.value.dateReceivedMonth;
+  const day = formData.value.dateReceivedDay;
   
-  // Parse YYYY-MM-DD format from HTML date input
-  const parts = dateString.split('-');
-  if (parts.length !== 3) return null;
-  
-  const [year, monthNum, day] = parts;
-  
-  // Convert month number to short month name
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const month = monthNames[parseInt(monthNum) - 1];
+  // Return null if no date components provided
+  if (!year && !month && !day) return null;
   
   return {
-    year: year,
-    month: month,
-    day: day
+    year: year || '',
+    month: month || '',
+    day: day || ''
   };
 };
 
@@ -336,7 +300,7 @@ const handleCreate = async () => {
     const submissionData = {
       ...formData.value,
       sourceMode: sourceMode.value,
-      dateReceivedParsed: parseDateReceived(formData.value.dateReceived)
+      dateReceivedParsed: buildDateReceived()
     };
     
     const result = await window.electronAPI.createAccessions(submissionData);

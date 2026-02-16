@@ -39,7 +39,8 @@ export function registerItemHandlers(
   resetAccessions,
   hmsToSeconds,
   nconf,
-  showCollectionRef
+  showCollectionRef,
+  getPersonManagerWindow
 ) {
   
   // Get list of items with filtering and sorting
@@ -168,9 +169,11 @@ export function registerItemHandlers(
   }); // item:Play
 
   // Edit an item
-  ipcMain.handle('item:Edit', async (_, identifier) => {
+  ipcMain.handle('item:Edit', async (_, identifier, collectionKey = null, includeQueue = false, sortBy = '1') => {
     // This fires when requesting to edit an item
-    createMediaManagerWindow(identifier);
+    // includeQueue flag determines whether to build navigation queue from collection
+    // sortBy determines the sort order for the queue ('1'=Date, '2'=Person, etc.)
+    createMediaManagerWindow(identifier, includeQueue ? collectionKey : null, sortBy);
     return { success: true };
   }); // item:Edit
 
@@ -274,6 +277,11 @@ export function registerItemHandlers(
       if (mainWindow) {
         resetAccessions();
       }
+
+      const personManagerWindow = getPersonManagerWindow?.();
+      if (personManagerWindow && personManagerWindow.webContents) {
+        personManagerWindow.webContents.send('persons:refresh');
+      }
       
       return { success: true };
     } catch (error) {
@@ -299,6 +307,11 @@ export function registerItemHandlers(
       const mainWindow = getMainWindow();
       if (mainWindow) {
         resetAccessions();
+      }
+
+      const personManagerWindow = getPersonManagerWindow?.();
+      if (personManagerWindow && personManagerWindow.webContents) {
+        personManagerWindow.webContents.send('persons:refresh');
       }
       
       return { success: true };

@@ -125,6 +125,8 @@ const referenceInfo = ref({
 
 // Keyboard navigation state
 const selectedRowIndex = ref(-1); // Track currently selected row for keyboard nav
+const lastMouseX = ref(-1); // Track mouse position to detect actual movement
+const lastMouseY = ref(-1);
 
 // Slideshow state
 const isAutoCycling = ref(false);
@@ -283,6 +285,14 @@ const hideHighlightFilter = () => {
 
 // Handle mouseover on table rows
 const handleMouseOver = async (event) => {
+  // Only handle mouseover if the mouse actually moved
+  // This prevents scroll-triggered mouseover events from interfering with keyboard navigation
+  if (event.clientX === lastMouseX.value && event.clientY === lastMouseY.value) {
+    return;
+  }
+  lastMouseX.value = event.clientX;
+  lastMouseY.value = event.clientY;
+  
   const target = event.target;
   if (target.nodeName === 'DIV' && target.parentElement.nodeName === 'TD') {
     const row = target.closest('tr');
@@ -398,16 +408,27 @@ const showItemDetail = (itemObject) => {
   });
 };
 
+// Handle edit media action (from button or menu)
+const handleEditMedia = async () => {
+  const linkEl = document.getElementById('link');
+  if (!linkEl) {
+    alert('Please select an item to edit first.');
+    return;
+  }
+  
+  const link = linkEl.innerText;
+  const includeQueue = limitChecked.value; // Use Limit checkbox to determine queue
+  const collectionKey = (includeQueue && selectedCollection.value) ? selectedCollection.value : null;
+  const sortByValue = includeQueue ? sortBy.value : null; // Pass sort order when including queue
+  await window.electronAPI.editItem(link, collectionKey, includeQueue, sortByValue);
+};
+
 // Setup event listeners for dynamically added content
 const setupDetailEventListeners = () => {
   const editMediaBtn = document.getElementById('editMedia');
   if (editMediaBtn) {
     editMediaBtn.addEventListener('click', async () => {
-      const linkEl = document.getElementById('link');
-      if (linkEl) {
-        const link = linkEl.innerText;
-        await window.electronAPI.editItem(link);
-      }
+      await handleEditMedia();
     });
   }
   
@@ -721,6 +742,10 @@ const startAutoCycle = () => {
   isAutoCycling.value = true;
   isPhotoFrameMode.value = true; // Enter photo frame mode
   showSlideshowIndicator.value = true;
+
+  if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
+    window.electronAPI.setSlideshowDisplaySleepBlock(true).catch(() => {});
+  }
   
   // Hide face tags during slideshow
   if (showFaceTags.value) {
@@ -748,6 +773,10 @@ const stopAutoCycle = () => {
   isAutoCycling.value = false;
   isPhotoFrameMode.value = false; // Exit photo frame mode
   showSlideshowIndicator.value = true;
+
+  if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
+    window.electronAPI.setSlideshowDisplaySleepBlock(false).catch(() => {});
+  }
   
   // Hide tooltip if showing
   showSlideshowTooltip.value = false;
@@ -1135,6 +1164,11 @@ onMounted(() => {
     loadItems();
   });
   
+  // Listen for menu-triggered edit media command
+  window.electronAPI.onEditMedia(async () => {
+    await handleEditMedia();
+  });
+  
   // Rerender face tags on window resize
   let resizeTimeout;
   window.addEventListener('resize', () => {
@@ -1159,6 +1193,10 @@ onMounted(() => {
       }
       isAutoCycling.value = false;
       showSlideshowIndicator.value = true;
+
+      if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
+        window.electronAPI.setSlideshowDisplaySleepBlock(false).catch(() => {});
+      }
       
       // Auto-hide indicator
       clearTimeout(slideshowIndicatorTimeout.value);
@@ -1175,6 +1213,10 @@ onMounted(() => {
       isAutoCycling.value = true;
       showSlideshowIndicator.value = true;
       cycleTimer.value = setInterval(cycleToNextPhoto, cycleInterval.value * 1000);
+
+      if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
+        window.electronAPI.setSlideshowDisplaySleepBlock(true).catch(() => {});
+      }
       
       // Auto-hide indicator
       clearTimeout(slideshowIndicatorTimeout.value);
@@ -1196,6 +1238,10 @@ onUnmounted(() => {
   }
   if (slideshowTooltipTimeout.value) {
     clearTimeout(slideshowTooltipTimeout.value);
+  }
+
+  if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
+    window.electronAPI.setSlideshowDisplaySleepBlock(false).catch(() => {});
   }
 });
 </script>

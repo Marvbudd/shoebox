@@ -1,5 +1,21 @@
 <template>
   <div class="person-manager">
+    <!-- Confirmation Modal -->
+    <div v-if="showConfirmModal" class="modal-overlay" @click="handleModalCancel">
+      <div class="modal-dialog" @click.stop>
+        <div class="modal-header">
+          <h3>{{ confirmModalTitle }}</h3>
+        </div>
+        <div class="modal-body">
+          {{ confirmModalMessage }}
+        </div>
+        <div class="modal-footer">
+          <button @click="handleModalOk" class="btn-modal-ok">{{ confirmOkText }}</button>
+          <button @click="handleModalCancel" class="btn-modal-cancel">{{ confirmCancelText }}</button>
+        </div>
+      </div>
+    </div>
+
     <header>
       <h1>Person Management</h1>
       <div class="search-bar">
@@ -104,7 +120,19 @@
               v-model="selectedPerson.TMGID" 
               type="text"
               placeholder="The Master Genealogist ID"
+              class="tmgid-input"
             />
+          </div>
+
+          <div class="form-section checkbox-field">
+            <label>
+              <input 
+                v-model="selectedPerson.living" 
+                type="checkbox"
+                class="living-checkbox"
+              />
+              Living
+            </label>
           </div>
 
           <div class="form-section">
@@ -171,7 +199,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { formatPersonName as formatPersonNameHelper } from '../../../../shared/personHelpers.js';
 
 // State
 const persons = ref([]);
@@ -181,6 +210,42 @@ const searchQuery = ref('');
 const saveMessage = ref(null);
 const isNewPerson = ref(false);
 const deleting = ref(false);
+
+// Modal state
+const showConfirmModal = ref(false);
+const confirmModalTitle = ref('');
+const confirmModalMessage = ref('');
+const confirmOkText = ref('OK');
+const confirmCancelText = ref('Cancel');
+let confirmResolve = null;
+
+// Custom confirm dialog to avoid Electron focus bug
+const showConfirm = (title, message, okText = 'OK', cancelText = 'Cancel') => {
+  return new Promise((resolve) => {
+    confirmModalTitle.value = title;
+    confirmModalMessage.value = message;
+    confirmOkText.value = okText;
+    confirmCancelText.value = cancelText;
+    confirmResolve = resolve;
+    showConfirmModal.value = true;
+  });
+};
+
+const handleModalOk = () => {
+  showConfirmModal.value = false;
+  if (confirmResolve) {
+    confirmResolve(true);
+    confirmResolve = null;
+  }
+};
+
+const handleModalCancel = () => {
+  showConfirmModal.value = false;
+  if (confirmResolve) {
+    confirmResolve(false);
+    confirmResolve = null;
+  }
+};
 
 const hasUnsavedChanges = () => {
   if (!selectedPerson.value || !originalPerson.value) return false;
@@ -240,20 +305,54 @@ const canDelete = computed(() => {
 
 // Methods
 const formatPersonName = (person) => {
-  const first = person.first || '';
-  const lastNames = person.last?.map(ln => ln.last).join(', ') || '';
-  return `${first} ${lastNames}`.trim() || 'Unknown';
+  const formatted = formatPersonNameHelper(person, false);
+  return formatted || 'Unknown';
 };
 
-const selectPerson = (person) => {
-  // Deep clone to avoid mutating original
-  selectedPerson.value = JSON.parse(JSON.stringify(person));
-  originalPerson.value = person;
+const selectPerson = async (person) => {
+  // Check for unsaved changes before switching
+  if (hasUnsavedChanges()) {
+    const confirmed = await showConfirm(
+      'Unsaved Changes',
+      'You have unsaved changes. Switching to another person will discard them.',
+      'Discard & Switch',
+      'Stay Here'
+    );
+    
+    if (!confirmed) {
+      return; // User chose to stay, don't switch
+    }
+    // User chose OK, discard changes and continue with switch
+  }
+  
+  // Clone to avoid mutating original, ensure living defaults to false if not present
+  const personCopy = JSON.parse(JSON.stringify(person));
+  if (personCopy.living === undefined) {
+    personCopy.living = false;
+  }
+  
+  selectedPerson.value = personCopy;
+  originalPerson.value = JSON.parse(JSON.stringify(personCopy));
   isNewPerson.value = false;
   saveMessage.value = null;
 };
 
-const createNewPerson = () => {
+const createNewPerson = async () => {
+  // Check for unsaved changes before creating new person
+  if (hasUnsavedChanges()) {
+    const confirmed = await showConfirm(
+      'Unsaved Changes',
+      'You have unsaved changes. Creating a new person will discard them.',
+      'Discard & Create New',
+      'Stay Here'
+    );
+    
+    if (!confirmed) {
+      return; // User chose to stay, don't create new
+    }
+    // User chose OK, discard changes and continue
+  }
+  
   // Generate new UUID for the person
   const personID = crypto.randomUUID();
   
@@ -263,6 +362,7 @@ const createNewPerson = () => {
     first: '',
     last: [{ last: '', type: '' }],
     TMGID: '',
+    living: false,
     notes: ''
   };
   
@@ -301,6 +401,11 @@ const handleSave = async () => {
       plainPerson.last = [];
     }
     
+    // Remove living attribute if false (optional, only present when true)
+    if (!plainPerson.living) {
+      delete plainPerson.living;
+    }
+    
     // Call Electron IPC to save person
     const result = await window.electronAPI.savePerson(plainPerson);
     
@@ -324,28 +429,30 @@ const handleSave = async () => {
         });
       }
       
-      // Update selected person with cleaned data including itemCount
+      // Update selected person and original person with cleaned data including itemCount
       const wasNewPerson = isNewPerson.value;
       const personWithCount = wasNewPerson 
         ? { ...plainPerson, itemCount: 0 }
         : { ...plainPerson, itemCount: persons.value.find(p => p.personID === plainPerson.personID)?.itemCount || 0 };
       
       selectedPerson.value = JSON.parse(JSON.stringify(personWithCount));
-      originalPerson.value = personWithCount;
+      originalPerson.value = JSON.parse(JSON.stringify(personWithCount));
       isNewPerson.value = false;
       
-      // Clear message and reset form after 3 seconds
+      // Keep person selected for continued editing
+      // Clear success message after 3 seconds but keep selection
       setTimeout(() => {
-        saveMessage.value = null;
-        // Reset to "Add Person" state to prevent accidental re-editing
-        selectedPerson.value = null;
-        originalPerson.value = null;
+        if (saveMessage.value?.type === 'success') {
+          saveMessage.value = null;
+        }
       }, 3000);
     } else {
       saveMessage.value = { type: 'error', text: 'Error saving person: ' + result.error };
+      throw new Error('Save failed: ' + result.error);
     }
   } catch (error) {
     saveMessage.value = { type: 'error', text: 'Error saving person: ' + error.message };
+    throw error;
   }
 };
 
@@ -353,7 +460,14 @@ const handleDelete = async () => {
   if (!selectedPerson.value || !selectedPerson.value.personID) return;
   
   const personName = formatPersonName(selectedPerson.value);
-  if (!confirm(`Are you sure you want to delete "${personName}"? This cannot be undone.`)) {
+  const confirmed = await showConfirm(
+    'Delete Person',
+    `Are you sure you want to delete "${personName}"? This cannot be undone.`,
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) {
     return;
   }
   
@@ -372,13 +486,17 @@ const handleDelete = async () => {
         persons.value.splice(index, 1);
       }
       
-      // Clear selection
+      // Clear selection immediately
+      selectedPerson.value = null;
+      originalPerson.value = null;
+      deleting.value = false;
+      
+      // Clear success message after 3 seconds
       setTimeout(() => {
-        selectedPerson.value = null;
-        originalPerson.value = null;
-        saveMessage.value = null;
-        deleting.value = false;
-      }, 1500);
+        if (saveMessage.value?.type === 'success') {
+          saveMessage.value = null;
+        }
+      }, 3000);
     } else {
       saveMessage.value = { type: 'error', text: 'Error: ' + result.error };
       deleting.value = false;
@@ -389,15 +507,27 @@ const handleDelete = async () => {
   }
 };
 
-const handleCancel = () => {
+const handleCancel = async () => {
   if (isNewPerson.value) {
     // Discard new person and clear selection
     selectedPerson.value = null;
     originalPerson.value = null;
     isNewPerson.value = false;
     saveMessage.value = null;
+  } else if (hasUnsavedChanges()) {
+    const confirmed = await showConfirm(
+      'Unsaved Changes',
+      'You have unsaved changes. Discard changes and revert to original?',
+      'Discard',
+      'Keep Editing'
+    );
+    
+    if (confirmed) {
+      selectedPerson.value = JSON.parse(JSON.stringify(originalPerson.value));
+      saveMessage.value = null;
+    }
   } else {
-    // Close the window
+    // No changes, just close the window
     window.close();
   }
 };
@@ -417,8 +547,19 @@ onMounted(async () => {
       }
     }
   });
+
+  // Refresh list when items change so itemCount stays current
+  window.electronAPI.onPersonsRefresh(async () => {
+    await loadPersons();
+  });
   
-  // No focus-based refresh; rely on IPC events for updates
+  // Warn before closing window if there are unsaved changes
+  window.addEventListener('beforeunload', (e) => {
+    if (hasUnsavedChanges()) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 });
 </script>
 
@@ -592,6 +733,19 @@ header h1 {
   font-size: 14px;
 }
 
+.form-section.checkbox-field label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.form-section.checkbox-field input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+}
+
 .form-section input,
 .form-section select {
   width: 100%;
@@ -613,6 +767,10 @@ header h1 {
   background-color: #f5f5f5;
   color: #666;
   cursor: not-allowed;
+}
+
+.form-section input.tmgid-input {
+  max-width: 150px;
 }
 
 /* Last Name Rows */
@@ -740,5 +898,86 @@ header h1 {
   background-color: #ffebee;
   color: #c62828;
   border: 1px solid #f44336;
+}
+
+/* ModalStyles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.modal-dialog {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  min-width: 400px;
+  max-width: 500px;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 20px;
+  border-bottom: 1px solid #ddd;
+  background-color: #f8f9fa;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.modal-body {
+  padding: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #555;
+}
+
+.modal-footer {
+  padding: 15px 20px;
+  border-top: 1px solid #ddd;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  background-color: #f8f9fa;
+}
+
+.btn-modal-ok,
+.btn-modal-cancel {
+  padding: 8px 20px;
+  font-size: 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-modal-ok {
+  background-color: #007bff;
+  color: white;
+}
+
+.btn-modal-ok:hover {
+  background-color: #0056b3;
+}
+
+.btn-modal-cancel {
+  background-color: #6c757d;
+  color: white;
+}
+
+.btn-modal-cancel:hover {
+  background-color: #545b62;
 }
 </style>

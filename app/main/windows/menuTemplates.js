@@ -28,6 +28,7 @@ import { Menu } from 'electron';
  * @param {Function} options.intersectWithCollection - Handler for intersecting with another collection
  * @param {Function} options.addAllItemsToCollection - Handler for adding all archive items
  * @param {Function} options.createBulkEditItemsWindow - Handler for bulk editing items in collection
+ * @param {Function} options.editMediaFromMenu - Handler for editing media from menu
  * @returns {Menu} Electron Menu instance
  */
 export function createMainMenu(options) {
@@ -51,7 +52,8 @@ export function createMainMenu(options) {
     removeItemsFromCollection,
     intersectWithCollection,
     addAllItemsToCollection,
-    createBulkEditItemsWindow
+    createBulkEditItemsWindow,
+    editMediaFromMenu
   } = options;
 
   const template = [
@@ -86,6 +88,11 @@ export function createMainMenu(options) {
         {
           label: '&Person Manager',
           click: createPersonManagerWindow
+        },
+        { type: 'separator' },
+        {
+          label: '&Edit Media',
+          click: editMediaFromMenu
         }
       ]
     },

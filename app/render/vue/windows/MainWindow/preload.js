@@ -19,7 +19,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   playItem: (entry) => ipcRenderer.invoke('item:Play', entry),
   
   // Edit item (opens MediaManager window)
-  editItem: (accession) => ipcRenderer.invoke('item:Edit', accession),
+  editItem: (accession, collectionKey, includeQueue, sortBy) => ipcRenderer.invoke('item:Edit', accession, collectionKey, includeQueue, sortBy),
+
+  // Prevent display sleep/screensaver during slideshow
+  setSlideshowDisplaySleepBlock: (shouldBlock) => ipcRenderer.invoke('slideshow:setDisplaySleepBlock', shouldBlock),
   
   // Open website/tree window
   openWebsite: () => ipcRenderer.invoke('open:Website'),
@@ -48,6 +51,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPersonSaved: (callback) => {
     ipcRenderer.on('person:saved', (event, personID) => {
       callback(personID);
+    });
+  },
+  
+  // Listen for menu-triggered edit media command
+  onEditMedia: (callback) => {
+    ipcRenderer.on('menu:editMedia', () => {
+      callback();
     });
   }
 });

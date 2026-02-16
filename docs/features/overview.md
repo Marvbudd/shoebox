@@ -59,10 +59,17 @@ Document the context and stories behind each item.
 - **Locations**: Multi-level hierarchy (city, state, country)
 - **Descriptions**: Free-text narratives and transcriptions
 - **Sources**: Track how items entered your archive
-- **Playlists**: Link related media together (click playlist entries to jump to specific audio/video segments)
 - **Safe Cleanup**: Delete orphaned metadata for removed media files and unused person records
 
 [Metadata Guide](./metadata.md)
+
+### 🎵 Playlists & Inverse Playlists
+
+Attach time-based playlists to items and move between related media in both directions.
+
+- **Attached to Items**: Add playlist entries to photos or documents that jump to specific audio/video moments
+- **Automatic Inverse Playlists**: Referenced audio/video automatically lists the items that point to it under “References”
+- **Bidirectional Navigation**: Click either side to jump between related media
 
 ### ⌨️ Keyboard Shortcuts
 

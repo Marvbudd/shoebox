@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "description": "Multimedia browser",
   "main": "app/main/main.js",
   "type": "module",
@@ -105,6 +105,12 @@
     "vue": "^3.5.27"
   },
   "packageManager": "yarn@4.12.0",
+  "resolutions": {
+    "tar": "^7.5.3",
+    "esbuild": "^0.25.0",
+    "node-fetch": "^2.7.0",
+    "@isaacs/brace-expansion": "^5.0.1"
+  },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.3",
     "electron": "^40.0.0"

@@ -5,6 +5,73 @@ All notable changes to Shoebox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.4] - 2026-02-16
+
+### Documentation
+- Changed references to version 3.0.0 to be generic.
+- Alerted users that since we are not signing code they will see warnings on install.
+- Highlighted Playlists and references as a key feature.
+
+### Fixed
+- Resolved security vulnerabilities by upgrading: tar (7.5.7), esbuild (0.25.12), @isaacs/brace-expansion (5.0.1), node-fetch (2.7.0).
+- Person Manager people list now uses the same name formatting as the main navigation column.
+- Person Manager refreshes item usage counts when items are updated, without reopening.
+- Person Manager input fields no longer become locked after confirm dialogs - replaced native confirm() with custom Vue modal to avoid Electron focus bug.
+- Media Manager now properly saves and restores window size and position when closed via Cancel/Save buttons.
+- Face detection overlay canvas now properly aligns with dynamically-sized, centered images.
+- Right column scrolling limited to viewport height, only scrolls when Advanced settings expanded.
+- Eliminated double borders by removing outer padding from layout container.
+- Both left and right columns now have consistent spacing and styling.
+- Person Manager icon (👤) now properly selects the person when clicked, using event-based timing instead of setTimeout for improved reliability.
+- Face assignment "Face Not Found" error resolved by adding safety check when multiple people could select the same face concurrently.
+- Person Manager living checkbox and label now appear on the same line (flexbox layout).
+- Person Manager TMGID field width limited to 150px to prevent excessive stretching.
+- Media Manager modal dialog buttons (Unassign/Cancel) now visible with proper styling instead of appearing as white shadows.
+- MainWindow keyboard navigation: down arrow on last item no longer causes scroll position jump and selection to move backward.
+- Update Collection menu item now properly opens collection metadata editor instead of showing "not yet implemented" message.
+- Update Collection dialog now correctly refreshes main window after saving collection metadata changes.
+- Add Media Metadata dialog now properly saves source person and date received information to newly added items.
+- Person name display standardized across all dialogs (Add Media Metadata, Media Manager, Update Collection) using shared `formatPersonName` helper function.
+
+
+### Changed
+- Person Manager now keeps person selected after save for continued editing (removed auto-clear timeout).
+- Person Manager warns about unsaved changes when switching between persons, creating new person, or closing window, using custom modal dialogs instead of native browser confirms.
+- Media Manager layout reorganized to two-column design: form fields on left, media preview and face detection controls on right.
+- Column proportions optimized: left column (0.75fr) for efficient form input, right column (1fr) for maximized preview size.
+- Media preview now uses variable sizing with dynamic height calculation to maximize available space.
+- Reduced vertical padding and margins throughout to eliminate wasted space and improve information density.
+- Person list layout optimized: narrower face assignment column (185px), wider name field (2.5fr), narrower position field (1.25fr).
+- Assign/Unassign face buttons now occupy the same position to save space and prevent overlap.
+- Media Manager people list scrolling threshold increased from 3 to 5 people before scrollbar appears.
+- Edit Media behavior: now uses Limit checkbox to determine queue mode.
+- Limit checkbox enabled: Opens Media Manager with queue navigation through selected collection (sorted by current sort order).
+- Limit checkbox disabled: Opens Media Manager for single item only.
+- Media Manager queue navigation now matches Main Window sort order (supports all 6 sort methods: Date, Person, Location, File, Source, Accession).
+- Person Manager person selection timing improved: replaced setTimeout with 'did-finish-load' event for more reliable cross-window communication.
+- Date input fields standardized across all dialogs using new shared `DateInput.vue` component.
+- Removed approximately 150+ lines of duplicate date input code by consolidating into single reusable component.
+- Add Media Metadata dialog now uses consistent person name formatting including maiden names in parentheses and multiple last names.
+
+
+### Added
+- Prevent display sleep/screen saver while slideshow is running.
+- Media Manager queue navigation: when editing items from a collection, navigate through items sequentially with Previous/Next buttons. Items are sorted by date (newest first), and unsaved changes are protected with confirmation prompts.
+- Media Manager documentation added to metadata.md describing the two-pane layout, workflow, and features.
+- Media Manager preview now opens media in external window when clicked (consistent with main window behavior).
+- Archive menu now includes "Edit Media" item with keyboard accelerator (Alt+R, E) for quick access to Media Manager.
+- Menu-triggered Edit Media: Archive > Edit Media opens Media Manager for currently selected item, shows alert if no item is selected.
+- Person Manager now includes "Living" checkbox to mark people who are still alive.
+  - Living attribute is optional: only stored in JSON when true, removed when false to keep file size minimal.
+  - Always displays in Person Manager UI, defaulting to unchecked (false) when not present.
+- Maintenance Collections: New "Living People" collection automatically created via Collections > Create Maintenance Collections.
+  - Contains all items with at least one person marked as living.
+  - Named "_living" with text "Living People" to match existing maintenance collection patterns.
+  - Useful for identifying items that may require privacy considerations or permission before sharing.
+- New shared `DateInput.vue` component for consistent date entry across the application.
+  - Supports normal and small sizes, optional hint text, and v-model binding for year/month/day.
+
+
 ## [3.0.3] - 2026-01-28
 
 ### Fixed

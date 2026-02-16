@@ -1,9 +1,53 @@
 <template>
   <div class="media-manager">
+    <!-- Confirmation Modal -->
+    <div v-if="showConfirmModal" class="modal-overlay" @click="handleModalCancel">
+      <div class="modal-dialog" @click.stop>
+        <div class="modal-header">
+          <h3>{{ confirmModalTitle }}</h3>
+        </div>
+        <div class="modal-body">
+          {{ confirmModalMessage }}
+        </div>
+        <div class="modal-footer">
+          <button @click="handleModalOk" class="btn-modal-ok">{{ confirmOkText }}</button>
+          <button @click="handleModalCancel" class="btn-modal-cancel">{{ confirmCancelText }}</button>
+        </div>
+      </div>
+    </div>
+
     <header>
       <h1>Media Manager</h1>
       <p class="subtitle">Edit media item metadata</p>
     </header>
+
+    <!-- Queue Navigation Bar -->
+    <div v-if="hasQueue" class="queue-navigation">
+      <div class="queue-info">
+        <span class="collection-name">{{ queueData.collectionText }}</span>
+        <span class="queue-position">{{ queuePosition }}</span>
+      </div>
+      <div class="queue-controls">
+        <button 
+          type="button" 
+          @click="handlePrevItem" 
+          :disabled="!hasPrevItem"
+          class="btn-nav"
+          title="Previous item (in queue)"
+        >
+          ◀ Previous
+        </button>
+        <button 
+          type="button" 
+          @click="handleNextItem" 
+          :disabled="!hasNextItem"
+          class="btn-nav"
+          title="Next item (in queue)"
+        >
+          Next ▶
+        </button>
+      </div>
+    </div>
 
     <div class="content">
       <div v-if="loading" class="loading">Loading item...</div>
@@ -13,144 +57,32 @@
       </div>
 
       <form v-else @submit.prevent="handleSave" class="media-form">
-        <!-- Media Preview -->
-        <div v-if="mediaPreviewPath || item.type === 'photo'" class="preview-section">
-          <div class="preview-and-controls">
-            <div class="preview-container" :style="{ position: 'relative', display: 'inline-block' }">
-              <img 
-                v-if="item.type === 'photo'" 
-                ref="imageElement"
-                :src="mediaPreviewPath" 
-                alt="Preview" 
-                class="media-preview"
-                @load="onImageLoad"
-              />
-              <video v-else-if="item.type === 'video'" :src="mediaPreviewPath" controls class="media-preview"></video>
-              <audio v-else-if="item.type === 'audio'" :src="mediaPreviewPath" controls class="media-preview"></audio>
-              
-              <!-- Face overlay canvas (only for photos) -->
-              <canvas 
-                v-if="item.type === 'photo' && detectedFaces.length > 0"
-                ref="faceCanvas"
-                class="face-overlay-canvas"
-                :style="{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }"
-              ></canvas>
-            </div>
-            
-            <!-- Face Detection Controls (only for photos) - beside preview -->
-            <div v-if="item.type === 'photo'" class="face-detection-controls">
-              <!-- Advanced Settings (collapsed by default) -->
-              <div class="advanced-settings">
-                <button 
-                  type="button" 
-                  @click="showAdvancedSettings = !showAdvancedSettings"
-                  class="btn-link"
-                >
-                  {{ showAdvancedSettings ? '▼' : '▶' }} Advanced Settings
-                </button>
-                
-                <div v-if="showAdvancedSettings" class="settings-panel">
-                  <!-- Model Selection -->
-                  <div class="setting-group">
-                    <label>Detection Model:</label>
-                    <div class="model-checkboxes">
-                      <label v-for="model in availableModels" :key="model.key" class="model-option">
-                        <input 
-                          type="radio" 
-                          :value="model.key"
-                          v-model="selectedModels[0]"
-                          :disabled="!model.available"
-                          name="detectionModel"
-                        />
-                        <span :class="{ disabled: !model.available }">
-                          {{ model.name }}
-                          <small class="model-desc">{{ model.description }}</small>
-                        </span>
-                      </label>
-                    </div>
-                    <p class="hint-small">MTCNN provides the best detection for profiles and difficult angles. SSD is faster and works well for most photos.</p>
-                  </div>
-                  
-                  <!-- Confidence Threshold -->
-                  <div class="setting-group">
-                    <label>
-                      Confidence Threshold: {{ confidenceThreshold.toFixed(2) }}
-                    </label>
-                    <input 
-                      type="range" 
-                      v-model.number="confidenceThreshold"
-                      min="0.1"
-                      max="0.8"
-                      step="0.05"
-                      class="confidence-slider"
-                    />
-                    <p class="hint-small">Lower = more faces detected (may include false positives), higher = fewer detections (more conservative)</p>
-                  </div>
-                  
-                  <!-- Auto-Assign Threshold -->
-                  <div class="setting-group">
-                    <label>
-                      Auto-Assign Threshold: {{ Math.round(autoAssignThreshold * 100) }}%
-                    </label>
-                    <input 
-                      type="range" 
-                      v-model.number="autoAssignThreshold"
-                      min="0.5"
-                      max="0.95"
-                      step="0.05"
-                      class="confidence-slider"
-                    />
-                    <p class="hint-small">Minimum confidence required for automatic face assignment from person library (lower = more auto-assignments, higher = more conservative)</p>
-                  </div>
-                </div>
+        <div class="two-column-layout">
+          <!-- LEFT COLUMN: Form Fields and People -->
+          <div class="left-column">
+            <!-- Unassigned faces section -->
+            <div v-if="item.type === 'photo' && getUnassignedFacesLeftToRight().length > 0" class="unassigned-faces-section">
+              <div class="unassigned-faces-header">
+                <strong>⚠️ {{ getUnassignedFacesLeftToRight().length }} face(s) not yet assigned</strong>
+                <span class="unassigned-faces-hint">L→R order • Hover to preview • Click to search</span>
               </div>
-              
-              <button 
-                type="button" 
-                @click="handleDetectFaces" 
-                :disabled="detectingFaces || selectedModels.length === 0"
-                class="btn-secondary"
-              >
-                {{ detectingFaces ? 'Detecting...' : 'Detect Faces' }}
-              </button>
-              
-              <label v-if="detectedFaces.length > 0" class="toggle-overlay">
-                <input type="checkbox" v-model="showFaceOverlays" @change="drawFaceOverlays" />
-                Show Overlays<br>
-                <small>({{ detectedFaces.length }} {{ detectedFaces.length === 1 ? 'face' : 'faces' }})</small>
-              </label>
-              
-              <span v-if="faceDetectionStatus" class="detection-status">
-                <span v-if="facesLoadedFromBioData" title="Loaded from previous detection" style="opacity: 0.6; margin-right: 4px;">📂</span>
-                <span v-else-if="detectedFaces.length > 0" title="Newly detected" style="opacity: 0.6; margin-right: 4px;">🔍</span>
-                {{ faceDetectionStatus }}
-              </span>
+              <div class="face-badges">
+                <button 
+                  v-for="face in getUnassignedFacesLeftToRight()" 
+                  :key="face.faceIndex" 
+                  @click="handleFaceBadgeClick(face.faceIndex)"
+                  @mouseenter="handleFaceBadgeHover(face.faceIndex)"
+                  @mouseleave="handleFaceBadgeLeave()"
+                  class="face-badge-button"
+                  type="button"
+                >
+                  Face #{{ face.faceIndex + 1 }}
+                </button>
+              </div>
             </div>
-          </div>
-          
-          <!-- Unassigned faces section (below photo, above people list) -->
-          <div v-if="item.type === 'photo' && getUnassignedFacesLeftToRight().length > 0" class="unassigned-faces-section">
-            <div class="unassigned-faces-header">
-              <strong>⚠️ {{ getUnassignedFacesLeftToRight().length }} face(s) not yet assigned</strong>
-              <span class="unassigned-faces-hint">L→R order • Hover to preview • Click to search</span>
-            </div>
-            <div class="face-badges">
-              <button 
-                v-for="face in getUnassignedFacesLeftToRight()" 
-                :key="face.faceIndex" 
-                @click="handleFaceBadgeClick(face.faceIndex)"
-                @mouseenter="handleFaceBadgeHover(face.faceIndex)"
-                @mouseleave="handleFaceBadgeLeave()"
-                class="face-badge-button"
-                type="button"
-              >
-                Face #{{ face.faceIndex + 1 }}
-              </button>
-            </div>
-          </div>
-          
-          <!-- People List (visible for all media types) -->
-          <div class="face-people-section">
+
+            <!-- People List -->
+            <div class="face-people-section">
             <div class="face-people-header">
               <h3>People in This Item</h3>
               <div class="people-header-actions">
@@ -164,11 +96,11 @@
                 </button>
               </div>
             </div>
-            <p v-if="item.type === 'photo'" class="hint">Click "+ Add Person" below, select who they are, then use the "Assign Face" dropdown to match detected faces. {{ detectedFaces.length > 0 ? 'Match confidence shown in %.': 'Press "Detect Faces" above to enable face matching.' }}</p>
+            <p v-if="item.type === 'photo'" class="hint">Click "+ Add Person" below, select who they are, then use the "Assign Face" dropdown to match detected faces. {{ detectedFaces.length > 0 ? 'Match confidence shown in %.': 'Click "Detect Faces" in the preview section to enable face matching.' }}</p>
             <p v-else class="hint">Click "+ Add Person" below to add people appearing or speaking in this {{ item.type }}. Use the position field to note their role or appearance.</p>
             
             <!-- Scrollable people list -->
-            <div class="people-list-container" :class="{ 'scrollable': item.person.length > 3 }">
+            <div class="people-list-container" :class="{ 'scrollable': item.person.length > 4 }">
               <div v-for="(person, index) in item.person" :key="`person-${index}-${person.personID || 'new'}`" class="person-face-row">
               <div class="person-reorder-controls">
                 <button 
@@ -221,49 +153,54 @@
               </div>
               
               <div v-if="item.type === 'photo'" class="face-match-indicator" :class="{ 'face-controls-disabled': detectedFaces.length === 0 }">
-                <span 
-                  v-if="getMatchForPerson(person.personID)" 
-                  class="matched-indicator"
-                  @mouseenter="handleFaceFieldHover(getMatchForPerson(person.personID).faceIndex)"
-                  @mouseleave="handleFaceFieldLeave()"
-                >
-                  Face #{{ getMatchForPerson(person.personID).faceIndex + 1 }} ({{ Math.round((getMatchForPerson(person.personID).confidence || 0) * 100) }}%)
-                  <button 
-                    type="button"
-                    @click="unmatchPersonFace(person.personID)"
-                    class="btn-unmatch-inline"
-                    title="Unassign this face"
-                  >
-                    Unassign
-                  </button>
-                </span>
-                <span v-else-if="person.personID && detectedFaces.length > 0" class="unmatched-indicator">
-                  <select 
-                    v-model.number="faceAssignments[person.personID]" 
-                    class="face-select-small"
-                    @mouseenter="handleFaceFieldHover(faceAssignments[person.personID])"
+                <div class="face-info-display">
+                  <span 
+                    v-if="getMatchForPerson(person.personID)" 
+                    class="matched-indicator"
+                    @mouseenter="handleFaceFieldHover(getMatchForPerson(person.personID).faceIndex)"
                     @mouseleave="handleFaceFieldLeave()"
                   >
-                    <option value="">-- Assign Face --</option>
-                    <option v-for="face in getUnassignedFaces()" :key="face.faceIndex" :value="face.faceIndex">
-                      Face #{{ face.faceIndex + 1 }} ({{ Math.round(face.confidence * 100) }}%)
-                    </option>
-                  </select>
-                  <button 
-                    type="button"
-                    @click="console.log('Assign button clicked for', person.personID); assignFaceToPersonByID(person.personID)"
-                    :disabled="!faceAssignments[person.personID] && faceAssignments[person.personID] !== 0"
-                    class="btn-assign-inline"
-                  >
-                    Assign
-                  </button>
-                </span>
-                <span v-else-if="detectedFaces.length === 0" class="no-faces-indicator">
-                  No faces detected
-                </span>
-                <span v-else-if="!person.personID" class="no-person-indicator">
-                  Select a person first
-                </span>
+                    Face #{{ getMatchForPerson(person.personID).faceIndex + 1 }} ({{ Math.round((getMatchForPerson(person.personID).confidence || 0) * 100) }}%)
+                  </span>
+                  <span v-else-if="person.personID && detectedFaces.length > 0" class="unmatched-indicator">
+                    <select 
+                      v-model.number="faceAssignments[person.personID]" 
+                      class="face-select-small"
+                      @mouseenter="handleFaceFieldHover(faceAssignments[person.personID])"
+                      @mouseleave="handleFaceFieldLeave()"
+                    >
+                      <option value="">-- Assign Face --</option>
+                      <option v-for="face in getUnassignedFaces()" :key="face.faceIndex" :value="face.faceIndex">
+                        Face #{{ face.faceIndex + 1 }} ({{ Math.round(face.confidence * 100) }}%)
+                      </option>
+                    </select>
+                  </span>
+                  <span v-else-if="detectedFaces.length === 0" class="no-faces-indicator">
+                    No faces detected
+                  </span>
+                  <span v-else-if="!person.personID" class="no-person-indicator">
+                    Select a person first
+                  </span>
+                </div>
+                
+                <button 
+                  v-if="getMatchForPerson(person.personID)"
+                  type="button"
+                  @click="unmatchPersonFace(person.personID)"
+                  class="btn-unmatch-inline"
+                  title="Unassign this face"
+                >
+                  Unassign
+                </button>
+                <button 
+                  v-else-if="person.personID && detectedFaces.length > 0"
+                  type="button"
+                  @click="assignFaceToPersonByID(person.personID)"
+                  :disabled="!faceAssignments[person.personID] && faceAssignments[person.personID] !== 0"
+                  class="btn-assign-inline"
+                >
+                  Assign
+                </button>
               </div>
               
               <button type="button" @click="removePerson(index)" class="btn-remove" title="Remove person">×</button>
@@ -273,276 +210,372 @@
             <button type="button" @click="addPerson" class="btn-add">+ Add Person</button>
             <small>Tip: Use Person Manager to add new people to the database</small>
           </div>
-        </div>
 
-        <!-- Basic Info -->
-        <div class="form-section">
-          <div class="info-row">
-            <div class="info-item">
-              <label>Accession:</label>
-              <span class="info-value">{{ item.accession }}</span>
-            </div>
-            <div class="info-item">
-              <label>File:</label>
-              <span class="info-value">{{ item.link }}</span>
-            </div>
-            <div class="info-item">
-              <label>Type:</label>
-              <span class="info-value">{{ item.type }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Description -->
-        <div class="form-section">
-          <label for="description">Description</label>
-          <textarea 
-            id="description"
-            v-model="item.description" 
-            rows="4"
-            placeholder="Describe the contents, context, or transcription..."
-          ></textarea>
-        </div>
-
-        <!-- Date -->
-        <div class="form-section">
-          <label>Date (when media was created)</label>
-          <div class="date-row">
-            <input 
-              v-model="item.date.year" 
-              type="text"
-              placeholder="YYYY"
-              class="date-year"
-            />
-            <select 
-              v-model="item.date.month" 
-              class="date-month"
-            >
-              <option value="">Month</option>
-              <option value="Jan">Jan</option>
-              <option value="Feb">Feb</option>
-              <option value="Mar">Mar</option>
-              <option value="Apr">Apr</option>
-              <option value="May">May</option>
-              <option value="Jun">Jun</option>
-              <option value="Jul">Jul</option>
-              <option value="Aug">Aug</option>
-              <option value="Sep">Sep</option>
-              <option value="Oct">Oct</option>
-              <option value="Nov">Nov</option>
-              <option value="Dec">Dec</option>
-            </select>
-            <input 
-              v-model="item.date.day" 
-              type="text"
-              placeholder="Day"
-              class="date-day"
-            />
-          </div>
-          <small>Partial dates allowed (e.g., year only)</small>
-        </div>
-
-        <!-- Location -->
-        <div class="form-section">
-          <label>Location (where media was taken)</label>
-          <div v-for="(loc, index) in item.location" :key="index" class="location-entry">
-            <div class="location-row">
-              <input 
-                v-model="loc.detail" 
-                type="text"
-                placeholder="Specific location (e.g., farm, living room)"
-                class="location-detail"
-              />
-              <input 
-                v-model="loc.city" 
-                type="text"
-                placeholder="City"
-                class="location-city"
-              />
-              <input 
-                v-model="loc.state" 
-                type="text"
-                placeholder="State/Region"
-                class="location-state"
-              />
-              <button type="button" @click="removeLocation(index)" class="btn-remove" title="Remove location">×</button>
-            </div>
-            <div class="location-row location-gps">
-              <input 
-                v-model.number="loc.latitude" 
-                type="number"
-                step="any"
-                placeholder="Latitude (e.g., 45.523064)"
-                class="location-coordinate"
-              />
-              <input 
-                v-model.number="loc.longitude" 
-                type="number"
-                step="any"
-                placeholder="Longitude (e.g., -122.676483)"
-                class="location-coordinate"
-              />
-              <button 
-                v-if="loc.latitude && loc.longitude"
-                type="button" 
-                @click="lookupLocation(index)" 
-                class="btn-lookup"
-                :disabled="isLookingUpLocation"
-                title="Look up city/state from GPS coordinates"
-              >
-                {{ isLookingUpLocation ? 'Looking up...' : '🌐 Look up location' }}
-              </button>
-              <span class="gps-hint" v-if="loc.latitude && loc.longitude">
-                📍 <a :href="`https://maps.google.com?q=${loc.latitude},${loc.longitude}&t=k`" target="_blank">View on Map</a>
-              </span>
-            </div>
-            <div v-if="geocodingAttribution && index === 0" class="geocoding-attribution">
-              Location data © OpenStreetMap contributors
-            </div>
-          </div>
-          <button type="button" @click="addLocation" class="btn-add">+ Add Location</button>
-        </div>
-
-        <!-- Sources -->
-        <div class="form-section">
-          <label>Sources (who provided this item)</label>
-          <div v-for="(source, index) in item.source" :key="index" class="source-entry">
-            <div class="source-row">
-              <select v-model="source.personID" class="source-select">
-                <option value="">-- Select Person --</option>
-                <option v-for="p in persons" :key="p.personID" :value="p.personID">
-                  {{ getPersonDisplayName(p) }}
-                </option>
-              </select>
-              <div class="source-date">
-                <label class="inline-label">Received:</label>
-                <input 
-                  v-model="source.received.year" 
-                  type="text"
-                  placeholder="YYYY"
-                  class="date-year-small"
-                />
-                <select 
-                  v-model="source.received.month" 
-                  class="date-month-small"
-                >
-                  <option value="">Month</option>
-                  <option value="Jan">Jan</option>
-                  <option value="Feb">Feb</option>
-                  <option value="Mar">Mar</option>
-                  <option value="Apr">Apr</option>
-                  <option value="May">May</option>
-                  <option value="Jun">Jun</option>
-                  <option value="Jul">Jul</option>
-                  <option value="Aug">Aug</option>
-                  <option value="Sep">Sep</option>
-                  <option value="Oct">Oct</option>
-                  <option value="Nov">Nov</option>
-                  <option value="Dec">Dec</option>
-                </select>
-                <input 
-                  v-model="source.received.day" 
-                  type="text"
-                  placeholder="Day"
-                  class="date-day-small"
-                />
+            <!-- Basic Info -->
+            <div class="form-section">
+              <div class="info-row">
+                <div class="info-item">
+                  <label>Accession:</label>
+                  <span class="info-value">{{ item.accession }}</span>
+                </div>
+                <div class="info-item">
+                  <label>File:</label>
+                  <span class="info-value">{{ item.link }}</span>
+                </div>
+                <div class="info-item">
+                  <label>Type:</label>
+                  <span class="info-value">{{ item.type }}</span>
+                </div>
               </div>
-              <button type="button" @click="removeSource(index)" class="btn-remove" title="Remove source">×</button>
+            </div>
+
+            <!-- Description -->
+            <div class="form-section">
+              <label for="description">Description</label>
+              <textarea 
+                id="description"
+                v-model="item.description" 
+                rows="4"
+                placeholder="Describe the contents, context, or transcription..."
+              ></textarea>
+            </div>
+
+            <!-- Date -->
+            <div class="form-section">
+              <label>Date (when media was created)</label>
+              <DateInput
+                v-model:year="item.date.year"
+                v-model:month="item.date.month"
+                v-model:day="item.date.day"
+              />
+            </div>
+
+            <!-- Location -->
+            <div class="form-section">
+              <label>Location (where media was taken)</label>
+              <div v-for="(loc, index) in item.location" :key="index" class="location-entry">
+                <div class="location-row">
+                  <input 
+                    v-model="loc.detail" 
+                    type="text"
+                    placeholder="Specific location (e.g., farm, living room)"
+                    class="location-detail"
+                  />
+                  <input 
+                    v-model="loc.city" 
+                    type="text"
+                    placeholder="City"
+                    class="location-city"
+                  />
+                  <input 
+                    v-model="loc.state" 
+                    type="text"
+                    placeholder="State/Region"
+                    class="location-state"
+                  />
+                  <button type="button" @click="removeLocation(index)" class="btn-remove" title="Remove location">×</button>
+                </div>
+                <div class="location-row location-gps">
+                  <input 
+                    v-model.number="loc.latitude" 
+                    type="number"
+                    step="any"
+                    placeholder="Latitude (e.g., 45.523064)"
+                    class="location-coordinate"
+                  />
+                  <input 
+                    v-model.number="loc.longitude" 
+                    type="number"
+                    step="any"
+                    placeholder="Longitude (e.g., -122.676483)"
+                    class="location-coordinate"
+                  />
+                  <button 
+                    v-if="loc.latitude && loc.longitude"
+                    type="button" 
+                    @click="lookupLocation(index)" 
+                    class="btn-lookup"
+                    :disabled="isLookingUpLocation"
+                    title="Look up city/state from GPS coordinates"
+                  >
+                    {{ isLookingUpLocation ? 'Looking up...' : '🌐 Look up location' }}
+                  </button>
+                  <span class="gps-hint" v-if="loc.latitude && loc.longitude">
+                    📍 <a :href="`https://maps.google.com?q=${loc.latitude},${loc.longitude}&t=k`" target="_blank">View on Map</a>
+                  </span>
+                </div>
+                <div v-if="geocodingAttribution && index === 0" class="geocoding-attribution">
+                  Location data © OpenStreetMap contributors
+                </div>
+              </div>
+              <button type="button" @click="addLocation" class="btn-add">+ Add Location</button>
+            </div>
+
+            <!-- Sources -->
+            <div class="form-section">
+              <label>Sources (who provided this item)</label>
+              <div v-for="(source, index) in item.source" :key="index" class="source-entry">
+                <div class="source-row">
+                  <select v-model="source.personID" class="source-select">
+                    <option value="">-- Select Person --</option>
+                    <option v-for="p in persons" :key="p.personID" :value="p.personID">
+                      {{ getPersonDisplayName(p) }}
+                    </option>
+                  </select>
+                  <div class="source-date">
+                    <label class="inline-label">Received:</label>
+                    <DateInput
+                      v-model:year="source.received.year"
+                      v-model:month="source.received.month"
+                      v-model:day="source.received.day"
+                      size="small"
+                      :show-hint="false"
+                    />
+                  </div>
+                  <button type="button" @click="removeSource(index)" class="btn-remove" title="Remove source">×</button>
+                </div>
+              </div>
+              <button type="button" @click="addSource" class="btn-add">+ Add Source</button>
+            </div>
+
+            <!-- Playlist -->
+            <div class="form-section">
+              <label>Playlist (references to other media)</label>
+              <div v-for="(entry, index) in item.playlist.entry" :key="index" class="playlist-entry">
+                <div class="playlist-row" :class="{ 'validation-error': playlistValidationErrors[index] }">
+                  <select
+                    v-model="entry.ref" 
+                    class="playlist-ref"
+                    @change="onPlaylistChange"
+                  >
+                    <option value="">-- Select Media --</option>
+                    <option 
+                      v-for="mediaItem in audioVideoItems" 
+                      :key="mediaItem.link" 
+                      :value="mediaItem.link"
+                      :class="'option-' + (mediaItem.type === 'tape' ? 'tape' : mediaItem.type)"
+                    >
+                      {{ mediaItem.link }} ({{ mediaItem.type === 'tape' || mediaItem.type === 'audio' ? 'Audio' : 'Video' }})
+                    </option>
+                  </select>
+                  <div class="time-input-group">
+                    <input 
+                      v-model="entry.starttime" 
+                      type="text"
+                      placeholder="00:00:00.0"
+                      class="playlist-time"
+                      title="Start time (HH:MM:SS.s)"
+                      @input="onPlaylistChange"
+                    />
+                    <button 
+                      type="button" 
+                      @click="setStartTime(index)" 
+                      class="btn-get-time"
+                      title="Set media link and start time from current playback"
+                    >
+                      🕐 Start
+                    </button>
+                  </div>
+                  <div class="time-input-group">
+                    <input 
+                      v-model="entry.duration" 
+                      type="text"
+                      placeholder="00:01:30.0"
+                      class="playlist-time"
+                      title="Duration (HH:MM:SS.s)"
+                      @input="onPlaylistChange"
+                    />
+                    <button 
+                      type="button" 
+                      @click="setDuration(index)" 
+                      class="btn-get-time"
+                      title="Calculate duration from start time to current playback time"
+                    >
+                      🕐 End
+                    </button>
+                  </div>
+                  <button type="button" @click="removePlaylistEntry(index)" class="btn-remove" title="Remove playlist entry">×</button>
+                </div>
+                <div v-if="playlistValidationErrors[index]" class="validation-errors">
+                  <small class="error-text" v-for="(error, errorIdx) in playlistValidationErrors[index]" :key="errorIdx">
+                    • {{ error }}
+                  </small>
+                </div>
+              </div>
+              <button type="button" @click="addPlaylistEntry" class="btn-add">+ Add Playlist Entry</button>
+              <small class="format-hint">Time format: HH:MM:SS.s (e.g., 00:03:45.5 for 3 minutes 45.5 seconds)</small>
             </div>
           </div>
-          <button type="button" @click="addSource" class="btn-add">+ Add Source</button>
-        </div>
 
-        <!-- Playlist -->
-        <div class="form-section">
-          <label>Playlist (references to other media)</label>
-          <div v-for="(entry, index) in item.playlist.entry" :key="index" class="playlist-entry">
-            <div class="playlist-row" :class="{ 'validation-error': playlistValidationErrors[index] }">
-              <select
-                v-model="entry.ref" 
-                class="playlist-ref"
-                @change="onPlaylistChange"
-              >
-                <option value="">-- Select Media --</option>
-                <option 
-                  v-for="mediaItem in audioVideoItems" 
-                  :key="mediaItem.link" 
-                  :value="mediaItem.link"
-                  :class="'option-' + (mediaItem.type === 'tape' ? 'tape' : mediaItem.type)"
-                >
-                  {{ mediaItem.link }} ({{ mediaItem.type === 'tape' || mediaItem.type === 'audio' ? 'Audio' : 'Video' }})
-                </option>
-              </select>
-              <div class="time-input-group">
-                <input 
-                  v-model="entry.starttime" 
-                  type="text"
-                  placeholder="00:00:00.0"
-                  class="playlist-time"
-                  title="Start time (HH:MM:SS.s)"
-                  @input="onPlaylistChange"
+        <!-- RIGHT COLUMN: Preview and Face Controls -->
+        <div class="right-column">
+          <!-- Media Preview -->
+          <div v-if="mediaPreviewPath || item.type === 'photo'" class="preview-section">
+            <div class="preview-and-controls">
+              <div class="preview-container" :style="{ position: 'relative', display: 'inline-block' }">
+                <img 
+                  v-if="item.type === 'photo'" 
+                  ref="imageElement"
+                  :src="mediaPreviewPath" 
+                  alt="Preview" 
+                  class="media-preview"
+                  @load="onImageLoad"
+                  @click="openMediaInWindow"
+                  style="cursor: pointer;"
+                  title="Click to open in external window"
                 />
+                <video 
+                  v-else-if="item.type === 'video'" 
+                  :src="mediaPreviewPath" 
+                  controls 
+                  class="media-preview"
+                  @click="openMediaInWindow"
+                  style="cursor: pointer;"
+                  title="Click to open in external window"
+                ></video>
+                <audio 
+                  v-else-if="item.type === 'audio'" 
+                  :src="mediaPreviewPath" 
+                  controls 
+                  class="media-preview"
+                  @click="openMediaInWindow"
+                  style="cursor: pointer;"
+                  title="Click to open in external window"
+                ></audio>
+                
+                <!-- Face overlay canvas (only for photos) -->
+                <canvas 
+                  v-if="item.type === 'photo' && detectedFaces.length > 0"
+                  ref="faceCanvas"
+                  class="face-overlay-canvas"
+                  :style="{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }"
+                ></canvas>
+              </div>
+              
+              <!-- Face Detection Controls (only for photos) - below preview -->
+              <div v-if="item.type === 'photo'" class="face-detection-controls">
+                <!-- Advanced Settings (collapsed by default) -->
+                <div class="advanced-settings">
+                  <button 
+                    type="button" 
+                    @click="showAdvancedSettings = !showAdvancedSettings"
+                    class="btn-link"
+                  >
+                    {{ showAdvancedSettings ? '▼' : '▶' }} Advanced Settings
+                  </button>
+                  
+                  <div v-if="showAdvancedSettings" class="settings-panel">
+                    <!-- Model Selection -->
+                    <div class="setting-group">
+                      <label>Detection Model:</label>
+                      <div class="model-checkboxes">
+                        <label v-for="model in availableModels" :key="model.key" class="model-option">
+                          <input 
+                            type="radio" 
+                            :value="model.key"
+                            v-model="selectedModels[0]"
+                            :disabled="!model.available"
+                            name="detectionModel"
+                          />
+                          <span :class="{ disabled: !model.available }">
+                            {{ model.name }}
+                            <small class="model-desc">{{ model.description }}</small>
+                          </span>
+                        </label>
+                      </div>
+                      <p class="hint-small">MTCNN provides the best detection for profiles and difficult angles. SSD is faster and works well for most photos.</p>
+                    </div>
+                    
+                    <!-- Confidence Threshold -->
+                    <div class="setting-group">
+                      <label>
+                        Confidence Threshold: {{ confidenceThreshold.toFixed(2) }}
+                      </label>
+                      <input 
+                        type="range" 
+                        v-model.number="confidenceThreshold"
+                        min="0.1"
+                        max="0.8"
+                        step="0.05"
+                        class="confidence-slider"
+                      />
+                      <p class="hint-small">Lower = more faces detected (may include false positives), higher = fewer detections (more conservative)</p>
+                    </div>
+                    
+                    <!-- Auto-Assign Threshold -->
+                    <div class="setting-group">
+                      <label>
+                        Auto-Assign Threshold: {{ Math.round(autoAssignThreshold * 100) }}%
+                      </label>
+                      <input 
+                        type="range" 
+                        v-model.number="autoAssignThreshold"
+                        min="0.5"
+                        max="0.95"
+                        step="0.05"
+                        class="confidence-slider"
+                      />
+                      <p class="hint-small">Minimum confidence required for automatic face assignment from person library (lower = more auto-assignments, higher = more conservative)</p>
+                    </div>
+                  </div>
+                </div>
+                
                 <button 
                   type="button" 
-                  @click="setStartTime(index)" 
-                  class="btn-get-time"
-                  title="Set media link and start time from current playback"
+                  @click="handleDetectFaces" 
+                  :disabled="detectingFaces || selectedModels.length === 0"
+                  class="btn-secondary"
                 >
-                  🕐 Start
+                  {{ detectingFaces ? 'Detecting...' : 'Detect Faces' }}
                 </button>
+                
+                <label v-if="detectedFaces.length > 0" class="toggle-overlay">
+                  <input type="checkbox" v-model="showFaceOverlays" @change="drawFaceOverlays" />
+                  Show Overlays<br>
+                  <small>({{ detectedFaces.length }} {{ detectedFaces.length === 1 ? 'face' : 'faces' }})</small>
+                </label>
+                
+                <span v-if="faceDetectionStatus" class="detection-status">
+                  <span v-if="facesLoadedFromBioData" title="Loaded from previous detection" style="opacity: 0.6; margin-right: 4px;">📂</span>
+                  <span v-else-if="detectedFaces.length > 0" title="Newly detected" style="opacity: 0.6; margin-right: 4px;">🔍</span>
+                  {{ faceDetectionStatus }}
+                </span>
               </div>
-              <div class="time-input-group">
-                <input 
-                  v-model="entry.duration" 
-                  type="text"
-                  placeholder="00:01:30.0"
-                  class="playlist-time"
-                  title="Duration (HH:MM:SS.s)"
-                  @input="onPlaylistChange"
-                />
-                <button 
-                  type="button" 
-                  @click="setDuration(index)" 
-                  class="btn-get-time"
-                  title="Calculate duration from start time to current playback time"
-                >
-                  🕐 End
-                </button>
-              </div>
-              <button type="button" @click="removePlaylistEntry(index)" class="btn-remove" title="Remove playlist entry">×</button>
-            </div>
-            <div v-if="playlistValidationErrors[index]" class="validation-errors">
-              <small class="error-text" v-for="(error, errorIdx) in playlistValidationErrors[index]" :key="errorIdx">
-                • {{ error }}
-              </small>
             </div>
           </div>
-          <button type="button" @click="addPlaylistEntry" class="btn-add">+ Add Playlist Entry</button>
-          <small class="format-hint">Time format: HH:MM:SS.s (e.g., 00:03:45.5 for 3 minutes 45.5 seconds)</small>
         </div>
+      </div>
+    </form>
 
-        <!-- Action Buttons -->
-        <div class="form-actions">
-          <button type="submit" :disabled="saving" class="btn-primary">
-            {{ saving ? 'Saving...' : 'Save Changes' }}
-          </button>
-          <button v-if="!fileExists && !isReferencedInPlaylists" type="button" @click="handleDelete" :disabled="saving || deleting" class="btn-danger" title="Delete item - media file not found in filesystem">
-            {{ deleting ? 'Deleting...' : 'Delete Item (File Missing)' }}
-          </button>
-          <div v-if="!fileExists && isReferencedInPlaylists" class="warning-message" style="color: #856404; background-color: #fff3cd; padding: 8px; border-radius: 4px; margin: 8px 0;">
-            ⚠️ Cannot delete: Item is referenced in playlist(s)
-          </div>
-          <button type="button" @click="handleCancel" :disabled="saving || deleting" class="btn-secondary">
-            Cancel
-          </button>
-        </div>
-
-        <div v-if="statusMessage" :class="'status-message ' + statusMessage.type">
-          {{ statusMessage.text }}
-        </div>
-      </form>
+    <!-- Bottom Action Bar -->
+    <div v-if="!loading && !error" class="action-bar">
+      <button type="submit" @click="handleSave" :disabled="saving" class="btn-primary">
+        {{ saving ? 'Saving...' : 'Save Changes' }}
+      </button>
+      <button 
+        v-if="hasQueue && hasNextItem"
+        type="button" 
+        @click="handleSaveAndNext" 
+        :disabled="saving"
+        class="btn-primary"
+      >
+        Save and Next ▶
+      </button>
+      <button v-if="!fileExists && !isReferencedInPlaylists" type="button" @click="handleDelete" :disabled="saving || deleting" class="btn-danger" title="Delete item - media file not found in filesystem">
+        {{ deleting ? 'Deleting...' : 'Delete Item (File Missing)' }}
+      </button>
+      <button type="button" @click="handleCancel" :disabled="saving || deleting" class="btn-secondary">
+        Cancel
+      </button>
+      <div v-if="!fileExists && isReferencedInPlaylists" class="warning-message">
+        ⚠️ Cannot delete: Item is referenced in playlist(s)
+      </div>
+      <div v-if="statusMessage" :class="'status-message ' + statusMessage.type">
+        {{ statusMessage.text }}
+      </div>
     </div>
-    
+  </div>
+
     <!-- Face Selector Modal -->
     <div v-if="showFaceSelector" class="modal-overlay" @click="closeFaceSelector">
       <div class="modal-content modal-small" @click.stop>
@@ -692,6 +725,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { formatPersonName, expandPersonsByLastName } from '../../../../shared/personHelpers.js';
+import DateInput from '../../components/DateInput.vue';
 
 const item = ref({
   accession: '',
@@ -715,6 +749,19 @@ const isReferencedInPlaylists = ref(false); // Track if item is referenced in pl
 const error = ref(null);
 const statusMessage = ref(null);
 const mediaPreviewPath = ref(null);
+
+// Queue navigation state
+const queueData = ref(null); // { collectionKey, collectionText, queue: [...links] }
+const currentQueueIndex = ref(-1);
+const hasUnsavedChanges = ref(false);
+
+// Custom modal state
+const showConfirmModal = ref(false);
+const confirmModalTitle = ref('');
+const confirmModalMessage = ref('');
+const confirmOkText = ref('OK');
+const confirmCancelText = ref('Cancel');
+let confirmResolve = null;
 
 // Face detection state
 const imageElement = ref(null);
@@ -998,6 +1045,34 @@ const openPersonManager = async (personID) => {
   }
 };
 
+// Custom confirm dialog to avoid Electron focus bug
+const showConfirm = (title, message, okText = 'OK', cancelText = 'Cancel') => {
+  return new Promise((resolve) => {
+    confirmModalTitle.value = title;
+    confirmModalMessage.value = message;
+    confirmOkText.value = okText;
+    confirmCancelText.value = cancelText;
+    confirmResolve = resolve;
+    showConfirmModal.value = true;
+  });
+};
+
+const handleModalOk = () => {
+  showConfirmModal.value = false;
+  if (confirmResolve) {
+    confirmResolve(true);
+    confirmResolve = null;
+  }
+};
+
+const handleModalCancel = () => {
+  showConfirmModal.value = false;
+  if (confirmResolve) {
+    confirmResolve(false);
+    confirmResolve = null;
+  }
+};
+
 const addSource = () => {
   item.value.source.push({ 
     personID: '', 
@@ -1141,10 +1216,24 @@ const onImageLoad = () => {
       if (faceCanvas.value) {
         faceCanvas.value.width = imageElement.value.clientWidth;
         faceCanvas.value.height = imageElement.value.clientHeight;
+        
+        // Position canvas to overlay the centered image
+        const img = imageElement.value;
+        const containerRect = img.parentElement.getBoundingClientRect();
+        const imgRect = img.getBoundingClientRect();
+        faceCanvas.value.style.left = (imgRect.left - containerRect.left) + 'px';
+        faceCanvas.value.style.top = (imgRect.top - containerRect.top) + 'px';
       }
     }
   } catch (err) {
     console.error('Error in onImageLoad:', err);
+  }
+};
+
+// Open media in external window
+const openMediaInWindow = () => {
+  if (mediaPreviewPath.value) {
+    window.open(mediaPreviewPath.value, '_blank');
   }
 };
 
@@ -1425,96 +1514,15 @@ const handleDetectFaces = async () => {
   }
 };
 
-const assignFaceToPerson = async (faceIndex) => {
-  const personID = faceAssignments.value[faceIndex];
-  if (!personID) {
-    alert('Please select a person first');
-    return;
-  }
-  
-  // Get the person from the local item data by personID
-  const person = item.value.person.find(p => p.personID === personID);
-  if (!person) {
-    alert('Person not found');
-    return;
-  }
-  
-  // Check if this person already has a face assigned (prevent duplicates)
-  if (person.faceTag && person.faceTag.region) {
-    alert('This person already has a face assigned. Please unmatch the existing face first.');
-    return;
-  }
-  
-  const unmatchedFace = unmatchedFaces.value.find(f => f.faceIndex === faceIndex);
-  if (!unmatchedFace) {
-    alert('Face not found');
-    return;
-  }
-  
-  // Get the full face data (with descriptor) from the original detectedFaces
-  const fullFace = detectedFaces.value[faceIndex];
-  if (!fullFace) {
-    alert('Face descriptor not found');
-    return;
-  }
-  
-  // Store face assignment in person.faceTag for pending save (UI only, not persisted yet)
-  const model = fullFace.model || selectedModels.value[0] || 'ssd';
-  
-  // Create plain serializable objects
-  const plainRegion = {
-    x: fullFace.region.x,
-    y: fullFace.region.y,
-    w: fullFace.region.w,
-    h: fullFace.region.h
-  };
-  const plainDescriptor = Array.from(fullFace.descriptor);
-  
-  // Store pending face assignment in UI state (will be saved to backend on Save button)
-  person.faceTag = {
-    region: plainRegion,
-    descriptor: plainDescriptor,
-    model: model,
-    confidence: fullFace.confidence,
-    pending: true  // Mark as not yet saved to backend
-  }
-  
-  
-  // Move from unmatched to matched
-  matchedFaces.value.push({
-    faceIndex,
-    personID: person.personID,
-    confidence: unmatchedFace.confidence,
-    region: unmatchedFace.region
-  });
-  
-  // Remove from unmatched
-  unmatchedFaces.value = unmatchedFaces.value.filter(f => f.faceIndex !== faceIndex);
-  delete faceAssignments.value[faceIndex];
-  
-  // Force reactivity update
-  personListKey.value++;
-  
-  // Update status
-  const unmatched = unmatchedFaces.value.length;
-  if (unmatched > 0) {
-    faceDetectionStatus.value = `${matchedFaces.value.length} matched, ${unmatched} need assignment`;
-  } else {
-    faceDetectionStatus.value = `All ${matchedFaces.value.length} faces assigned!`;
-  }
-  
-  // Redraw overlays
-  if (showFaceOverlays.value) {
-    drawFaceOverlays();
-  }
-};
-
-const handleFaceAssignment = (faceIndex) => {
-  // Optional: Could trigger auto-save or preview here
-};
-
 const unmatchFace = async (match) => {
-  if (!confirm(`Are you sure you want to unassign Face #${match.faceIndex + 1} from this person? You can reassign it after.`)) {
+  const confirmed = await showConfirm(
+    'Unassign Face',
+    `Are you sure you want to unassign Face #${match.faceIndex + 1} from this person? You can reassign it after.`,
+    'Unassign',
+    'Cancel'
+  );
+  
+  if (!confirmed) {
     return;
   }
   
@@ -1579,11 +1587,7 @@ const unmatchPersonFace = (personID) => {
 
 // Assign face to person by personID (for inline assign)
 const assignFaceToPersonByID = async (personID) => {
-  console.log('assignFaceToPersonByID called with personID:', personID);
-  console.log('faceAssignments:', faceAssignments.value);
-  
   const faceIndex = faceAssignments.value[personID];
-  console.log('faceIndex for this person:', faceIndex);
   
   if (faceIndex === undefined || faceIndex === null || faceIndex === '') {
     alert('Please select a face first');
@@ -1676,7 +1680,12 @@ const assignSelectedFaces = async () => {
   });
   
   for (const person of personsToAssign) {
-    await assignFaceToPersonByID(person.personID);
+    const selectedFaceIndex = faceAssignments.value[person.personID];
+    // Check if this face is still available (not already assigned to someone else in this loop)
+    const isFaceStillAvailable = unmatchedFaces.value.some(f => f.faceIndex === selectedFaceIndex);
+    if (isFaceStillAvailable) {
+      await assignFaceToPersonByID(person.personID);
+    }
   }
 };
 
@@ -2072,6 +2081,12 @@ const drawFaceOverlays = () => {
     canvas.width = img.clientWidth;
     canvas.height = img.clientHeight;
     
+    // Position canvas to overlay the centered image
+    const containerRect = img.parentElement.getBoundingClientRect();
+    const imgRect = img.getBoundingClientRect();
+    canvas.style.left = (imgRect.left - containerRect.left) + 'px';
+    canvas.style.top = (imgRect.top - containerRect.top) + 'px';
+    
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
@@ -2140,10 +2155,11 @@ const drawFaceOverlays = () => {
 const handleSave = async () => {
   // Check for unassigned faces (using unmatchedFaces which is already maintained)
   if (unmatchedFaces.value.length > 0) {
-    const proceed = confirm(
-      'Warning: You have ' + unmatchedFaces.value.length + ' detected face(s) that are not assigned to anyone.\n\n' +
-      'This may mean you forgot to press the "Assign" button.\n\n' +
-      'Do you want to save anyway?'
+    const proceed = await showConfirm(
+      'Unassigned Faces',
+      `Warning: You have ${unmatchedFaces.value.length} detected face(s) that are not assigned to anyone.\n\nThis may mean you forgot to press the "Assign" button.\n\nDo you want to save anyway?`,
+      'Save Anyway',
+      'Go Back'
     );
     if (!proceed) {
       return; // User canceled save to fix assignments
@@ -2214,10 +2230,21 @@ const handleSave = async () => {
     const result = await window.electronAPI.saveItem(plainItem);
 
     if (result.success) {
+      hasUnsavedChanges.value = false;
       statusMessage.value = { type: 'success', text: 'Changes saved successfully!' };
-      setTimeout(() => {
-        window.close();
-      }, 1500);
+      
+      // Only close window if not in queue mode
+      if (!hasQueue.value) {
+        setTimeout(async () => {
+          await window.electronAPI.saveWindowGeometry();
+          window.close();
+        }, 1500);
+      } else {
+        setTimeout(() => {
+          statusMessage.value = null;
+          saving.value = false;
+        }, 2000);
+      }
     } else {
       statusMessage.value = { type: 'error', text: 'Error: ' + result.error };
       saving.value = false;
@@ -2229,7 +2256,14 @@ const handleSave = async () => {
 };
 
 const handleDelete = async () => {
-  if (!confirm(`Are you sure you want to delete item "${item.value.link}"? This cannot be undone.`)) {
+  const confirmed = await showConfirm(
+    'Delete Item',
+    `Are you sure you want to delete item "${item.value.link}"? This cannot be undone.`,
+    'Delete',
+    'Cancel'
+  );
+  
+  if (!confirmed) {
     return;
   }
   
@@ -2241,7 +2275,8 @@ const handleDelete = async () => {
     
     if (result.success) {
       statusMessage.value = { type: 'success', text: 'Item deleted successfully!' };
-      setTimeout(() => {
+      setTimeout(async () => {
+        await window.electronAPI.saveWindowGeometry();
         window.close();
       }, 1500);
     } else {
@@ -2254,18 +2289,161 @@ const handleDelete = async () => {
   }
 };
 
-const handleCancel = () => {
+const handleCancel = async () => {
+  await window.electronAPI.saveWindowGeometry();
   window.close();
 };
+
+// Queue navigation functions
+const hasQueue = computed(() => queueData.value && queueData.value.queue && queueData.value.queue.length > 0);
+const hasPrevItem = computed(() => hasQueue.value && currentQueueIndex.value > 0);
+const hasNextItem = computed(() => hasQueue.value && currentQueueIndex.value < queueData.value.queue.length - 1);
+const queuePosition = computed(() => {
+  if (!hasQueue.value || currentQueueIndex.value < 0) return '';
+  return `${currentQueueIndex.value + 1} / ${queueData.value.queue.length}`;
+});
+
+const navigateToQueueItem = (newIndex) => {
+  if (!hasQueue.value || newIndex < 0 || newIndex >= queueData.value.queue.length) return;
+  
+  const newLink = queueData.value.queue[newIndex];
+  const searchParams = `link=${encodeURIComponent(newLink)}&queue=${encodeURIComponent(JSON.stringify(queueData.value))}`;
+  window.location.search = searchParams;
+};
+
+const handlePrevItem = async () => {
+  if (!hasPrevItem.value) return;
+  
+  if (hasUnsavedChanges.value) {
+    const confirmNav = await showConfirm(
+      'Unsaved Changes',
+      'You have unsaved changes. Do you want to discard them and go to the previous item?',
+      'Discard & Go',
+      'Stay Here'
+    );
+    if (!confirmNav) return;
+  }
+  
+  navigateToQueueItem(currentQueueIndex.value - 1);
+};
+
+const handleNextItem = async () => {
+  if (!hasNextItem.value) return;
+  
+  if (hasUnsavedChanges.value) {
+    const confirmNav = await showConfirm(
+      'Unsaved Changes',
+      'You have unsaved changes. Do you want to discard them and go to the next item?',
+      'Discard & Go',
+      'Stay Here'
+    );
+    if (!confirmNav) return;
+  }
+  
+  navigateToQueueItem(currentQueueIndex.value + 1);
+};
+
+const handleSaveAndNext = async () => {
+  saving.value = true;
+  
+  try {
+    // Validate no duplicate person assignments
+    const personIDs = item.value.person
+      .map(p => p.personID)
+      .filter(id => id);
+    const hasDuplicates = personIDs.length !== new Set(personIDs).size;
+
+    if (hasDuplicates) {
+      statusMessage.value = { type: 'error', text: 'Cannot save: same person appears multiple times' };
+      saving.value = false;
+      return;
+    }
+    
+    // Validate playlist entries
+    if (!validatePlaylist()) {
+      statusMessage.value = { type: 'error', text: 'Cannot save: playlist entries have validation errors' };
+      saving.value = false;
+      return;
+    }
+
+    // Clean up empty objects before saving (same logic as handleSave)
+    const cleanedItem = {
+      ...item.value,
+      location: item.value.location.filter(loc => 
+        loc.detail || loc.city || loc.state || (loc.latitude && loc.longitude)
+      ),
+      person: item.value.person.filter(p => p.personID).map(p => ({...p})),
+      source: item.value.source.filter(s => s.personID)
+    };
+
+    // Clean up playlist entries
+    if (item.value.playlist && item.value.playlist.entry) {
+      const filteredEntries = item.value.playlist.entry.filter(e => e.ref && e.starttime && e.duration);
+      if (filteredEntries.length > 0) {
+        cleanedItem.playlist = { entry: filteredEntries };
+      } else {
+        delete cleanedItem.playlist;
+      }
+    }
+
+    // Remove empty date if no fields filled
+    if (!cleanedItem.date.year && !cleanedItem.date.month && !cleanedItem.date.day) {
+      delete cleanedItem.date;
+    }
+    
+    // Convert to plain object to avoid IPC cloning issues
+    const plainItem = JSON.parse(JSON.stringify(cleanedItem));
+
+    // Save the item
+    const result = await window.electronAPI.saveItem(plainItem);
+
+    if (result.success) {
+      hasUnsavedChanges.value = false;
+      
+      // Navigate to next item immediately
+      if (hasNextItem.value) {
+        navigateToQueueItem(currentQueueIndex.value + 1);
+      }
+    } else {
+      statusMessage.value = { type: 'error', text: 'Error: ' + result.error };
+      saving.value = false;
+    }
+  } catch (error) {
+    console.error('Error saving item:', error);
+    statusMessage.value = { type: 'error', text: 'Error saving: ' + error.message };
+    saving.value = false;
+  }
+};
+
+// Track changes to item data
+watch(item, () => {
+  if (!loading.value) {
+    hasUnsavedChanges.value = true;
+  }
+}, { deep: true });
 
 onMounted(async () => {
   const mountStart = performance.now();
   console.log('[TIMING] MediaManager onMounted started');
   
   try {
-    // Get item identifier from query string or window property
+    // Get item identifier and queue data from query string
     const urlParams = new URLSearchParams(window.location.search);
     const identifier = urlParams.get('link');
+    const queueParam = urlParams.get('queue');
+    
+    // Parse queue data if provided
+    if (queueParam) {
+      try {
+        queueData.value = JSON.parse(decodeURIComponent(queueParam));
+        // Find current item index in queue
+        if (queueData.value && queueData.value.queue) {
+          currentQueueIndex.value = queueData.value.queue.indexOf(identifier);
+        }
+      } catch (e) {
+        console.error('Failed to parse queue data:', e);
+      }
+    }
     
     if (!identifier) {
       error.value = 'No item identifier provided';
@@ -2305,6 +2483,29 @@ onMounted(async () => {
       // Expand persons so each appears once per last name (matches nav column behavior)
       persons.value = expandPersonsByLastName(refreshedPersons);
       personListKey.value++; // Force re-render of dropdowns
+    });
+    
+    // Listen for item load events from other windows
+    window.electronAPI.onItemLoad(async (identifier, queueDataParam) => {
+      if (hasUnsavedChanges.value) {
+        const confirmed = await showConfirm(
+          'Unsaved Changes',
+          'You have unsaved changes. Do you want to discard them and load the new item?',
+          'Discard & Load',
+          'Stay Here'
+        );
+        
+        if (!confirmed) {
+          return; // User chose to stay, don't load new item
+        }
+      }
+      
+      // Load the new item with queue data if provided
+      let searchParams = `link=${encodeURIComponent(identifier)}`;
+      if (queueDataParam) {
+        searchParams += `&queue=${encodeURIComponent(JSON.stringify(queueDataParam))}`;
+      }
+      window.location.search = searchParams;
     });
     
     console.log('[TIMING] Starting item load for:', identifier);
@@ -2450,10 +2651,65 @@ header h1 {
   font-size: 0.9rem;
 }
 
+.queue-navigation {
+  background: #6c757d;
+  color: white;
+  padding: 0.75rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.queue-info {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.collection-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.queue-position {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.queue-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-nav {
+  background: rgba(255,255,255,0.2);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.3);
+  padding: 0.4rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-nav:hover:not(:disabled) {
+  background: rgba(255,255,255,0.3);
+  border-color: rgba(255,255,255,0.5);
+}
+
+.btn-nav:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 2rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .loading,
@@ -2468,43 +2724,110 @@ header h1 {
   color: #721c24;
   border: 1px solid #f5c6cb;
   border-radius: 6px;
+  margin: 2rem;
 }
 
 .media-form {
-  max-width: 900px;
-  margin: 0 auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.two-column-layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(400px, 0.75fr) minmax(400px, 1fr);
+  gap: 1.5rem;
+  padding: 0;
+  overflow-y: auto;
+  background: #f5f5f5;
+}
+
+.left-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: fit-content;
+}
+
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+
+.action-bar {
   background: white;
-  padding: 2rem;
+  border-top: 1px solid #dee2e6;
+  padding: 1rem 2rem;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+}
+
+.action-bar .warning-message {
+  color: #856404;
+  background-color: #fff3cd;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.action-bar .status-message {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.preview-section {
+  margin-bottom: 0;
+  text-align: center;
+  background: white;
+  padding: 1rem;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
-.preview-section {
-  margin-bottom: 1rem;
-  text-align: center;
-}
-
 .preview-and-controls {
   display: flex;
-  gap: 1.5rem;
-  align-items: flex-start;
-  justify-content: center;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
 }
 
 .preview-container {
   flex-shrink: 0;
+  width: 100%;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .media-preview {
   max-width: 100%;
-  max-height: 400px;
+  max-height: calc(100vh - 400px);
+  width: auto;
+  height: auto;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  object-fit: contain;
 }
 
 .form-section {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
 .form-section label {
@@ -2569,12 +2892,6 @@ header h1 {
   margin-top: 0.25rem;
   color: #666;
   font-size: 0.85rem;
-}
-
-.date-row {
-  display: grid;
-  grid-template-columns: 120px 120px 80px;
-  gap: 0.5rem;
 }
 
 .location-entry,
@@ -2748,24 +3065,6 @@ header h1 {
   align-items: center;
 }
 
-.date-year-small,
-.date-month-small,
-.date-day-small {
-  width: auto !important;
-}
-
-.date-year-small {
-  width: 80px !important;
-}
-
-.date-month-small {
-  width: 70px !important;
-}
-
-.date-day-small {
-  width: 50px !important;
-}
-
 .btn-add {
   margin-top: 0.5rem;
   padding: 0.5rem 1rem;
@@ -2914,9 +3213,12 @@ header h1 {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  align-items: flex-start;
-  min-width: 220px;
-  flex: 1 1 220px;
+  align-items: stretch;
+  width: 100%;
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
 .face-detection-controls .btn-secondary {
@@ -3044,8 +3346,8 @@ header h1 {
 
 /* Face Assignment Styles */
 .face-people-section {
-  margin-top: 1rem;
-  padding: 1rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
   background: #f8f9fa;
   border-radius: 8px;
   border: 2px solid #dee2e6;
@@ -3119,7 +3421,7 @@ header h1 {
 
 .person-face-row {
   display: grid;
-  grid-template-columns: auto 1fr 300px 40px;
+  grid-template-columns: auto 1fr 200px 40px;
   gap: 0.5rem;
   align-items: center;
   padding: 0.6rem;
@@ -3160,7 +3462,7 @@ header h1 {
 
 .person-info {
   display: grid;
-  grid-template-columns: 2fr auto 2fr;
+  grid-template-columns: 2.5fr auto 1.25fr;
   gap: 0.5rem;
   align-items: center;
   min-width: 0;
@@ -3212,10 +3514,17 @@ header h1 {
   border-radius: 4px;
 }
 .face-match-indicator {
-  width: 300px;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 0.5rem;
+}
+
+.face-info-display {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
 }
 
 .matched-indicator,
@@ -3223,7 +3532,8 @@ header h1 {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex: 1;
+  min-width: 0;
+  width: 100%;
 }
 
 .matched-indicator {
@@ -3244,6 +3554,7 @@ header h1 {
   border: 1px solid #ddd;
   border-radius: 4px;
   flex: 1;
+  max-width: 180px;
 }
 .btn-unmatch-inline,
 .btn-assign-inline {
@@ -3480,6 +3791,14 @@ header h1 {
   z-index: 1000;
 }
 
+.modal-dialog {
+  background: white;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
 .modal-content {
   background: white;
   border-radius: 12px;
@@ -3501,6 +3820,12 @@ header h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #333;
 }
 
 .modal-header h2 {
@@ -3715,5 +4040,37 @@ header h1 {
 .modal-footer .btn-primary,
 .modal-footer .btn-secondary {
   padding: 0.75rem 1.5rem;
+}
+
+.btn-modal-ok {
+  padding: 0.75rem 1.5rem;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-modal-ok:hover {
+  background: #c82333;
+}
+
+.btn-modal-cancel {
+  padding: 0.75rem 1.5rem;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-modal-cancel:hover {
+  background: #5a6268;
 }
 </style>

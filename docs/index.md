@@ -37,6 +37,10 @@ features:
     title: Rich Metadata
     details: Document people, places, dates, and stories associated with each item in your archive.
   
+  - icon: 🎵
+    title: Playlists & Inverse Playlists
+    details: Attach time-based playlists to items and automatically see reverse references on related media.
+  
   - icon: ⌨️
     title: Keyboard Shortcuts
     details: Navigate your archive efficiently with comprehensive keyboard controls.
@@ -65,6 +69,7 @@ Shoebox is a desktop application for organizing and curating your family's multi
 - **Privacy-Focused**: No cloud upload, your memories stay with you
 - **Face Detection**: Built-in AI-powered face recognition
 - **Flexible Organization**: Create collections and add rich metadata
+- **Playlists**: Attach playlist entries to items with automatic inverse references on related media
 - **Digital Photo Frame**: Auto-cycling slideshow mode for displays
 
 ## Why Shoebox?

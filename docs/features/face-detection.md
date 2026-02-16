@@ -73,7 +73,7 @@ Face detection and tagging follows a specific workflow. Understanding this proce
 ### Step 1: Open Media Manager
 
 1. Select a photo in the main window
-2. Click **Edit Media** button or press **E**
+2. Click **Edit Media** button in the details pane, or use **Archive > Edit Media** menu (Alt+R, E)
 3. Media Manager window opens with your photo
 
 ### Step 2: Detect Faces with Auto‑Matching and Suggestions

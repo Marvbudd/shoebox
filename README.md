@@ -5,7 +5,7 @@
 Organize, preserve, and share your family's multimedia memories with a powerful desktop application that keeps your data private and under your control.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](https://github.com/Marvbudd/shoebox/releases)
+[![Version](https://img.shields.io/badge/version-latest-blue.svg)](https://github.com/Marvbudd/shoebox/releases)
 
 ## 🎯 What is Shoebox?
 
@@ -18,6 +18,7 @@ Shoebox is a cross-platform desktop application for managing your family archive
 - 👤 **Face Detection**: AI-powered face recognition and tagging
 - 🗂️ **Collections**: Create themed subsets for sharing or presentations
 - 📝 **Rich Metadata**: Document people, places, dates, and stories
+- 🎵 **Playlists & Inverse Playlists**: Attach time-based playlists to items and automatically see reverse references on related media
 - ⌨️ **Keyboard Shortcuts**: Efficient navigation without the mouse
 - 🔒 **Privacy-Focused**: No cloud uploads, your data stays yours
 - 🌐 **Cross-Platform**: macOS, Windows, and Linux
@@ -26,11 +27,11 @@ Shoebox is a cross-platform desktop application for managing your family archive
 
 ### Download
 
-Get the latest version (3.0.0) from [GitHub Releases](https://github.com/Marvbudd/shoebox/releases):
+Get the latest version from [GitHub Releases](https://github.com/Marvbudd/shoebox/releases):
 
-- **macOS**: [Shoebox-3.0.0.dmg](https://github.com/Marvbudd/shoebox/releases)
-- **Windows**: [Shoebox-3.0.0.exe](https://github.com/Marvbudd/shoebox/releases)
-- **Linux**: [Shoebox-3.0.0.AppImage](https://github.com/Marvbudd/shoebox/releases)
+- **macOS**: Shoebox-<version>.dmg
+- **Windows**: Shoebox-<version>.exe
+- **Linux**: Shoebox-<version>.AppImage
 
 ### Install
 
@@ -50,8 +51,8 @@ Get the latest version (3.0.0) from [GitHub Releases](https://github.com/Marvbud
 
 **Linux**
 ```bash
-chmod +x Shoebox-3.0.0.AppImage
-./Shoebox-3.0.0.AppImage
+chmod +x Shoebox-<version>.AppImage
+./Shoebox-<version>.AppImage
 ```
 
 ### First Launch
@@ -72,7 +73,7 @@ Comprehensive documentation is available at our [documentation site](https://mar
 
 Watch the [YouTube playlist](https://www.youtube.com/playlist?list=PL8z7p1h74xBqbjDLCWjncm9EF5RL7oTDP) for video tutorials covering installation and basic usage.
 
-## ✨ What's New in 3.0.0
+## ✨ What's New
 
 - 🎉 **Slideshow & Photo Frame Mode**: Auto-cycling slideshow with speed control, random mode, and direction reversal
 - 📋 **Collections Menu**: Reorganized menu structure for better discoverability
@@ -87,7 +88,7 @@ Watch the [YouTube playlist](https://www.youtube.com/playlist?list=PL8z7p1h74xBq
 - 🔗 **TMG Integration**: Links to The Master Genealogist data in Second Site websites via TMG ID
 - 🎛️ **Management Screens**: Dedicated Media and Person Manager windows with detailed help
 
-See the [Release Notes](docs/RELEASE-NOTES-3.0.0.md) for complete details.
+See the [Release Notes](CHANGELOG.md) for complete details.
 
 ## 💡 Use Cases
 

@@ -10,17 +10,17 @@ Download and install Shoebox for your operating system.
 
 ## Download
 
-Get the latest version (3.0.0) from the [GitHub Releases](https://github.com/Marvbudd/shoebox/releases) page:
+Get the latest version from the [GitHub Releases](https://github.com/Marvbudd/shoebox/releases) page:
 
-- **macOS**: `Shoebox-3.0.0.dmg`
-- **Windows**: `Shoebox-3.0.0.exe`
-- **Linux**: `Shoebox-3.0.0.AppImage`
+- **macOS**: `Shoebox-<version>.dmg`
+- **Windows**: `Shoebox-<version>.exe`
+- **Linux**: `Shoebox-<version>.AppImage`
 
 ## Installation Steps
 
 ### macOS
 
-1. Download `Shoebox-3.0.0.dmg`
+1. Download `Shoebox-<version>.dmg`
 2. Open the DMG file
 3. Drag Shoebox to your Applications folder
 4. Launch Shoebox from Applications
@@ -28,21 +28,21 @@ Get the latest version (3.0.0) from the [GitHub Releases](https://github.com/Mar
 
 ### Windows
 
-1. Download `Shoebox-3.0.0.exe`
+1. Download `Shoebox-<version>.exe`
 2. Run the installer
 3. Follow the installation wizard
 4. Launch Shoebox from the Start menu or desktop shortcut
 
 ### Linux
 
-1. Download `Shoebox-3.0.0.AppImage`
+1. Download `Shoebox-<version>.AppImage`
 2. Make it executable:
    ```bash
-   chmod +x Shoebox-3.0.0.AppImage
+   chmod +x Shoebox-<version>.AppImage
    ```
 3. Run the AppImage:
    ```bash
-   ./Shoebox-3.0.0.AppImage
+   ./Shoebox-<version>.AppImage
    ```
 
 ## First Launch
@@ -68,6 +68,14 @@ This is a Gatekeeper security warning. To fix:
 1. Click "More info" in the warning dialog
 2. Click "Run anyway"
 3. This only appears on first launch
+
+### Unsigned App Notice
+
+Shoebox is currently distributed without a paid code‑signing certificate. This means:
+- **Windows** may show a SmartScreen warning on first launch.
+- **macOS** may show a Gatekeeper warning the first time the app is opened.
+
+This is expected for unsigned apps. The only way to remove these warnings permanently is to sign and notarize the app. Let the maintainer know if you are interested in supporting this.
 
 ### Linux: AppImage Won't Run
 

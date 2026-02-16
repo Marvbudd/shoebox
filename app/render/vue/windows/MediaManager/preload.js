@@ -24,9 +24,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPersonManager: (personID) => ipcRenderer.invoke('window:openPersonManager', personID),
   getConfig: (key) => ipcRenderer.invoke('config:get', key),
   setConfig: (key, value) => ipcRenderer.invoke('config:set', key, value),
+  saveWindowGeometry: () => ipcRenderer.invoke('window:saveMediaManagerGeometry'),
   
   // Event listeners
   onPersonSaved: (callback) => {
     ipcRenderer.on('person:saved', (event, personID) => callback(personID));
+  },
+  onItemLoad: (callback) => {
+    ipcRenderer.on('item:load', (event, identifier, queueData) => callback(identifier, queueData));
   }
 });

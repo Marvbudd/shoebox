@@ -149,6 +149,32 @@ export class CollectionClass {
   } // end of addItem
 
   /**
+   * Update the collection's text (short description).
+   * Sets collectionChanged flag to mark pending changes.
+   * 
+   * @param {string} newText - The new text for the collection
+   */
+  setText(newText) {
+    if (this.text !== newText) {
+      this.text = newText;
+      this.collectionChanged = true;
+    }
+  } // end of setText
+
+  /**
+   * Update the collection's title (full description).
+   * Sets collectionChanged flag to mark pending changes.
+   * 
+   * @param {string} newTitle - The new title for the collection
+   */
+  setTitle(newTitle) {
+    if (this.title !== newTitle) {
+      this.title = newTitle;
+      this.collectionChanged = true;
+    }
+  } // end of setTitle
+
+  /**
    * Remove an item from the collection by link.
    * Sets collectionChanged flag to mark pending changes.
    * 

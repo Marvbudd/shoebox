@@ -47,7 +47,7 @@
  * - New menu item? Add to menuTemplates.js
  */
 
-import { app, BrowserWindow, dialog, ipcMain, shell, Menu } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell, Menu, powerSaveBlocker } from 'electron';
 import fs from 'fs';
 import electron from 'electron';
 import path from 'path';
@@ -71,6 +71,24 @@ autoUpdater.checkForUpdatesAndNotify();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Slideshow display sleep blocker
+let slideshowBlockerId = null;
+
+const startSlideshowBlocker = () => {
+  if (slideshowBlockerId && powerSaveBlocker.isStarted(slideshowBlockerId)) {
+    return slideshowBlockerId;
+  }
+  slideshowBlockerId = powerSaveBlocker.start('prevent-display-sleep');
+  return slideshowBlockerId;
+};
+
+const stopSlideshowBlocker = () => {
+  if (slideshowBlockerId && powerSaveBlocker.isStarted(slideshowBlockerId)) {
+    powerSaveBlocker.stop(slideshowBlockerId);
+  }
+  slideshowBlockerId = null;
+};
 
 // Import version from package.json
 const require = createRequire(import.meta.url);
@@ -292,7 +310,8 @@ const createWindow = () => {
     resetAccessions,
     hmsToSeconds,
     nconf,
-    showCollectionRef
+    showCollectionRef,
+    () => windowRefs.personManager.value
   );
 
   // ===== Collection IPC Handlers =====
@@ -320,6 +339,16 @@ const createWindow = () => {
   );
 
   // ===== Window Management IPC Handlers =====
+
+  // Slideshow display sleep blocker (prevent screensaver during slideshow)
+  ipcMain.handle('slideshow:setDisplaySleepBlock', async (_event, shouldBlock) => {
+    if (shouldBlock) {
+      const id = startSlideshowBlocker();
+      return { active: true, id };
+    }
+    stopSlideshowBlocker();
+    return { active: false };
+  });
   
   // Open Person Manager with a specific person selected
   ipcMain.handle('window:openPersonManager', async (event, personID) => {
@@ -328,11 +357,23 @@ const createWindow = () => {
       createPersonManagerWindow();
       
       // Send the personID to the Person Manager window after it's ready (if provided)
-      if (personID && windowRefs.personManager && windowRefs.personManager.webContents) {
-        // Give the window a moment to be ready
-        setTimeout(() => {
-          windowRefs.personManager.webContents.send('person:select', personID);
-        }, 500);
+      if (personID && windowRefs.personManager.value && windowRefs.personManager.value.webContents) {
+        // Wait for the window to be fully loaded before sending selection
+        const sendSelection = () => {
+          if (windowRefs.personManager.value && !windowRefs.personManager.value.isDestroyed()) {
+            windowRefs.personManager.value.webContents.send('person:select', personID);
+          }
+        };
+        
+        // If window is already loaded, send immediately
+        if (!windowRefs.personManager.value.webContents.isLoading()) {
+          setTimeout(sendSelection, 100);
+        } else {
+          // Otherwise wait for the did-finish-load event
+          windowRefs.personManager.value.webContents.once('did-finish-load', () => {
+            setTimeout(sendSelection, 100);
+          });
+        }
       }
       
       return { success: true };
@@ -341,6 +382,20 @@ const createWindow = () => {
       return { success: false, error: error.message };
     }
   }); // window:openPersonManager
+
+  // Save Media Manager window geometry before closing
+  ipcMain.handle('window:saveMediaManagerGeometry', async (event) => {
+    try {
+      if (windowRefs.mediaManager && windowRefs.mediaManager.value && !windowRefs.mediaManager.value.isDestroyed()) {
+        windowManager.saveWindowState(windowRefs.mediaManager.value, 'mediaManager', nconf);
+        return { success: true };
+      }
+      return { success: false, error: 'Window not available' };
+    } catch (error) {
+      console.error('Error saving Media Manager geometry:', error);
+      return { success: false, error: error.message };
+    }
+  }); // window:saveMediaManagerGeometry
 
   // ===== Face Detection IPC Handlers =====
   
@@ -910,16 +965,172 @@ async function updateCollectionMetadata() {
       throw new Error(`Collection not found: ${selectedKey}`);
     }
     
-    // Show current values (placeholder for full editor)
-    const currentText = selectedCollection.text || selectedCollection.key;
-    const currentTitle = selectedCollection.title || selectedCollection.key;
+    // Create a small modal window for editing
+    const editWindow = new BrowserWindow({
+      width: 500,
+      height: 350,
+      parent: mainWindow,
+      modal: true,
+      show: false,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false
+      }
+    });
     
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Collection Metadata',
-      message: `Collection: ${selectedCollection.key}`,
-      detail: `Current Text: ${currentText}\nCurrent Title: ${currentTitle}\n\nFull editor dialog coming soon...\n\n(Key "${selectedCollection.key}" cannot be changed - it's the filename)`,
-      buttons: ['OK']
+    // Load HTML content directly
+    editWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              padding: 20px;
+              margin: 0;
+              background: #f5f5f5;
+            }
+            h2 {
+              margin-top: 0;
+              color: #333;
+            }
+            .form-group {
+              margin-bottom: 15px;
+            }
+            label {
+              display: block;
+              margin-bottom: 5px;
+              font-weight: 500;
+              color: #555;
+            }
+            input {
+              width: 100%;
+              padding: 8px;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              font-size: 14px;
+              box-sizing: border-box;
+            }
+            input:focus {
+              outline: none;
+              border-color: #667eea;
+            }
+            .readonly {
+              background: #e9ecef;
+              color: #6c757d;
+            }
+            .buttons {
+              margin-top: 20px;
+              display: flex;
+              gap: 10px;
+              justify-content: flex-end;
+            }
+            button {
+              padding: 8px 20px;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              font-size: 14px;
+            }
+            .btn-save {
+              background: #667eea;
+              color: white;
+            }
+            .btn-save:hover {
+              background: #5568d3;
+            }
+            .btn-cancel {
+              background: #6c757d;
+              color: white;
+            }
+            .btn-cancel:hover {
+              background: #5a6268;
+            }
+            small {
+              display: block;
+              margin-top: 3px;
+              color: #666;
+              font-size: 12px;
+            }
+          </style>
+        </head>
+        <body>
+          <h2>Update Collection Metadata</h2>
+          <div class="form-group">
+            <label>Collection Key (filename)</label>
+            <input type="text" id="key" value="${selectedCollection.key}" readonly class="readonly" />
+            <small>Cannot be changed - this is the filename</small>
+          </div>
+          <div class="form-group">
+            <label>Text (Short Name)</label>
+            <input type="text" id="text" value="${selectedCollection.text || ''}" placeholder="Short description for dropdown" />
+            <small>Shown in collection dropdown</small>
+          </div>
+          <div class="form-group">
+            <label>Title (Full Name)</label>
+            <input type="text" id="title" value="${selectedCollection.title || ''}" placeholder="Full descriptive title" />
+            <small>Longer, more descriptive title</small>
+          </div>
+          <div class="buttons">
+            <button class="btn-save" onclick="save()">Save</button>
+            <button class="btn-cancel" onclick="cancel()">Cancel</button>
+          </div>
+          <script>
+            const { ipcRenderer } = require('electron');
+            
+            function save() {
+              const data = {
+                text: document.getElementById('text').value,
+                title: document.getElementById('title').value
+              };
+              ipcRenderer.send('collection-metadata-updated', data);
+            }
+            
+            function cancel() {
+              ipcRenderer.send('collection-metadata-cancelled');
+            }
+            
+            // Allow Enter to save
+            document.getElementById('title').addEventListener('keypress', (e) => {
+              if (e.key === 'Enter') save();
+            });
+          </script>
+        </body>
+      </html>
+    `)}`);
+    
+    // Handle save
+    ipcMain.once('collection-metadata-updated', (event, data) => {
+      selectedCollection.setText(data.text);
+      selectedCollection.setTitle(data.title);
+      accessionClass.saveAccessions(); // Save collections
+      
+      // Refresh main window to show updated collection name
+      mainWindow.webContents.send('items:render', JSON.stringify({ reload: true, preserveSort: true }));
+      
+      editWindow.close();
+      
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Success',
+        message: 'Collection metadata updated successfully.',
+        buttons: ['OK']
+      });
+    });
+    
+    // Handle cancel
+    ipcMain.once('collection-metadata-cancelled', () => {
+      editWindow.close();
+    });
+    
+    editWindow.once('ready-to-show', () => {
+      editWindow.show();
+    });
+    
+    // Clean up listeners when window closes
+    editWindow.on('closed', () => {
+      ipcMain.removeAllListeners('collection-metadata-updated');
+      ipcMain.removeAllListeners('collection-metadata-cancelled');
     });
     
   } catch (error) {
@@ -1050,7 +1261,8 @@ function createMenu() {
     removeItemsFromCollection,
     intersectWithCollection,
     addAllItemsToCollection,
-    createBulkEditItemsWindow: createUpdateCollectionWindow // Alias for now
+    createBulkEditItemsWindow: createUpdateCollectionWindow, // Alias for now
+    editMediaFromMenu
   });
 } // createMenu
 
@@ -1064,6 +1276,14 @@ function createMinMenu() {
 
 function chooseAccessionsPath() {
   windowManager.chooseAccessionsPath(dialog, mainWindow, resetAccessions, nconf);
+}
+
+// ===== Menu Triggered Actions =====
+
+function editMediaFromMenu() {
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send('menu:editMedia');
+  }
 }
 
 // ===== Window Creation Functions =====
@@ -1081,8 +1301,53 @@ function createCreateAccessionsWindow() {
   windowManager.createCreateAccessionsWindow(windowRefs.createAccessions, nconf);
 }
 
-function createMediaManagerWindow(identifier) {
-  windowManager.createMediaManagerWindow(identifier, windowRefs.mediaManager, nconf);
+function createMediaManagerWindow(identifier, collectionKey = null, sortBy = '1') {
+  // Build queue from collection if provided
+  let queueData = null;
+  if (collectionKey) {
+    const collection = accessionClass.collections.getCollection(collectionKey);
+    if (collection) {
+      const links = collection.getLinks();
+      
+      // Get items in the collection
+      const accessionSorter = accessionClass.accessionSorter;
+      const items = accessionClass.accessionJSON.accessions?.item || [];
+      const queueItems = items.filter(item => links.includes(item.link));
+      
+      // Sort by the same method used in main window
+      let sortedItems;
+      switch(sortBy) {
+        case '1': // By Date
+          sortedItems = accessionSorter.sortByDate(queueItems);
+          break;
+        case '2': // By Person
+          sortedItems = accessionSorter.sortByPerson(queueItems, accessionClass);
+          break;
+        case '3': // By Location
+          sortedItems = accessionSorter.sortByLocation(queueItems);
+          break;
+        case '4': // By File
+          sortedItems = accessionSorter.sortByFile(queueItems);
+          break;
+        case '5': // By Source
+          sortedItems = accessionSorter.sortBySource(queueItems, accessionClass);
+          break;
+        case '6': // By Accession
+          sortedItems = accessionSorter.sortByAccession(queueItems);
+          break;
+        default:
+          sortedItems = accessionSorter.sortByDate(queueItems);
+      }
+      
+      queueData = {
+        collectionKey: collectionKey,
+        collectionText: collection.text,
+        queue: sortedItems.map(item => item.link)
+      };
+    }
+  }
+  
+  windowManager.createMediaManagerWindow(identifier, queueData, windowRefs.mediaManager, nconf);
 }
 
 function createUpdateCollectionWindow() {

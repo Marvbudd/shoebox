@@ -312,7 +312,7 @@ export function createCreateAccessionsWindow(windowRef, nconf) {
 /**
  * Create media manager window
  */
-export function createMediaManagerWindow(identifier, windowRef, nconf) {
+export function createMediaManagerWindow(identifier, queueData, windowRef, nconf) {
   if (!windowRef.value) {
     let displayIndex = nconf.get('ui:mediaManager:display');
     let allDisplays = electron.screen.getAllDisplays();
@@ -362,7 +362,22 @@ export function createMediaManagerWindow(identifier, windowRef, nconf) {
     
     const shouldMaximize = nconf.get('ui:mediaManager:isMaximized');
 
-    windowRef.value.loadFile(vueDistPath, { search: `link=${encodeURIComponent(identifier)}` })
+    // Position adjustment fix for Electron bug https://github.com/electron/electron/issues/10388
+    const initialBounds = windowRef.value.getBounds();
+    windowRef.value.once('move', () => {
+      const windowBoundsShow = windowRef.value.getBounds();
+      const titleBarHeight = windowBoundsShow.y - initialBounds.y;
+      const newY = windowBoundsShow.y - titleBarHeight - titleBarHeight;
+      windowRef.value.setPosition(windowBoundsShow.x, newY);
+    });
+
+    // Build URL params
+    let searchParams = `link=${encodeURIComponent(identifier)}`;
+    if (queueData) {
+      searchParams += `&queue=${encodeURIComponent(JSON.stringify(queueData))}`;
+    }
+
+    windowRef.value.loadFile(vueDistPath, { search: searchParams })
       .then(() => {
         windowRef.value.show();
         if (shouldMaximize) {
@@ -374,9 +389,12 @@ export function createMediaManagerWindow(identifier, windowRef, nconf) {
         console.error('Failed to load Media Manager:', err);
       });
 
+    let windowStateSaved = false;
+    
     windowRef.value.on('close', () => {
-      if (windowRef.value) {
+      if (windowRef.value && !windowStateSaved) {
         saveWindowState(windowRef.value, 'mediaManager', nconf);
+        windowStateSaved = true;
       }
     });
 
@@ -385,12 +403,23 @@ export function createMediaManagerWindow(identifier, windowRef, nconf) {
     });
 
     windowRef.value.webContents.on('destroyed', () => {
-      windowRef.value = null;
+      // Don't null out reference here - let 'closed' event handle it
+      // This prevents race condition where windowRef becomes null before close event completes
     });
   } else {
     if (isValidWindow(windowRef)) {
       windowRef.value.show();
       windowRef.value.focus();
+      
+      // If an identifier is provided, send it to the window with queue data
+      if (identifier && windowRef.value.webContents) {
+        // Give the window a moment to be ready for interaction
+        setTimeout(() => {
+          if (windowRef.value && !windowRef.value.isDestroyed()) {
+            windowRef.value.webContents.send('item:load', identifier, queueData);
+          }
+        }, 100);
+      }
     }
   }
 }

@@ -214,11 +214,12 @@ Maintenance collections are automatically generated collections that help identi
 2. If existing maintenance collections exist, confirm replacement
 3. View the summary showing how many items were found for each category
 
-The system scans your entire archive and creates collections for items missing:
-- **Location data** (`_no-location.json`) - Items with no location information
-- **Person data** (`_no-persons.json`) - Items with no people identified
-- **Source data** (`_no-source.json`) - Items with no source attribution
-- **Description** (`_no-description.json`) - Items with no description text
+The system scans your entire archive and creates collections for items missing data or requiring attention:
+- **Location data** (`_nolocation`) - Items with no location information
+- **Person data** (`_nopersons`) - Items with no people identified
+- **Source data** (`_nosource`) - Items with no source attribution
+- **Description** (`_nodescription`) - Items with no description text
+- **Living people** (`_living`) - Items containing people marked as living
 
 ### Using Maintenance Collections
 
@@ -242,9 +243,18 @@ The system scans your entire archive and creates collections for items missing:
 | `_nopersons` | Missing Person | Items with empty or missing person array |
 | `_nosource` | Missing Source | Items with empty or missing source array |
 | `_nodescription` | Missing Desc | Items with empty, missing, or whitespace-only description |
+| `_living` | Living People | Items with at least one person marked as living |
 
 ::: tip Use Case: Archive Quality Control
-Before releasing of your family archive, run Create Maintenance Collections to find all items still needing metadata. Work through each collection systematically until all are empty, then you'll know your archive is complete.
+Before releasing or sharing your family archive, run Create Maintenance Collections to find all items still needing metadata. Work through each collection systematically until all are empty, then you'll know your archive is complete.
+:::
+
+::: tip Use Case: Privacy & Permissions
+The **Living People** collection helps identify items containing people who are still alive. Use this collection to:
+- Review items before sharing publicly to respect privacy
+- Identify items requiring permission before publication
+- Apply appropriate access restrictions or watermarks
+- Manage sensitive content in compliance with privacy regulations
 :::
 
 ### Deleting Maintenance Collections

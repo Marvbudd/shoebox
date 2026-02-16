@@ -104,7 +104,7 @@ It automatically resumes when:
 - Computer wakes up
 
 ::: tip Screen Saver
-On some systems, slideshows may prevent screen savers from activating. If using as a photo frame overnight, check your power/display settings.
+During slideshow, Shoebox prevents display sleep/screen saver activation so the show stays visible. If you want the screen to sleep at night, stop the slideshow or adjust your system power settings.
 :::
 
 ## Use Cases

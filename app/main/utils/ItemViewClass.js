@@ -18,7 +18,7 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
 '<tr class="detail"><td>Collections: </td><td id="collections">{{collections}}</td></tr>' +
 '<tr class="detail"><td>Accession:</td><td id="accession">{{accession}}</td></tr>' +
 '<tr class="detail"><td>Link:</td><td id="link">{{link}}</td></tr>' +
-'<tr class="detail"><td colspan="2"><button id="editMedia">Edit media</button></td></tr>' +
+'<tr class="detail"><td colspan="2"><button id="editMedia" title="Click to edit this item">Edit media</button></td></tr>' +
 '{{#playlist}}' +
 '{{#entry}}' +
 '<tr><td>Playlist:</td><td><div class="playEntry">File: <span id="playlink">{{ref}}</span> start: <span id="playstart">{{starttime}}</span> duration: <span id="playduration">{{duration}}</span></div></td></tr>' +
@@ -331,20 +331,19 @@ export class ItemViewClass {
       }
       itemJSON.location[0] = locationEntry;
     }
-    if (formJSON.sourPersonFirst || formJSON.sourPersonLast || formJSON.sourYear || formJSON.sourMonth || formJSON.sourDay) {
-      itemJSON.source.push({
-        person: {
-          first: formJSON.sourPersonFirst,
-          last: [{
-            last: formJSON.sourPersonLast
-          }]
-        },
-        received: {
-          month: formJSON.sourMonth,
-          day: formJSON.sourDay,
-          year: formJSON.sourYear
-        }
-      });
+    if (formJSON.sourcePersonID) {
+      const sourceEntry = {
+        personID: formJSON.sourcePersonID
+      };
+      // Add received date if provided
+      if (formJSON.dateReceived) {
+        sourceEntry.received = {
+          year: formJSON.dateReceived.year || '',
+          month: formJSON.dateReceived.month || '',
+          day: formJSON.dateReceived.day || ''
+        };
+      }
+      itemJSON.source.push(sourceEntry);
     }
   } // updateItem
 

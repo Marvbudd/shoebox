@@ -1023,7 +1023,8 @@ export class AccessionClass {
       { key: '_nolocation', text: 'Missing Loc', title: 'Items Missing Location Data' },
       { key: '_nopersons', text: 'Missing Person', title: 'Items Missing Person Data' },
       { key: '_nosource', text: 'Missing Source', title: 'Items Missing Source Data' },
-      { key: '_nodescription', text: 'Missing Desc', title: 'Items Missing Description Data' }
+      { key: '_nodescription', text: 'Missing Desc', title: 'Items Missing Description Data' },
+      { key: '_living', text: 'Living People', title: 'Items with Living People' }
     ];
     
     return maintenanceCollections
@@ -1042,7 +1043,8 @@ export class AccessionClass {
       { key: '_nolocation', text: 'Missing Loc', title: 'Items Missing Location Data' },
       { key: '_nopersons', text: 'Missing Person', title: 'Items Missing Person Data' },
       { key: '_nosource', text: 'Missing Source', title: 'Items Missing Source Data' },
-      { key: '_nodescription', text: 'Missing Desc', title: 'Items Missing Description Data' }
+      { key: '_nodescription', text: 'Missing Desc', title: 'Items Missing Description Data' },
+      { key: '_living', text: 'Living People', title: 'Items with Living People' }
     ];
     
     // Check if any maintenance collections already exist
@@ -1061,7 +1063,8 @@ export class AccessionClass {
       _nolocation: [],
       _nopersons: [],
       _nosource: [],
-      _nodescription: []
+      _nodescription: [],
+      _living: []
     };
     
     for (const item of items) {
@@ -1083,6 +1086,21 @@ export class AccessionClass {
       // Missing description (empty, missing, or whitespace only)
       if (!item.description || item.description.trim() === '') {
         missingData._nodescription.push(item.accession);
+      }
+      
+      // Items with living people
+      if (item.person && Array.isArray(item.person)) {
+        const hasLivingPerson = item.person.some(personRef => {
+          if (personRef.personID) {
+            const person = this.getPerson(personRef.personID);
+            return person && person.living === true;
+          }
+          return false;
+        });
+        
+        if (hasLivingPerson) {
+          missingData._living.push(item.accession);
+        }
       }
     }
     

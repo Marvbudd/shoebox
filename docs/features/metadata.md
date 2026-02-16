@@ -59,10 +59,11 @@ Link related media together:
 - Audio narration for a photo
 - Scanned Photo related to people in a poor quality video with interesting story
 - Audio/video items list related photos
+- **Inverse Playlists**: Referenced audio/video automatically shows a “References” list back to the items that link to it
 
 **How to Use Playlists:**
 - When viewing a photo with playlist entries, click a playlist entry to jump to that specific segment of the referenced audio/video
-- When viewing audio/video, the "References" section shows which photos are mentioned at specific timestamps
+- When viewing audio/video, the "References" section shows which photos are mentioned at specific timestamps (automatic inverse playlists)
 - Example: A photo might have a playlist entry linking to a 90-second segment of an oral history where the photo is discussed
 
 ## Person Manager
@@ -77,6 +78,7 @@ The Person Manager maintains biographical data:
 - Add new people with names and biographical data
 - Edit existing person information
 - Link to genealogy software via TMGID
+- Mark people as living for privacy management
 - Accessed from main menu or Media Manager (👤 button)
 
 For complete details on using Person Manager, see [Creating Your Archive - Managing People](../guide/creating-archive.md#managing-people).
@@ -132,6 +134,76 @@ See [Creating Your Archive - Adding Items](../guide/creating-archive.md#adding-i
 **Collections** (Put items needing common updates in a collection):
 
 1. Update Collection allows adding common metadata fields in a batch
+
+### Media Manager
+
+**Media Manager** provides a dedicated interface for editing individual item metadata with a two-pane layout optimized for efficient editing:
+
+**Access**: 
+- Select an item in the main window and click **Edit Media** button in the details pane
+- Use **Archive > Edit Media** menu (Alt+R, E)
+
+**Interface Layout**:
+
+The Media Manager uses a two-column layout:
+
+- **Left Column**: Metadata editing forms
+  - People section with scrollable list (up to 5 people before scrolling)
+  - Basic info (accession, description, type)
+  - Date entry (year, month, day)
+  - Location fields (city, state, GPS lookup)
+  - Source information
+  - Playlist entries
+  - Action buttons (Save, Delete, Cancel)
+
+- **Right Column**: Media preview and face detection
+  - Large media preview (photo/video/audio)
+  - Click preview to open media in external window
+  - Face detection controls (for photos)
+  - Detected faces visualization
+  - Face-to-person assignment
+
+**People Section Features**:
+
+- **Person selection**: Dropdown populated from Person Manager database
+- **Person Manager access**: Click 👤 button to open Person Manager
+- **Position context**: Add descriptive text (e.g., "holding baby", "in back row")
+- **Reorder controls**: Use ▲ ▼ buttons to change person order
+- **Face assignment**: For photos, use "Assign Face" dropdown to match detected faces (shown with confidence %)
+- **Add/Remove**: Use "+ Add Person" button for additional slots, × button to remove
+- **Scrolling**: People list scrolls automatically when more than 5 people are added
+
+**Face Detection Workflow** (for photos):
+
+1. Click **Detect Faces** button in preview section
+2. Select detection model (SSD recommended, defaults to previously used model)
+3. Detected faces appear with numbered overlays
+4. Select person from dropdown
+5. Use "Assign Face" dropdown to match numbered faces
+6. Click **Assign** button to link person to face
+7. Confidence percentage shown for assignments
+
+**Navigation**:
+
+- **Queue navigation**: Enable the **Limit** checkbox to activate queue mode when editing from a collection. With Limit enabled, Previous/Next buttons navigate through all items in the selected collection using the current sort order. With Limit disabled, only the selected item is edited (no queue)
+- **Keyboard shortcuts**: Use arrow keys for quick navigation within the queue
+- **Cancel**: Returns to main window without saving
+
+**Saving**:
+
+- Click **Save** to commit changes
+- Unsaved changes warning appears if you navigate away
+- All metadata saved to `accessions.json`
+
+::: tip Efficient Workflow
+1. Create a collection of similar items
+2. Enable the **Limit** checkbox to activate queue mode
+3. Open first item in Media Manager (Archive > Edit Media)
+4. Fill in common metadata (people, locations)
+5. Use Next button to move through queue
+6. Modify only what's different for each item
+7. Face detection pre-selects last-used model per photo
+:::
 
 ## Metadata Display
 

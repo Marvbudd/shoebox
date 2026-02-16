@@ -203,6 +203,8 @@ The Person Manager (**Archive > Person Manager**) is your central hub for managi
    - **First Name**: Given name
    - **Last Names**: Add one or more (click "+ Add Last Name" for married names, etc.)
    - **TMGID**: The Master Genealogist ID (optional, for genealogy integration)
+   - **Living**: Check this box if the person is still alive (helps identify items requiring privacy considerations)
+   - **Notes**: Optional biographical notes
 4. Click **Save Changes**
 
 **Editing Existing Person:**
@@ -218,7 +220,9 @@ People are stored in the `persons` section of accessions.json and referenced by 
 **Person Data Includes:**
 - Full name (first and multiple last names)
 - TMGID for genealogy software integration  
+- Living status (optional checkbox for privacy management)
 - Face biometric data (when faces are tagged)
+- Notes for biographical information
 - Stable UUID identifier (never changes)
 
 ::: tip Genealogy Integration
@@ -247,6 +251,33 @@ If you use The Master Genealogist or generate websites with Second Site, add TMG
 
 ::: tip Face Detection
 Once people are created in Person Manager, you can use face detection to tag them in photos. See the complete [Face Detection Workflow](../features/face-detection.md#face-detection-workflow).
+:::
+
+### Privacy Management with Living Status
+
+The **Living** checkbox in Person Manager helps you identify and manage items containing people who are still alive.
+
+**Why This Matters:**
+- **Privacy Considerations**: Living people may not want their images publicly shared
+- **Legal Compliance**: Some jurisdictions have privacy laws regarding living persons
+- **Family Courtesy**: Ask permission before sharing photos of living relatives
+- **Archival Best Practice**: Distinguish between historical and contemporary content
+
+**How to Use:**
+1. Open Person Manager and select a person
+2. Check the **Living** box if the person is still alive
+3. Save the person record
+4. Use **Collections > Create Maintenance Collections** to generate the "Living People" collection
+5. Review all items in that collection before sharing or publishing your archive
+
+**Technical Details:**
+- The `living` attribute is only stored in the JSON when checked (true)
+- When unchecked, it's removed from the JSON to keep file size minimal
+- The checkbox always appears in Person Manager, defaulting to unchecked when not present
+- The attribute is designed to be updated over time as circumstances change
+
+::: info Finding Items with Living People
+After marking people as living, create maintenance collections (**Collections > Create Maintenance Collections**) to automatically identify all items containing those people. The "Living People" collection makes it easy to review and manage sensitive content.
 :::
 
 ## Metadata Best Practices

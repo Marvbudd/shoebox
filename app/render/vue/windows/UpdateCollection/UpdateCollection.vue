@@ -60,28 +60,11 @@
               Update Date
             </label>
             <div v-if="updateFields.date" class="field-input">
-              <div class="date-row">
-                <input 
-                  v-model="fieldValues.dateYear" 
-                  type="text"
-                  placeholder="YYYY"
-                  class="date-year"
-                />
-                <select 
-                  v-model="fieldValues.dateMonth" 
-                  class="date-month"
-                >
-                  <option value="">Month</option>
-                  <option v-for="month in validMonths" :key="month" :value="month">{{ month }}</option>
-                </select>
-                <input 
-                  v-model="fieldValues.dateDay" 
-                  type="text"
-                  placeholder="Day"
-                  class="date-day"
-                />
-              </div>
-              <small>Partial dates allowed (e.g., year only)</small>
+              <DateInput
+                v-model:year="fieldValues.dateYear"
+                v-model:month="fieldValues.dateMonth"
+                v-model:day="fieldValues.dateDay"
+              />
             </div>
           </div>
 
@@ -169,27 +152,12 @@
             </div>
             <div v-if="updateFields.source" class="field-input">
               <label>Date Received</label>
-              <div class="date-row">
-                <input 
-                  v-model="fieldValues.sourceReceivedYear" 
-                  type="text"
-                  placeholder="YYYY"
-                  class="date-year"
-                />
-                <select 
-                  v-model="fieldValues.sourceReceivedMonth" 
-                  class="date-month"
-                >
-                  <option value="">Month</option>
-                  <option v-for="month in validMonths" :key="month" :value="month">{{ month }}</option>
-                </select>
-                <input 
-                  v-model="fieldValues.sourceReceivedDay" 
-                  type="text"
-                  placeholder="Day"
-                  class="date-day"
-                />
-              </div>
+              <DateInput
+                v-model:year="fieldValues.sourceReceivedYear"
+                v-model:month="fieldValues.sourceReceivedMonth"
+                v-model:day="fieldValues.sourceReceivedDay"
+                :show-hint="false"
+              />
               <small>This will add a source to all items (won't replace existing sources)</small>
             </div>
           </div>
@@ -233,6 +201,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import DateInput from '../../components/DateInput.vue';
 import { expandPersonsByLastName, formatPersonName } from '../../../../shared/personHelpers.js';
 
 const collections = ref([]);
@@ -361,8 +330,6 @@ const hasUpdates = computed(() => {
          updateFields.value.location ||
          updateFields.value.source;
 });
-
-const validMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const onCollectionChange = async () => {
   if (!selectedCollection.value) {
@@ -619,16 +586,6 @@ header h1 {
   margin-top: 0.25rem;
   color: #666;
   font-size: 0.85rem;
-}
-
-.date-row {
-  display: grid;
-  grid-template-columns: 120px 120px 80px;
-  gap: 0.5rem;
-}
-
-.date-month {
-  font-size: 0.95rem;
 }
 
 .location-row {

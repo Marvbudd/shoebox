@@ -120,6 +120,7 @@ Within menus, use the underlined letter to select items:
 - **V**: Validate
 - **B**: Backup Archive
 - **P**: Person Manager
+- **E**: Edit Media
 
 **Collections Menu:**
 - **C**: Create Collection
