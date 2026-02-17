@@ -32,6 +32,7 @@ const hasMediaElement = ref(false);
 const currentTimeDisplay = ref('00:00:00.0');
 let mediaElement = null;
 let updateInterval = null;
+let durationTimer = null;  // Store timeout for playlist duration auto-pause
 let currentMediaLink = null;
 let playlistEntries = [];  // Store playlist entries for auto-display
 let lastDisplayedEntry = null;  // Track last auto-displayed entry to avoid duplicates
@@ -67,6 +68,12 @@ const seekBackward = () => {
   if (mediaElement) {
     mediaElement.currentTime = Math.max(0, mediaElement.currentTime - 10);
     updateCurrentTime();
+    
+    // Clear duration timer when seeking - user is manually controlling playback
+    if (durationTimer) {
+      clearTimeout(durationTimer);
+      durationTimer = null;
+    }
   }
 };
 
@@ -75,6 +82,12 @@ const seekForward = () => {
   if (mediaElement) {
     mediaElement.currentTime = Math.min(mediaElement.duration || 0, mediaElement.currentTime + 10);
     updateCurrentTime();
+    
+    // Clear duration timer when seeking - user is manually controlling playback
+    if (durationTimer) {
+      clearTimeout(durationTimer);
+      durationTimer = null;
+    }
   }
 };
 
@@ -116,10 +129,14 @@ const handleMediaDisplay = (mediaData) => {
     };
   }
   
-  // Clear any existing interval
+  // Clear any existing interval and duration timer
   if (updateInterval) {
     clearInterval(updateInterval);
     updateInterval = null;
+  }
+  if (durationTimer) {
+    clearTimeout(durationTimer);
+    durationTimer = null;
   }
   
   // Wait for DOM update to find media element
@@ -131,12 +148,30 @@ const handleMediaDisplay = (mediaData) => {
       // Start updating current time display
       updateInterval = setInterval(updateCurrentTime, 100);
       
+      // Add event listeners to clear duration timer when user manually controls playback
+      const handlePause = () => {
+        // Clear timer if it exists (means user paused, not timer)
+        // If timer paused it, durationTimer will already be null
+        if (durationTimer) {
+          clearTimeout(durationTimer);
+          durationTimer = null;
+        }
+      };
+      
+      mediaElement.addEventListener('pause', handlePause);
+      
       // Handle auto-play with start time and duration
       if (itemObject.entry) {
         mediaElement.currentTime = itemObject.entry.startSeconds;
         mediaElement.play();
-        setTimeout(() => {
-          mediaElement.pause();
+        
+        // Store timer ID so it can be cleared later
+        durationTimer = setTimeout(() => {
+          // Clear timer ID before pausing to avoid race with pause event listener
+          durationTimer = null;
+          if (mediaElement) {
+            mediaElement.pause();
+          }
         }, itemObject.entry.durationSeconds * 1000);
       }
     } else {
@@ -320,6 +355,11 @@ onMounted(() => {
 onUnmounted(() => {
   if (updateInterval) {
     clearInterval(updateInterval);
+    updateInterval = null;
+  }
+  if (durationTimer) {
+    clearTimeout(durationTimer);
+    durationTimer = null;
   }
 });
 </script>
