@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",
@@ -20,6 +20,9 @@
     "face-api.js": "^0.22.2",
     "handlebars": "^4.7.8",
     "nconf": "^0.13.0"
+  },
+  "resolutions": {
+    "minimatch": "^10.2.2"
   },
   "devDependencies": {
     "electron": "^40.6.0"

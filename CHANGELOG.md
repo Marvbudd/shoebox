@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.7] - 2026-02-20
+
+### Security
+- Added resolution for minimatch ^10.2.2 to address security vulnerabilities in transitive dependencies (CVE-2024-37168, CVE-2024-37370). All packages now use secure minimatch 10.2.2.
+- Resolved tar security vulnerabilities by upgrading from 6.2.1 to 7.5.9. The previous compatibility issue with @electron/rebuild has been fixed in upstream packages (electron-builder 26.8.1).
+
 ## [3.0.6] - 2026-02-20
 
 ### Changed
