@@ -8,7 +8,7 @@
 
     <!-- Left side: Navigation table and controls -->
     <div id="selectDiv" class="contentLeft" v-show="!isPhotoFrameMode">
-      <div id="tableDiv" v-html="tableBody" @mouseover="handleMouseOver" @click="handleTableClick" @dblclick="handleDoubleClick"></div>
+      <div id="tableDiv" v-html="tableBody" @mouseover="handleMouseOver" @mouseleave="handleMouseLeave" @click="handleTableClick" @dblclick="handleDoubleClick"></div>
       
       <div id="playerDiv" class="bottomLeft">
         <form id="tableSort">
@@ -127,6 +127,9 @@ const referenceInfo = ref({
 const selectedRowIndex = ref(-1); // Track currently selected row for keyboard nav
 const lastMouseX = ref(-1); // Track mouse position to detect actual movement
 const lastMouseY = ref(-1);
+let mouseoverRequestCounter = 0; // Track latest mouseover request to prevent race conditions
+let mouseoverDebounceTimer = null; // Debounce timer to avoid excessive requests during rapid movement
+let mouseoverDebounceAccession = null; // Track which accession the current timer is for
 
 // Slideshow state
 const isAutoCycling = ref(false);
@@ -319,19 +322,80 @@ const handleMouseOver = async (event) => {
       
       if (itemType === 'photo') {
         const accession = row.getAttribute('accession');
-        try {
-          const itemData = await window.electronAPI.getItemDetail(accession);
-          if (itemData) {
-            showItemDetail(itemData);
+        
+        // Only clear and restart timer if we've moved to a different item
+        if (mouseoverDebounceAccession !== accession) {
+          // Clear any existing timer
+          if (mouseoverDebounceTimer) {
+            clearTimeout(mouseoverDebounceTimer);
           }
-        } catch (error) {
-          console.error('Error getting item detail:', error);
+          
+          // Track which item this timer is for
+          mouseoverDebounceAccession = accession;
+          
+          // Set a new timer to fetch item detail after a brief delay
+          // This prevents excessive requests when user is moving quickly
+          mouseoverDebounceTimer = setTimeout(async () => {
+            // Double-check which row is actually under the mouse NOW
+            // (might have changed since the event fired)
+            const currentElement = document.elementFromPoint(lastMouseX.value, lastMouseY.value);
+            if (!currentElement) {
+              return;
+            }
+            
+            const currentRow = currentElement.closest('tr');
+            if (!currentRow || !currentRow.hasAttribute('accession')) {
+              return;
+            }
+            
+            const currentAccession = currentRow.getAttribute('accession');
+            const currentItemType = currentRow.classList.contains('photo') ? 'photo' : 
+                                   currentRow.classList.contains('audio') ? 'audio' : 
+                                   currentRow.classList.contains('video') ? 'video' : null;
+            
+            // Only proceed if mouse is still over a photo
+            if (currentItemType !== 'photo') {
+              return;
+            }
+            
+            // Increment counter and capture current value for this request
+            mouseoverRequestCounter++;
+            const thisRequestId = mouseoverRequestCounter;
+            
+            try {
+              const itemData = await window.electronAPI.getItemDetail(currentAccession);
+              
+              // Only show detail if this is still the latest request
+              // (user hasn't moused over another item while we were waiting)
+              if (thisRequestId === mouseoverRequestCounter && itemData) {
+                showItemDetail(itemData);
+              }
+            } catch (error) {
+              console.error('Error getting item detail:', error);
+            }
+          }, 150); // 150ms debounce delay
         }
       } else if (itemType === 'audio' || itemType === 'video') {
+        // Clear timer when moving to non-photo
+        if (mouseoverDebounceTimer) {
+          clearTimeout(mouseoverDebounceTimer);
+          mouseoverDebounceTimer = null;
+        }
+        mouseoverDebounceAccession = null;
+        
         // Show tooltip to indicate click is required
         target.title = 'Click to open in Media Player';
       }
     }
+  }
+};
+
+// Handle mouse leaving the table area
+const handleMouseLeave = () => {
+  // Clear any pending debounce timer when mouse leaves the table
+  if (mouseoverDebounceTimer) {
+    clearTimeout(mouseoverDebounceTimer);
+    mouseoverDebounceTimer = null;
   }
 };
 
@@ -346,9 +410,16 @@ const handleTableClick = async (event) => {
       
       if (isAudioOrVideo) {
         const accession = row.getAttribute('accession');
+        
+        // Increment counter and capture current value for this request
+        mouseoverRequestCounter++;
+        const thisRequestId = mouseoverRequestCounter;
+        
         try {
           const itemData = await window.electronAPI.getItemDetail(accession);
-          if (itemData) {
+          
+          // Only show detail if this is still the latest request
+          if (thisRequestId === mouseoverRequestCounter && itemData) {
             showItemDetail(itemData);
           }
         } catch (error) {
@@ -884,9 +955,16 @@ const selectCurrentRow = async () => {
     
     if (itemType === 'photo') {
       const accession = row.getAttribute('accession');
+      
+      // Increment counter and capture current value for this request
+      mouseoverRequestCounter++;
+      const thisRequestId = mouseoverRequestCounter;
+      
       try {
         const itemData = await window.electronAPI.getItemDetail(accession);
-        if (itemData) {
+        
+        // Only show detail if this is still the latest request
+        if (thisRequestId === mouseoverRequestCounter && itemData) {
           showItemDetail(itemData);
         }
       } catch (error) {
@@ -1238,6 +1316,11 @@ onUnmounted(() => {
   }
   if (slideshowTooltipTimeout.value) {
     clearTimeout(slideshowTooltipTimeout.value);
+  }
+  
+  // Clear mouseover debounce timer
+  if (mouseoverDebounceTimer) {
+    clearTimeout(mouseoverDebounceTimer);
   }
 
   if (window.electronAPI?.setSlideshowDisplaySleepBlock) {

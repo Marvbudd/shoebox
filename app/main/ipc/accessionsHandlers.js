@@ -162,7 +162,16 @@ export function registerAccessionsHandlers(
     try {
       // Remove file:// prefix if present
       const cleanPath = filePath.replace(/^file:\/\//, '');
-      await shell.openPath(cleanPath);
+      
+      // shell.openPath returns "" on success, or error message string on failure
+      const result = await shell.openPath(cleanPath);
+      
+      if (result) {
+        // Non-empty string means error
+        console.error('Failed to open file:', result);
+        return { success: false, error: result };
+      }
+      
       return { success: true };
     } catch (error) {
       console.error('Failed to open file:', error);

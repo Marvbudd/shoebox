@@ -723,7 +723,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { formatPersonName, expandPersonsByLastName } from '../../../../shared/personHelpers.js';
 import DateInput from '../../components/DateInput.vue';
 
@@ -748,6 +748,7 @@ const fileExists = ref(true);
 const isReferencedInPlaylists = ref(false); // Track if item is referenced in playlists
 const error = ref(null);
 const statusMessage = ref(null);
+const isMounted = ref(true);
 const mediaPreviewPath = ref(null);
 
 // Queue navigation state
@@ -2026,17 +2027,38 @@ const closeSimilaritySearch = () => {
 // Open reference photo in system default viewer
 const openReferencePhoto = async (link) => {
   console.log('[REFERENCE PHOTO] Opening reference photo for link:', link);
+  
+  // Don't show messages if component has been unmounted
+  if (!isMounted.value) {
+    console.log('[REFERENCE PHOTO] Component unmounted, skipping');
+    return;
+  }
+  
   try {
     // Get the full file path for the photo
     const filePath = await window.electronAPI.getMediaPath('photo', link);
     console.log('[REFERENCE PHOTO] File path:', filePath);
     
     // Open in system default viewer
-    await window.electronAPI.openFile(filePath);
-    console.log('[REFERENCE PHOTO] File opened successfully');
+    const result = await window.electronAPI.openFile(filePath);
+    
+    if (!result.success && isMounted.value) {
+      console.error('[REFERENCE PHOTO] Failed to open:', result.error);
+      statusMessage.value = { type: 'error', text: 'Reference photo not found or could not be opened' };
+      setTimeout(() => {
+        if (isMounted.value) statusMessage.value = null;
+      }, 3000);
+    } else {
+      console.log('[REFERENCE PHOTO] File opened successfully');
+    }
   } catch (error) {
     console.error('[REFERENCE PHOTO] Error opening reference photo:', error);
-    alert('Could not open reference photo');
+    if (isMounted.value) {
+      statusMessage.value = { type: 'error', text: 'Reference photo not found or could not be opened' };
+      setTimeout(() => {
+        if (isMounted.value) statusMessage.value = null;
+      }, 3000);
+    }
   }
 };
 
@@ -2620,6 +2642,10 @@ onMounted(async () => {
     error.value = err.message;
     loading.value = false;
   }
+});
+
+onBeforeUnmount(() => {
+  isMounted.value = false;
 });
 </script>
 

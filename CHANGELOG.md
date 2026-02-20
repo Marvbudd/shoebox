@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.6] - 2026-02-20
+
+### Changed
+- Updated electron from 40.4.1 to 40.6.0.
+- Updated electron-updater from 6.7.3 to 6.8.3.
+- Updated electron-builder from 26.7.0 to 26.8.1.
+- Removed all dependency resolutions to allow natural dependency resolution after upstream package updates.
+- Changed electron-builder and electron-updater to use semver ranges (^) for automatic patch and minor updates.
+
+### Fixed
+- Fixed media player timer leak causing premature playback stops when navigating through playlist items.
+- Fixed main window mouseover race condition where quickly moving mouse over items in left column would miss or display wrong item details. Implemented debouncing with element position checking to ensure the correct item displays when mouse movement stops.
+- Fixed reference photo error handling in Media Manager to use non-blocking status messages instead of alert popups, preventing errors after window closes.
+- Fixed file opening to properly detect and report errors from shell.openPath().
+
+### Removed
+- Removed legacy unused code files (media.html, media.js, index.html, index.js, preload.js, mediaPreload.js).
+
 ## [3.0.5] - 2026-02-16
 
 ### Fixed
