@@ -8,7 +8,7 @@
 
     <!-- Left side: Navigation table and controls -->
     <div id="selectDiv" class="contentLeft" v-show="!isPhotoFrameMode">
-      <div id="tableDiv" v-html="tableBody" @mouseover="handleMouseOver" @mouseleave="handleMouseLeave" @click="handleTableClick" @dblclick="handleDoubleClick"></div>
+      <div id="tableDiv" v-html="tableBody" @mouseover="handleMouseOver" @mousemove="handleMouseMove" @mouseleave="handleMouseLeave" @click="handleTableClick" @dblclick="handleDoubleClick"></div>
       
       <div id="playerDiv" class="bottomLeft">
         <form id="tableSort">
@@ -127,6 +127,10 @@ const referenceInfo = ref({
 const selectedRowIndex = ref(-1); // Track currently selected row for keyboard nav
 const lastMouseX = ref(-1); // Track mouse position to detect actual movement
 const lastMouseY = ref(-1);
+let isKeyboardNavigating = false; // Track when user is actively using keyboard navigation
+let keyboardNavTimestamp = 0; // Track when keyboard navigation last occurred
+const KEYBOARD_NAV_SUPPRESS_MS = 300; // Suppress mouseover for 300ms after keyboard navigation
+const MOUSE_MOVEMENT_THRESHOLD = 10; // Pixels - require significant movement to clear keyboard nav
 let mouseoverRequestCounter = 0; // Track latest mouseover request to prevent race conditions
 let mouseoverDebounceTimer = null; // Debounce timer to avoid excessive requests during rapid movement
 let mouseoverDebounceAccession = null; // Track which accession the current timer is for
@@ -203,8 +207,12 @@ const renderItems = (listObject, preserveSort = false) => {
   navHeader.value = listObject.navHeader;
   tableBody.value = listObject.tableBody;
   
-  // Reset keyboard selection
+  // Reset keyboard selection and mouse tracking
   selectedRowIndex.value = -1;
+  isKeyboardNavigating = false;
+  keyboardNavTimestamp = 0;
+  lastMouseX.value = -1;
+  lastMouseY.value = -1;
   
   // Apply filters after DOM updates
   nextTick(() => {
@@ -276,8 +284,12 @@ const hideHighlightFilter = () => {
     }
   }
   
-  // Reset keyboard selection when filters change
+  // Reset keyboard selection and mouse tracking when filters change
   selectedRowIndex.value = -1;
+  isKeyboardNavigating = false;
+  keyboardNavTimestamp = 0;
+  lastMouseX.value = -1;
+  lastMouseY.value = -1;
   
   // Remove all highlights
   const allRows = tableDiv.getElementsByTagName('tr');
@@ -288,18 +300,53 @@ const hideHighlightFilter = () => {
 
 // Handle mouseover on table rows
 const handleMouseOver = async (event) => {
-  // Only handle mouseover if the mouse actually moved
-  // This prevents scroll-triggered mouseover events from interfering with keyboard navigation
-  if (event.clientX === lastMouseX.value && event.clientY === lastMouseY.value) {
+  // Check if we're within the keyboard navigation suppress period
+  // Must check this FIRST before potentially clearing the isKeyboardNavigating flag
+  const timeSinceKeyboardNav = Date.now() - keyboardNavTimestamp;
+  const inSuppressPeriod = isKeyboardNavigating && timeSinceKeyboardNav < KEYBOARD_NAV_SUPPRESS_MS;
+  
+  // Ignore mouseover events during keyboard navigation suppress period
+  // This prevents scroll-induced selection when scrollIntoView moves content under cursor
+  // But first, update mouse coordinates so they don't become stale
+  if (inSuppressPeriod) {
+    // Update coordinates even during suppress to keep them current
+    lastMouseX.value = event.clientX;
+    lastMouseY.value = event.clientY;
     return;
   }
-  lastMouseX.value = event.clientX;
-  lastMouseY.value = event.clientY;
   
+  // Check if the mouse moved and by how much
+  const deltaX = Math.abs(event.clientX - lastMouseX.value);
+  const deltaY = Math.abs(event.clientY - lastMouseY.value);
+  const mouseMoved = deltaX > 0 || deltaY > 0;
+  const significantMovement = deltaX >= MOUSE_MOVEMENT_THRESHOLD || deltaY >= MOUSE_MOVEMENT_THRESHOLD;
+  
+  // Only clear keyboard navigation flag if mouse moved significantly (not just micro-movements or scroll jitter)
+  if (significantMovement && isKeyboardNavigating) {
+    isKeyboardNavigating = false;
+  }
+  
+  // Ignore mouseover if still in keyboard navigation mode (waiting for significant mouse movement)
+  if (isKeyboardNavigating) {
+    return;
+  }
+  
+  // Only handle mouseover if the mouse actually moved
+  // This prevents scroll-triggered mouseover events from interfering with keyboard navigation
+  if (!mouseMoved) {
+    return;
+  }
+  
+  // Check if we're over a valid table row BEFORE updating lastMouse coordinates
+  // This prevents poisoning the coordinates with mouseover on non-row elements
   const target = event.target;
   if (target.nodeName === 'DIV' && target.parentElement.nodeName === 'TD') {
     const row = target.closest('tr');
     if (row && row.hasAttribute('accession')) {
+      // Update mouse tracking for movement detection
+      lastMouseX.value = event.clientX;
+      lastMouseY.value = event.clientY;
+      
       const visibleRows = getVisibleRows();
       
       // Remove highlight from all rows
@@ -334,36 +381,14 @@ const handleMouseOver = async (event) => {
           mouseoverDebounceAccession = accession;
           
           // Set a new timer to fetch item detail after a brief delay
-          // This prevents excessive requests when user is moving quickly
+          // Timer fetches the highlighted row's photo, regardless of where mouse is when it fires
           mouseoverDebounceTimer = setTimeout(async () => {
-            // Double-check which row is actually under the mouse NOW
-            // (might have changed since the event fired)
-            const currentElement = document.elementFromPoint(lastMouseX.value, lastMouseY.value);
-            if (!currentElement) {
-              return;
-            }
-            
-            const currentRow = currentElement.closest('tr');
-            if (!currentRow || !currentRow.hasAttribute('accession')) {
-              return;
-            }
-            
-            const currentAccession = currentRow.getAttribute('accession');
-            const currentItemType = currentRow.classList.contains('photo') ? 'photo' : 
-                                   currentRow.classList.contains('audio') ? 'audio' : 
-                                   currentRow.classList.contains('video') ? 'video' : null;
-            
-            // Only proceed if mouse is still over a photo
-            if (currentItemType !== 'photo') {
-              return;
-            }
-            
             // Increment counter and capture current value for this request
             mouseoverRequestCounter++;
             const thisRequestId = mouseoverRequestCounter;
             
             try {
-              const itemData = await window.electronAPI.getItemDetail(currentAccession);
+              const itemData = await window.electronAPI.getItemDetail(mouseoverDebounceAccession);
               
               // Only show detail if this is still the latest request
               // (user hasn't moused over another item while we were waiting)
@@ -373,7 +398,7 @@ const handleMouseOver = async (event) => {
             } catch (error) {
               console.error('Error getting item detail:', error);
             }
-          }, 150); // 150ms debounce delay
+          }, 100); // 100ms debounce delay
         }
       } else if (itemType === 'audio' || itemType === 'video') {
         // Clear timer when moving to non-photo
@@ -392,10 +417,19 @@ const handleMouseOver = async (event) => {
 
 // Handle mouse leaving the table area
 const handleMouseLeave = () => {
-  // Clear any pending debounce timer when mouse leaves the table
-  if (mouseoverDebounceTimer) {
-    clearTimeout(mouseoverDebounceTimer);
-    mouseoverDebounceTimer = null;
+  // Don't cancel the timer - let it fire to fetch the photo for the highlighted row
+  // The highlight remains visible even after mouse leaves, so photo should display
+};
+
+const handleMouseMove = (event) => {
+  // Clear keyboard navigation flag when mouse moves significantly
+  // This allows mouseover selection to work again after keyboard navigation
+  const deltaX = Math.abs(event.clientX - lastMouseX.value);
+  const deltaY = Math.abs(event.clientY - lastMouseY.value);
+  const significantMovement = deltaX >= MOUSE_MOVEMENT_THRESHOLD || deltaY >= MOUSE_MOVEMENT_THRESHOLD;
+  
+  if (significantMovement && isKeyboardNavigating) {
+    isKeyboardNavigating = false;
   }
 };
 
@@ -516,11 +550,9 @@ const setupDetailEventListeners = () => {
     link.addEventListener('click', async (e) => {
       e.preventDefault();
       const tmgid = e.currentTarget.getAttribute('data-tmgid');
-      console.log('Person link clicked, TMGID:', tmgid);
       if (tmgid && window.electronAPI.openPersonLink) {
         try {
-          const result = await window.electronAPI.openPersonLink(tmgid);
-          console.log('openPersonLink result:', result);
+          await window.electronAPI.openPersonLink(tmgid);
         } catch (error) {
           console.error('Error opening person link:', error);
         }
@@ -1103,6 +1135,14 @@ const handleKeyDown = async (event) => {
         stopAutoCycle();
       }
       if (selectedRowIndex.value < visibleRows.length - 1) {
+        isKeyboardNavigating = true;
+        keyboardNavTimestamp = Date.now();
+        // Cancel any pending mouseover timer
+        if (mouseoverDebounceTimer) {
+          clearTimeout(mouseoverDebounceTimer);
+          mouseoverDebounceTimer = null;
+          mouseoverDebounceAccession = null;
+        }
         highlightRow(selectedRowIndex.value + 1);
         await selectCurrentRow();
       }
@@ -1115,9 +1155,25 @@ const handleKeyDown = async (event) => {
         stopAutoCycle();
       }
       if (selectedRowIndex.value > 0) {
+        isKeyboardNavigating = true;
+        keyboardNavTimestamp = Date.now();
+        // Cancel any pending mouseover timer
+        if (mouseoverDebounceTimer) {
+          clearTimeout(mouseoverDebounceTimer);
+          mouseoverDebounceTimer = null;
+          mouseoverDebounceAccession = null;
+        }
         highlightRow(selectedRowIndex.value - 1);
         await selectCurrentRow();
       } else if (selectedRowIndex.value === -1 && visibleRows.length > 0) {
+        isKeyboardNavigating = true;
+        keyboardNavTimestamp = Date.now();
+        // Cancel any pending mouseover timer
+        if (mouseoverDebounceTimer) {
+          clearTimeout(mouseoverDebounceTimer);
+          mouseoverDebounceTimer = null;
+          mouseoverDebounceAccession = null;
+        }
         highlightRow(0);
         await selectCurrentRow();
       }
@@ -1125,6 +1181,14 @@ const handleKeyDown = async (event) => {
       
     case 'PageDown':
       event.preventDefault();
+      isKeyboardNavigating = true;
+      keyboardNavTimestamp = Date.now();
+      // Cancel any pending mouseover timer
+      if (mouseoverDebounceTimer) {
+        clearTimeout(mouseoverDebounceTimer);
+        mouseoverDebounceTimer = null;
+        mouseoverDebounceAccession = null;
+      }
       const nextIndex = Math.min(selectedRowIndex.value + 15, visibleRows.length - 1);
       highlightRow(nextIndex);
       await selectCurrentRow();
@@ -1132,6 +1196,14 @@ const handleKeyDown = async (event) => {
       
     case 'PageUp':
       event.preventDefault();
+      isKeyboardNavigating = true;
+      keyboardNavTimestamp = Date.now();
+      // Cancel any pending mouseover timer
+      if (mouseoverDebounceTimer) {
+        clearTimeout(mouseoverDebounceTimer);
+        mouseoverDebounceTimer = null;
+        mouseoverDebounceAccession = null;
+      }
       const prevIndex = Math.max(selectedRowIndex.value - 15, 0);
       highlightRow(prevIndex);
       await selectCurrentRow();
@@ -1139,12 +1211,28 @@ const handleKeyDown = async (event) => {
       
     case 'Home':
       event.preventDefault();
+      isKeyboardNavigating = true;
+      keyboardNavTimestamp = Date.now();
+      // Cancel any pending mouseover timer
+      if (mouseoverDebounceTimer) {
+        clearTimeout(mouseoverDebounceTimer);
+        mouseoverDebounceTimer = null;
+        mouseoverDebounceAccession = null;
+      }
       highlightRow(0);
       await selectCurrentRow();
       break;
       
     case 'End':
       event.preventDefault();
+      isKeyboardNavigating = true;
+      keyboardNavTimestamp = Date.now();
+      // Cancel any pending mouseover timer
+      if (mouseoverDebounceTimer) {
+        clearTimeout(mouseoverDebounceTimer);
+        mouseoverDebounceTimer = null;
+        mouseoverDebounceAccession = null;
+      }
       highlightRow(visibleRows.length - 1);
       await selectCurrentRow();
       break;

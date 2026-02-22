@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.8] - 2026-02-21
+
+### Fixed
+- Fixed main window mouseover interaction issues during keyboard navigation:
+  - Eliminated item selection under stationary mouse cursor when using PageUp/PageDown/arrow keys to scroll through items
+  - Resolved coordinate tracking issues that caused stale position data during suppress periods
+  - Improved suppress period logic to block all mouseover events for 300ms after keyboard navigation
+  - Fixed rapid diagonal mouse movement where highlight would update but photo would not display
+  - Enabled photo fetch to complete even after mouse leaves table area, ensuring highlighted item displays correctly
+  - Added timer cancellation when switching from mouse to keyboard navigation for clean interaction mode transitions
+- Removed debug console.log statements from person link handling.
+
 ## [3.0.7] - 2026-02-20
 
 ### Security
