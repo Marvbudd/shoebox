@@ -515,14 +515,13 @@ const createWindow = () => {
       }
       
       // MATCH_THRESHOLD explanation:
-      // - 0.6 is industry standard for matching SAME PERSON across DIFFERENT PHOTOS
-      // - For re-detecting SAME IMAGE with SAME MODEL, expect distance ≈ 0.0 (perfect match)
-      // - Use stricter threshold (0.05) to avoid false positives from descriptor drift
-      const CROSS_PHOTO_THRESHOLD = 0.6;  // For different photos of same person
+      // - Phase 1 (backend re-matching): Strict 0.05 threshold for re-detecting SAME IMAGE with SAME MODEL
+      // - Expects distance ≈ 0.0 (perfect match) since it's the exact same face descriptor
+      // - Only auto-assigns if distance < 0.05 (~95% confidence)
+      // - Confidence display uses simple formula: (1 - distance) * 100 for consistency with UI
       const SAME_IMAGE_THRESHOLD = 0.05;  // For re-detecting same image (expect ~0.0)
       
-      // Auto-match only if confidence > 90% (distance < 0.05)
-      // This prevents questionable matches from being auto-assigned
+      // Use strict threshold for Phase 1 auto-matching
       const MATCH_THRESHOLD = SAME_IMAGE_THRESHOLD;
       
       const matches = [];
@@ -563,17 +562,14 @@ const createWindow = () => {
             storedDescriptor
           );
           
-          const personName = `${person.first || ''} ${person.last?.[0]?.last || ''}`.trim();
-          // Calculate confidence using cross-photo threshold (0.6) for display consistency
-          const confidence = Math.round((1 - (distance / CROSS_PHOTO_THRESHOLD)) * 100);
-          
+          // Use consistent confidence formula: (1 - distance) matching frontend display
           if (distance < bestDistance && distance < MATCH_THRESHOLD) {
             bestDistance = distance;
             bestMatch = {
               personIndex,
               personID: personRef.personID,
               distance,
-              confidence: 1 - (distance / CROSS_PHOTO_THRESHOLD)  // Use 0.6 for display
+              confidence: 1 - distance  // Consistent with frontend: (1 - distance)
             };
           }
         }

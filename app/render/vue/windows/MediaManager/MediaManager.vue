@@ -1243,8 +1243,6 @@ const loadExistingFaceBioData = async () => {
   if (!item.value.link || item.value.type !== 'photo') return;
   
   try {
-    console.log('[FACE LOAD] Loading existing faceBioData for link:', item.value.link);
-    
     // Gather all faceBioData for this link from persons in the item
     const facesData = [];
     
@@ -1821,7 +1819,7 @@ const closeFaceSelector = () => {
 };
 
 // Search person library for matches to a specific face
-const searchPersonLibrary = async (faceIndex, personsWithDescriptors) => {
+const searchPersonLibrary = async (faceIndex, personsWithDescriptors, distanceThreshold = 0.6) => {
   const face = detectedFaces.value[faceIndex];
   if (!face || !face.descriptor) {
     return [];
@@ -1830,9 +1828,7 @@ const searchPersonLibrary = async (faceIndex, personsWithDescriptors) => {
   const faceDescriptor = face.descriptor;
   const faceModel = face.model || 'ssd'; // Get the model used to detect this face
   const personBestMatches = {}; // Track best match per person
-  const threshold = 0.6; // Match threshold - lower is more similar
-  
-  console.log(`[SIMILARITY SEARCH] Searching for face detected with model: ${faceModel}`);
+  const threshold = distanceThreshold; // Match threshold - lower is more similar
   
   // Compare against all persons with descriptors
   for (const person of personsWithDescriptors) {
@@ -1906,11 +1902,19 @@ const autoAssignUnmatchedFaces = async () => {
     return { assigned: 0 };
   }
   
-  // Sort unmatched faces left-to-right by region.x
+  // Remember how many persons were in photo before Phase 2 matching
+  const existingPersonCount = item.value.person.length;
+  
+  // Track Phase 2 assignments with match confidence for replacement logic
+  // Map: personID → { faceIndex, confidence }
+  const phase2Assignments = new Map();
+  
+  // Sort unmatched faces by detection confidence (highest first)
+  // This prioritizes high-quality face descriptors for more reliable matching
   const sortedUnmatchedFaces = [...unmatchedFaces.value].sort((a, b) => {
     const faceA = detectedFaces.value[a.faceIndex];
     const faceB = detectedFaces.value[b.faceIndex];
-    return faceA.region.x - faceB.region.x;
+    return faceB.confidence - faceA.confidence; // Descending: highest confidence first
   });
   
   // Process each unmatched face
@@ -1921,7 +1925,8 @@ const autoAssignUnmatchedFaces = async () => {
     if (!face || !face.descriptor) continue;
     
     // Search for best match in person library (gets multiple matches, sorted by distance)
-    const matches = await searchPersonLibrary(faceIndex, personsWithDescriptors);
+    // Use the user's autoAssignThreshold for filtering
+    const matches = await searchPersonLibrary(faceIndex, personsWithDescriptors, distanceThreshold);
     
     if (matches.length === 0) continue;
     
@@ -1935,33 +1940,67 @@ const autoAssignUnmatchedFaces = async () => {
         break; // Remaining matches are below threshold
       }
       
-      // Check if this person already has a face assigned (single source of truth)
-      const personInPhoto = item.value.person.find(p => p.personID === match.personID);
-      const hasFaceAssigned = personInPhoto && personInPhoto.faceTag && personInPhoto.faceTag.region;
-      const hasFaceSelected = faceAssignments.value[match.personID] !== undefined && faceAssignments.value[match.personID] !== null && faceAssignments.value[match.personID] !== '';
+      // Skip if this face is already assigned to another person
       const faceAlreadySelected = Object.values(faceAssignments.value).includes(faceIndex);
-      
-      if (hasFaceAssigned || hasFaceSelected || faceAlreadySelected) {
-        // This person already has a face - try next best match
-        console.log(`[AUTO-ASSIGN] Face #${faceIndex + 1}: Skipping ${match.first} ${match.last} (${match.confidence}%) - already has face`);
+      if (faceAlreadySelected) {
+        console.log(`[AUTO-ASSIGN] Face #${faceIndex + 1}: Skipping ${match.first} ${match.last} (${match.confidence}%) - face already assigned to someone else`);
         continue;
       }
       
-      // Found a match without a face assigned - use it
-      console.log(`[AUTO-SELECT] Face #${faceIndex + 1}: ${match.first} ${match.last} (${match.confidence}%)`);
+      // Check if person is already in photo
+      const personInPhoto = item.value.person.find(p => p.personID === match.personID);
       
-      // Add person to photo if not already in it
-      if (!match.alreadyInPhoto) {
-        const newPerson = {
-          personID: match.personID,
-          position: ''
-        };
-        item.value.person.push(newPerson);
-        personListKey.value++;
+      if (personInPhoto) {
+        // Person exists - check if they were matched in Phase 1 or Phase 2
+        const existingPhase2Match = phase2Assignments.get(match.personID);
+        
+        if (!existingPhase2Match) {
+          // Person was in photo before Phase 2 started (Phase 1 match) - never touch these
+          console.log(`[AUTO-ASSIGN] Face #${faceIndex + 1}: Skipping ${match.first} ${match.last} (${match.confidence}%) - matched in Phase 1`);
+          continue;
+        }
+        
+        // Person was matched in Phase 2 - compare match confidences
+        if (match.confidence > existingPhase2Match.confidence) {
+          // New match is better! Replace the old assignment
+          const oldFaceIndex = existingPhase2Match.faceIndex;
+          console.log(`[AUTO-UPGRADE] Face #${faceIndex + 1}: Upgrading ${match.first} ${match.last} from ${existingPhase2Match.confidence}% (Face #${oldFaceIndex + 1}) to ${match.confidence}%`);
+          
+          // Unassign old face (becomes available again)
+          delete faceAssignments.value[match.personID];
+          
+          // Assign new face
+          faceAssignments.value[match.personID] = faceIndex;
+          
+          // Update Phase 2 tracking
+          phase2Assignments.set(match.personID, { faceIndex, confidence: match.confidence });
+          
+          selectedCount++; // Count as a selection (though it's a replacement)
+          assignedThisFace = true;
+          break;
+        } else {
+          // Existing match is better - skip
+          console.log(`[AUTO-ASSIGN] Face #${faceIndex + 1}: Skipping ${match.first} ${match.last} (${match.confidence}%) - existing Phase 2 match is better (${existingPhase2Match.confidence}%)`);
+          continue;
+        }
       }
       
-      // Set face selection only (no auto-assign)
+      // Found a new match without conflicts - use it
+      console.log(`[AUTO-SELECT] Face #${faceIndex + 1}: ${match.first} ${match.last} (${match.confidence}%)`);
+      
+      // Add person to photo (we already verified they're not in it)
+      const newPerson = {
+        personID: match.personID,
+        position: ''
+      };
+      item.value.person.push(newPerson);
+      personListKey.value++;
+      
+      // Set face selection
       faceAssignments.value[match.personID] = faceIndex;
+      
+      // Track this Phase 2 assignment for potential upgrades
+      phase2Assignments.set(match.personID, { faceIndex, confidence: match.confidence });
       
       selectedCount++;
       assignedThisFace = true;
@@ -1972,6 +2011,32 @@ const autoAssignUnmatchedFaces = async () => {
       // Had good matches but all already have faces assigned
       console.log(`[AUTO-SELECT] Face #${faceIndex + 1}: All matches already have faces assigned/selected`);
     }
+  }
+  
+  // Sort newly-added persons (Phase 2 matches) by left-to-right face position
+  // This maintains existing person order while organizing new matches spatially
+  if (item.value.person.length > existingPersonCount) {
+    const existingPersons = item.value.person.slice(0, existingPersonCount);
+    const newPersons = item.value.person.slice(existingPersonCount);
+    
+    // Sort new persons by their assigned face's X position
+    newPersons.sort((a, b) => {
+      const faceIndexA = faceAssignments.value[a.personID];
+      const faceIndexB = faceAssignments.value[b.personID];
+      
+      if (faceIndexA === undefined || faceIndexB === undefined) return 0;
+      
+      const faceA = detectedFaces.value[faceIndexA];
+      const faceB = detectedFaces.value[faceIndexB];
+      
+      if (!faceA || !faceB) return 0;
+      
+      return faceA.region.x - faceB.region.x; // Left to right
+    });
+    
+    // Rebuild person list: existing persons first, then sorted new persons
+    item.value.person = [...existingPersons, ...newPersons];
+    personListKey.value++; // Trigger re-render
   }
   
   return { selected: selectedCount };
@@ -3581,6 +3646,14 @@ header h1 {
   border-radius: 4px;
   flex: 1;
   max-width: 180px;
+}
+
+.face-select-small option {
+  color: #6c757d; /* Gray color for detection confidence to distinguish from match confidence */
+}
+
+.face-select-small option:first-child {
+  color: inherit; /* Keep "-- Assign Face --" option normal color */
 }
 .btn-unmatch-inline,
 .btn-assign-inline {

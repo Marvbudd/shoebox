@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.9] - 2026-02-22
+
+### Fixed
+- Fixed face detection confidence formula consistency between backend (Phase 1) and frontend (Phase 2) matching. Both now use `(1 - distance) * 100` for accurate confidence display.
+- Improved Phase 2 face matching reliability and accuracy:
+  - Faces now processed by detection confidence (highest first) to prioritize high-quality face descriptors
+  - Phase 2 matches upgraded automatically when better match is found (e.g., 65% match replaced by 85% match for same person)
+  - Prevented duplicate person assignments from Phase 2 matching
+  - Phase 1 matches (95%+) protected from Phase 2 modifications
+  - Newly-added persons displayed in left-to-right order by face position while preserving existing person order
+- Added visual distinction between match confidence (green) and detection confidence (gray) in face assignment dropdowns.
+- Fixed auto-assign threshold not being applied correctly in Phase 2 matching by adding distanceThreshold parameter to searchPersonLibrary function.
+
 ## [3.0.8] - 2026-02-21
 
 ### Fixed
