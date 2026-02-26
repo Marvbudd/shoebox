@@ -753,9 +753,14 @@ async function validateCollection() {
       ? `Collection "${collectionText}" validation complete!\n\nNo errors or warnings found.\n\nLog file: ${logInfo.filename}`
       : `Collection "${collectionText}" validation complete!\n\nErrors: ${results.errorCount}\nWarnings: ${results.warningCount}\n\nLog file: ${logInfo.filename}`;
     
+    // Build buttons array - include cleanup button only if errors exist
     const buttons = results.errorCount === 0 && results.warningCount === 0
       ? ['OK']
       : ['Open Log File', 'Close'];
+    
+    if (results.errorCount > 0) {
+      buttons.push('Clean Up Collection');
+    }
     
     const dialogResponse = await dialog.showMessageBox(mainWindow, {
       type: results.errorCount > 0 ? 'warning' : 'info',
@@ -765,9 +770,13 @@ async function validateCollection() {
       defaultId: 0
     });
     
-    // If user clicked "Open Log File"
+    // Handle button responses
     if (dialogResponse.response === 0 && buttons.length > 1) {
+      // Open Log File
       await shell.openPath(logInfo.path);
+    } else if (dialogResponse.response === 2 && results.errorCount > 0) {
+      // Clean Up Collection
+      await cleanupCollection(selectedCollectionKey, results, collectionText);
     }
     
   } catch (error) {
@@ -780,6 +789,86 @@ async function validateCollection() {
     });
   }
 } // validateCollection
+
+async function cleanupCollection(collectionKey, validationResults, collectionText) {
+  try {
+    verifyAccessions();
+    
+    // Backup archive before cleanup
+    const backupResult = accessionClass.backupAccessions();
+    if (!backupResult.success) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Backup Failed',
+        message: 'Cannot proceed with cleanup',
+        detail: `Failed to backup archive: ${backupResult.error}\n\nOperation aborted to protect data integrity.`,
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    // Get the collection
+    const collection = accessionClass.collections.getCollection(collectionKey);
+    if (!collection) {
+      throw new Error(`Collection "${collectionKey}" not found`);
+    }
+    
+    // Find all links with COLLECTION_LINK_NOT_FOUND errors
+    const missingLinks = validationResults.errors
+      .filter(error => error.type === 'COLLECTION_LINK_NOT_FOUND')
+      .map(error => error.link);
+    
+    // Remove missing items from collection
+    // removeItem() automatically sets collectionChanged = true for delayed save
+    let removedCount = 0;
+    for (const link of missingLinks) {
+      if (collection.hasItem(link)) {
+        collection.removeItem(link);
+        removedCount++;
+      }
+    }
+    
+    const message = removedCount > 0
+      ? `Successfully removed ${removedCount} missing item(s) from collection "${collectionText}".`
+      : `No missing items found to cleanup in collection "${collectionText}".`;
+    
+    const detail = removedCount > 0
+      ? `These were items referenced in the collection but no longer exist in the archive.`
+      : undefined;
+    
+    await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Cleanup Complete',
+      message: message,
+      detail: detail,
+      buttons: ['OK']
+    });
+    
+    // Optionally re-run validation to confirm cleanup
+    if (removedCount > 0) {
+      const revalidate = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: 'Re-run Validation?',
+        message: 'Would you like to re-run validation to confirm the cleanup was successful?',
+        buttons: ['Yes', 'No'],
+        defaultId: 0
+      });
+      
+      if (revalidate.response === 0) {
+        await validateCollection();
+      }
+    }
+    
+  } catch (error) {
+    console.error('Failed to cleanup collection:', error);
+    await dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Cleanup Error',
+      message: `Failed to cleanup collection: ${error.message}`,
+      buttons: ['OK']
+    });
+  }
+} // cleanupCollection
 
 // ===== Backup Functions =====
 
@@ -1431,7 +1520,7 @@ async function buildCollection() {
             message: `Collection "${collection.text}" has validation issues`,
             detail: `Errors: ${validationResults.results.errorCount}\n` +
                     `Warnings: ${validationResults.results.warningCount}\n\n` +
-                    `A detailed log has been saved to:\n${validationResults.logInfo.logPath}\n\n` +
+                    `A detailed log has been saved to:\n${validationResults.logInfo.path}\n\n` +
                     `Do you want to continue with the export?`,
             buttons: ['Continue Export', 'Cancel'],
             defaultId: 1,

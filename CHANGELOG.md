@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.10] - 2026-02-26
+
+### Added
+- Added "Clean Up Collection" button to collection validation results dialog when errors are detected. This allows automatic removal of items that no longer exist in the archive, with backup created before making changes.
+
+### Fixed
+- Fixed export collection validation dialog showing "undefined" instead of actual log file path when collection has errors or warnings.
+
+### Updated
+- Updated electron from 40.6.0 to 40.6.1
+- Updated vue from 3.5.28 to 3.5.29
+
 ## [3.0.9] - 2026-02-22
 
 ### Fixed
