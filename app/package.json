@@ -25,6 +25,6 @@
     "minimatch": "^10.2.2"
   },
   "devDependencies": {
-    "electron": "^40.6.0"
+    "electron": "^40.6.1"
   }
 }
