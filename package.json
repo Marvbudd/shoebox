@@ -110,6 +110,6 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.4",
-    "electron": "^40.6.0"
+    "electron": "^40.6.1"
   }
 }
