@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.11] - 2026-02-26
+
+### Security
+- Updated rollup from 4.54.0 to 4.59.0 to fix CVE-2024-56155 (arbitrary file write via path traversal)
+- Updated minimatch from 10.2.2 to 10.2.4
+
 ## [3.0.10] - 2026-02-26
 
 ### Added
