@@ -7,10 +7,13 @@
   "type": "module",
   "build": {
     "appId": "com.gmail.marvbudd.shoebox",
+    "directories": {
+      "app": "app"
+    },
     "files": [
-      "app/**/*",
-      "!app/resource/**/*",
-      "!app/**/*.map"
+      "**/*",
+      "!resource/**/*",
+      "!**/*.map"
     ],
     "extraResources": [
       {
@@ -20,7 +23,7 @@
       }
     ],
     "asarUnpack": [
-      "app/models/**/*"
+      "models/**/*"
     ],
     "dmg": {
       "background": null,
