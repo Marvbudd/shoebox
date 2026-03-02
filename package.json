@@ -9,7 +9,7 @@
     "appId": "com.gmail.marvbudd.shoebox",
     "files": [
       "app/**/*",
-      "!app/resource",
+      "!app/resource/**/*",
       "!app/**/*.map"
     ],
     "extraResources": [
