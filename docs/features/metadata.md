@@ -123,9 +123,9 @@ For complete technical reference, see [Data Structure Guide](../guide/data-struc
 
 **Archive > Add Media Metadata**:
 
-1. Select directory containing media files
-2. Fill in metadata that applies to all items - batchs can have same metadata
-3. Save - Shoebox scans and adds new items
+1. Directory and title auto-fill if working with current archive (click Browse to change)
+2. Fill in metadata that applies to all items - batches can have same metadata
+3. Save - Shoebox scans and adds new items that aren't already in the database
 
 See [Creating Your Archive - Adding Items](../guide/creating-archive.md#adding-items) for details.
 

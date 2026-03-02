@@ -71,6 +71,16 @@ Slideshow automatically pauses when the window loses focus and resumes when you 
 Your metadata display mode (shortened/detailed) persists throughout the slideshow. Set it before starting for the best experience.
 :::
 
+## Platform Differences
+
+### Cmd vs Ctrl
+- **macOS**: Use **Command (⌘)** key
+- **Windows/Linux**: Use **Ctrl** key
+
+### Fullscreen Toggle
+- **macOS**: **Cmd + Ctrl + F**
+- **Windows/Linux**: **F11**
+
 ## Menu Shortcuts
 
 ### File Menu
@@ -132,16 +142,6 @@ Within menus, use the underlined letter to select items:
 
 **Window Menu:**
 - **T**: Family Tree
-
-## Platform Differences
-
-### Cmd vs Ctrl
-- **macOS**: Use **Command (⌘)** key
-- **Windows/Linux**: Use **Ctrl** key
-
-### Fullscreen Toggle
-- **macOS**: **Cmd + Ctrl + F**
-- **Windows/Linux**: **F11**
 
 ## Tips for Efficient Navigation
 

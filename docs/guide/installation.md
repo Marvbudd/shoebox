@@ -18,23 +18,17 @@ The instructions below include steps for handling these warnings on each platfor
 
 ---
 
-## Download and Installation
+## macOS
 
-Choose your operating system:
+**1. Download and Install**
 
-### macOS
-
-**1. Download the latest release**
-
-Get `Shoebox-<version>.dmg` from the [GitHub Releases](https://github.com/Marvbudd/shoebox/releases) page.
-
-**2. Install Shoebox**
+Download `Shoebox-<version>.dmg` from [GitHub Releases](https://github.com/Marvbudd/shoebox/releases), then:
 
 1. Open the downloaded DMG file
 2. Drag Shoebox to your Applications folder
 3. Close the DMG window
 
-**3. Launch Shoebox (with security warning handling)**
+**2. Launch Shoebox (with security warning handling)**
 
 When you first try to open Shoebox, macOS Gatekeeper will block it with a message like "Shoebox can't be opened because it is from an unidentified developer."
 
@@ -58,18 +52,18 @@ xattr -cr /Applications/Shoebox.app
 
 ---
 
-### Windows
+## Windows
 
-**1. Download the latest release**
+**1. Download**
 
-Get `Shoebox-<version>.exe` from the [GitHub Releases](https://github.com/Marvbudd/shoebox/releases) page.
+Download `Shoebox-<version>.exe` from [GitHub Releases](https://github.com/Marvbudd/shoebox/releases).
 
 Your browser may warn "This file is not commonly downloaded." To proceed:
 
 1. Click the **menu button (⋮)** on the warning
 2. Select **"Keep"** or **"Keep anyway"**
 
-**2. Install Shoebox (with security warning handling)**
+**2. Install (with security warning handling)**
 
 1. Double-click the downloaded `Shoebox-<version>.exe` installer
 2. Windows SmartScreen will show: "Windows protected your PC"
@@ -87,19 +81,17 @@ Your browser may warn "This file is not commonly downloaded." To proceed:
 
 **Note:** These warnings only appear on first download/install. Once installed, the app will launch normally.
 
-**3. Launch Shoebox**
+**3. Launch**
 
 Launch Shoebox from the Start menu or desktop shortcut. No additional warnings - you're done!
 
 ---
 
-### Linux
+## Linux
 
-**1. Download the latest release**
+**1. Download**
 
-Get `Shoebox-<version>.AppImage` from the [GitHub Releases](https://github.com/Marvbudd/shoebox/releases) page.
-
-Linux doesn't show security warnings for AppImages.
+Download `Shoebox-<version>.AppImage` from [GitHub Releases](https://github.com/Marvbudd/shoebox/releases). Linux doesn't show security warnings for AppImages.
 
 **2. Make it executable**
 
@@ -119,11 +111,7 @@ You can also double-click the AppImage file from your file manager if it's set t
 
 ## First Launch
 
-When you first start Shoebox:
-
-1. The app will open with a sample archive pre-loaded
-2. Explore the interface and features using the sample data
-3. When ready to create your own archive, see [Creating Your Archive](./creating-archive.md)
+When you first start Shoebox, you'll see a sample archive pre-loaded. See the [First Launch](./first-launch.md) guide for a complete walkthrough of the sample archive and interface.
 
 ---
 

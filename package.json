@@ -1,12 +1,27 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "3.0.11",
+  "version": "3.0.12",
   "description": "Multimedia browser",
   "main": "app/main/main.js",
   "type": "module",
   "build": {
     "appId": "com.gmail.marvbudd.shoebox",
+    "files": [
+      "app/**/*",
+      "!app/resource",
+      "!app/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "app/resource",
+        "to": "resource",
+        "filter": ["**/*"]
+      }
+    ],
+    "asarUnpack": [
+      "app/models/**/*"
+    ],
     "dmg": {
       "background": null,
       "backgroundColor": "#ffffff",

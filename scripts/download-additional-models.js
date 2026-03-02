@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const MODELS_DIR = path.join(__dirname, '../app/resource/models');
+const MODELS_DIR = path.join(__dirname, '../app/models');
 const BASE_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js-models/master/';
 
 // Model files to download

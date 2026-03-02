@@ -106,8 +106,11 @@ xmldb/xml/photo
 config
 
 # Optional face detection models (download via scripts/download-additional-models.js)
-app/resource/models/mtcnn_model-*
-app/resource/models/tiny_face_detector_model-*
+app/models/mtcnn_model-*
+app/models/tiny_face_detector_model-*
+
+# VitePress build cache
+docs/.vitepress/cache/
 
 # Internal documets
 FUTURE-ENHANCEMENTS*

@@ -38,6 +38,26 @@ export function registerAccessionsHandlers(
   shell
 ) {
 
+  // Get current archive info for auto-filling
+  ipcMain.handle('accessions:getCurrentArchiveInfo', async () => {
+    try {
+      const accessionClass = getAccessionClass();
+      const accessionsPath = nconf.get('db:accessionsPath');
+      
+      if (accessionClass && accessionsPath) {
+        return {
+          directory: path.dirname(accessionsPath),
+          title: accessionClass.getTitle()
+        };
+      }
+      
+      return { directory: '', title: '' };
+    } catch (error) {
+      console.error('Error getting current archive info:', error);
+      return { directory: '', title: '' };
+    }
+  });
+
   // Directory selection dialog
   ipcMain.handle('directory:select', async () => {
     const result = await dialog.showOpenDialog({

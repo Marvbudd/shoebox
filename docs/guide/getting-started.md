@@ -28,27 +28,11 @@ See the [Installation Guide](./installation.md) for platform-specific instructio
 
 ## First Launch
 
-When you first open Shoebox, you'll find a sample archive already loaded. This lets you:
+When you first open Shoebox, you'll find a sample archive already loaded. See the [First Launch](./first-launch.md) guide for a complete tour of the sample archive, interface overview, and key features to try.
 
-- Explore the interface without setting up your own data
-- Try out features like slideshow mode and face detection
-- Learn keyboard shortcuts with real content
-- Understand the data structure before importing your own files
+## Navigating Your Archive
 
-Take some time to browse the sample archive. Navigate using arrow keys, try the slideshow (press Space), and explore the metadata panel.
-
-## Quick Tour
-
-### Main Window
-
-The main window is divided into several areas:
-
-1. **Header** (top): Shows current item metadata and controls
-2. **Navigation** (left): Browse your archive chronologically or by collection - hover over items to preview
-3. **Preview Area** (center/right): See the selected item with full details
-4. **Metadata Panel**: Expandable detailed information for each item
-
-### Navigation Basics
+### Keyboard Shortcuts
 
 - **Up/Down Arrow Keys**: Move between items in the navigation list
 - **Mouse Hover**: Move your mouse over items in the navigation list to preview them

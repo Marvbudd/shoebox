@@ -273,7 +273,7 @@ All threshold settings (Confidence Threshold and Auto-Assign Threshold) are auto
 - Uses face-api.js library
 - Processing done locally (no cloud upload)
 - Face descriptors stored in accessions.json
-- Models stored in `app/resource/models/` directory
+- Models stored in `app/models/` directory
 
 ## Advanced: Downloading Additional Face Detection Models
 
@@ -329,7 +329,7 @@ Once additional models are downloaded:
 
 Models are installed in:
 ```
-app/resource/models/
+app/models/
 ├── ssd_mobilenetv1_model-* (default, always present)
 ├── face_landmark_68_model-* (required, always present)
 ├── face_recognition_model-* (required, always present)
@@ -353,7 +353,7 @@ Face detection models loaded successfully
 - Download models manually from [face-api.js models repository](https://github.com/justadudewhohacks/face-api.js-models)
 
 **Models not detected after download:**
-- Verify files are in `app/resource/models/` directory
+- Verify files are in `app/models/` directory
 - Check file permissions (should be readable)
 - Restart Shoebox completely
 

@@ -29,31 +29,44 @@ Try these actions to familiarize yourself:
 
 ### Understanding the Interface
 
-#### Header (Top)
-Shows information about the currently selected item:
-- Accession number
-- Date
-- Location
-- People
-- Description
-
-#### Navigation (Left)
+#### Navigation List (Left)
 Browse your archive:
-- Chronological list
-- Jump to specific items
-- See preview thumbnails
+- Scrollable list of all items
+- Shows thumbnails and basic info
+- Click or use arrow keys to select items
+- Selected item highlighted
 
-#### Preview List (Center)
-Grid view of items with:
-- Thumbnails
-- Basic metadata
-- Selection indicator
+#### Preview & Metadata (Right)
+The right side displays the selected item in two sections:
 
-#### Detail View (Right)
-Full-size display:
-- Large photo/video/audio player
-- Expandable metadata panel
-- Face tag overlays (for photos)
+**Preview Area (Top Right):**
+- Large photo display
+- Video player with controls
+- Audio player with controls
+- Face tag overlays (toggle with Ctrl+Shift+F)
+
+**Metadata Panel (Below Preview):**
+Shows detailed information about the selected item:
+- Description
+- People (with face detection indicators if tagged)
+- Date
+- Location (clickable links for multiple locations)
+- Collections (when expanded)
+- Accession number (when expanded)
+- Link/filename (when expanded)
+- Playlist entries (if any)
+- References (items that reference this media)
+- Source person and received date (when expanded)
+
+**Tip:** Double-click anywhere on the metadata panel to toggle between compact and detailed views.
+
+#### Filter Controls (Bottom)
+Control what appears in the navigation list:
+- **Sort dropdown**: Order by Date, Person, Location, File, Source, or Accession
+- **Media type checkboxes**: Show/hide Photos, Audio, or Videos
+- **Collection dropdown**: Filter to specific collection (if collections exist)
+- **Limit checkbox**: Restrict view to selected collection only
+- **Show Face Tags**: Toggle face detection overlays on photos
 
 ## Next Steps
 
@@ -68,9 +81,9 @@ Once you're comfortable with the sample archive:
 
 The sample archive files are located in:
 
-- **macOS**: `/Applications/Shoebox.app/Contents/Resources/app/resource/`
-- **Windows**: `C:\Program Files\Shoebox\resources\app\resource\`
-- **Linux**: `[AppImage mount]/resources/app/resource/`
+- **macOS**: `/Applications/Shoebox.app/Contents/Resources/resource/`
+- **Windows**: `C:\Program Files\Shoebox\resources\resource\`
+- **Linux**: `[AppImage mount]/resources/resource/`
 
 ::: warning Don't Modify Sample Files
 The sample archive is part of the application bundle. Changes won't persist across updates. Instead, create your own archive following the [Creating Your Archive](./creating-archive.md) guide.

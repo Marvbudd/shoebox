@@ -97,6 +97,22 @@ const APP_VERSION = packageJson.version;
 
 console.log('main.js __dirname is ' + __dirname);
 
+// ===== Path Configuration =====
+// Determine if running in development or production
+const isDev = !app.isPackaged;
+
+// Set paths for resources and models based on environment
+const resourcePath = isDev 
+  ? path.resolve(__dirname, "../resource")
+  : path.join(process.resourcesPath, "resource");
+
+const modelsPath = isDev
+  ? path.resolve(__dirname, "../models")
+  : path.join(__dirname, "../models");
+
+console.log('Resource path:', resourcePath);
+console.log('Models path:', modelsPath);
+
 // ===== Configuration Setup =====
 // Setup nconf to use (in-order):
 //   1. Command-line arguments
@@ -135,7 +151,7 @@ nconf.argv()
       "restrictChecked": false
     },
     "db": {
-      "accessionsPath": path.resolve(__dirname, "../resource/accessions.json")
+      "accessionsPath": path.join(resourcePath, "accessions.json")
     },
     "faceDetection": {
       "confidenceThreshold": 0.20,
@@ -154,7 +170,7 @@ nconf.argv()
   })
 // if the accessionsPath is an xml file (old version) change to default
 if (nconf.get('db:accessionsPath').includes('.xml')) {
-  nconf.set('db:accessionsPath', path.resolve(__dirname, "../resource/accessions.json"));
+  nconf.set('db:accessionsPath', path.join(resourcePath, "accessions.json"));
   nconf.save('user');
   console.log('Changed accessionsPath to default');
 }
@@ -402,7 +418,6 @@ const createWindow = () => {
   // Initialize face detection service on first use
   const initFaceDetection = async () => {
     if (!faceDetectionService) {
-      const modelsPath = path.resolve(__dirname, '../resource/models');
       faceDetectionService = new FaceDetectionService(modelsPath);
       await faceDetectionService.loadModels();
     }

@@ -5,5 +5,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   selectDirectory: () => ipcRenderer.invoke('directory:select'),
   createAccessions: (formData) => ipcRenderer.invoke('accessions:create', formData),
-  getExistingPersons: (directoryPath) => ipcRenderer.invoke('persons:getExisting', directoryPath)
+  getExistingPersons: (directoryPath) => ipcRenderer.invoke('persons:getExisting', directoryPath),
+  getCurrentArchiveInfo: () => ipcRenderer.invoke('accessions:getCurrentArchiveInfo')
 });

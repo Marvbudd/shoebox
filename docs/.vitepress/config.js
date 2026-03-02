@@ -42,7 +42,9 @@ export default defineConfig({
             { text: 'Overview', link: '/features/overview' },
             { text: 'Slideshow Mode', link: '/features/slideshow' },
             { text: 'Face Detection', link: '/features/face-detection' },
+            { text: 'Advanced Face Detection', link: '/features/face-detection-advanced' },
             { text: 'Collections', link: '/features/collections' },
+            { text: 'Collection Set Operations', link: '/features/collection-set-operations' },
             { text: 'Metadata', link: '/features/metadata' }
           ]
         }

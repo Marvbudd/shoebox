@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.12] - 2026-03-01
+
+### Fixed
+- Fixed sample archive data not being accessible on first launch of packaged application. Sample data (accessions.json and media files) now correctly packaged as extraResources for new user experience.
+
+### Changed
+- Reorganized application directory structure: moved face detection models from `app/resource/models` to `app/models` to separate application binaries from sample user data. This makes the sample archive cleaner when users reference or copy it as a template.
+- Updated packaging configuration with proper file inclusion rules, resource extraction, and ASAR unpacking for native module compatibility.
+- Application now correctly detects development vs production environment and uses appropriate paths for resources and models.
+
+**Note:** This change is backwards compatible. Existing users with configured archives will not be affected, as these changes only impact default paths for new installations.
+
+### Added
+- Auto-fill current archive directory and title in Add Media Metadata window for faster workflow when adding new items to existing archive. Fields are visually indicated with blue highlighting and helpful hints. Users can still browse to select a different directory if needed.
+
 ## [3.0.11] - 2026-02-26
 
 ### Security

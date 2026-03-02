@@ -11,6 +11,10 @@
         <p><strong>Requirements:</strong> Your directory should contain subdirectories named <code>photo</code>, <code>video</code>, and/or <code>audio</code> with your media files.</p>
       </div>
 
+      <div v-if="isAutoFilled.directory" class="info-box-success">
+        <p><strong>✓ Adding to current archive:</strong> This will scan your current archive directory for any NEW media files that aren't already in the database and add them. Existing items and metadata will not be changed.</p>
+      </div>
+
       <form @submit.prevent="handleCreate" class="create-form">
         <div class="form-section">
           <label for="directory">Media Directory <span class="required">*</span></label>
@@ -22,12 +26,16 @@
               placeholder="/path/to/media/directory"
               required
               readonly
+              :class="{ 'auto-filled': isAutoFilled.directory }"
             />
             <button type="button" @click="selectDirectory" class="btn-browse">
               Browse...
             </button>
           </div>
-          <small>Select the parent directory containing your media folders</small>
+          <small v-if="isAutoFilled.directory" class="auto-fill-hint">
+            ℹ️ Current archive directory - will ADD new media files only. Click Browse to select a different directory.
+          </small>
+          <small v-else>Select the parent directory containing your media folders</small>
         </div>
 
         <div class="form-section">
@@ -38,8 +46,13 @@
             type="text"
             placeholder="e.g., My Family Photos"
             required
+            :class="{ 'auto-filled': isAutoFilled.title }"
+            @input="isAutoFilled.title = false"
           />
-          <small>A descriptive name for this media collection</small>
+          <small v-if="isAutoFilled.title" class="auto-fill-hint">
+            ℹ️ Auto-filled with current archive title. Edit to use a different title.
+          </small>
+          <small v-else>A descriptive name for this media collection</small>
         </div>
 
         <!-- Optional source and metadata -->
@@ -196,7 +209,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import DateInput from '../../components/DateInput.vue';
 import { formatPersonName } from '../../../../shared/personHelpers.js';
 
@@ -223,6 +236,7 @@ const sourceMode = ref('none');
 const existingPersons = ref([]);
 const isCreating = ref(false);
 const statusMessage = ref(null);
+const isAutoFilled = ref({ directory: false, title: false });
 
 const isValid = computed(() => {
   return formData.value.directory && formData.value.title;
@@ -246,6 +260,21 @@ const getPersonDisplayName = (person) => {
   return baseName;
 };
 
+// Load current archive info on mount
+onMounted(async () => {
+  try {
+    const archiveInfo = await window.electronAPI.getCurrentArchiveInfo();
+    if (archiveInfo.directory && archiveInfo.title) {
+      formData.value.directory = archiveInfo.directory;
+      formData.value.title = archiveInfo.title;
+      isAutoFilled.value.directory = true;
+      isAutoFilled.value.title = true;
+    }
+  } catch (error) {
+    console.error('Error loading current archive info:', error);
+  }
+});
+
 // Watch directory changes to load existing persons
 watch(() => formData.value.directory, async (newDir) => {
   if (newDir) {
@@ -268,6 +297,7 @@ const selectDirectory = async () => {
     const result = await window.electronAPI.selectDirectory();
     if (result && !result.canceled) {
       formData.value.directory = result.filePath;
+      isAutoFilled.value.directory = false;
     }
   } catch (error) {
     statusMessage.value = { type: 'error', text: 'Error selecting directory: ' + error.message };
@@ -372,6 +402,14 @@ header h1 {
   margin-bottom: 2rem;
 }
 
+.info-box-success {
+  background: #d4edda;
+  border: 1px solid #28a745;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 2rem;
+}
+
 .info-box p {
   margin: 0.5rem 0;
   font-size: 0.9rem;
@@ -466,6 +504,20 @@ header h1 {
 .form-section input[readonly] {
   background: #f8f9fa;
   cursor: default;
+}
+
+.form-section input.auto-filled {
+  background: #e7f3ff;
+  border-color: #a8d5ff;
+}
+
+.form-section input[readonly].auto-filled {
+  background: #e7f3ff;
+}
+
+.auto-fill-hint {
+  color: #0056b3;
+  font-weight: 500;
 }
 
 .form-section small {

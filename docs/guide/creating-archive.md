@@ -121,12 +121,21 @@ Once you have an `accessions.json` file with items:
 
 The Add Media Metadata window is a powerful tool for scanning directories and automatically adding media files to your archive.
 
+::: tip Auto-Fill for Current Archive
+When you have an archive already open, the Add Media Metadata window automatically pre-fills with your current archive's directory and title. This makes it quick and easy to add new media files to your existing archive - just click Save! The pre-filled fields are highlighted in blue, and you can still click Browse to select a different directory if needed.
+:::
+
 **How It Works:**
 
 1. Open **Archive > Add Media Metadata**
-2. Select **Update Type**: "Directory" (most common for initial setup)
-3. Click **Select** button next to "Directory or Collection" field
-4. Choose the directory containing your media files (the one with photo/, video/, audio/ subdirectories)
+2. If working with your current archive:
+   - Directory and title will be **auto-filled** (shown with blue highlighting)
+   - A green info box confirms you're adding to the current archive
+   - Simply proceed to step 5, or click Browse to select a different directory
+3. If creating a new archive or selecting different directory:
+   - Click **Browse** button next to Media Directory field
+   - Choose the directory containing your media files (the one with photo/, video/, audio/ subdirectories)
+4. Enter a **Database Title** (or keep the auto-filled title)
 5. Enter optional metadata that applies to ALL items being imported:
    - **Person**: First/Last name (creates person references for all items)
    - **Description**: Text that applies to all items
