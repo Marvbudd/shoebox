@@ -3,7 +3,7 @@
   "productName": "shoebox",
   "version": "3.0.12",
   "description": "Multimedia browser",
-  "main": "app/main/main.js",
+  "main": "main/main.js",
   "type": "module",
   "build": {
     "appId": "com.gmail.marvbudd.shoebox",
