@@ -123,18 +123,20 @@
                 </button>
               </div>
               <div class="person-info">
-                <select 
-                  v-model="person.personID" 
-                  @change="personListKey++" 
-                  class="person-select"
-                  :disabled="getMatchForPerson(person.personID) !== undefined"
-                  :title="getMatchForPerson(person.personID) ? 'Unassign face before changing person' : ''"
+                <div
+                  class="person-select-field"
+                  :class="{ 
+                    'disabled': getMatchForPerson(person.personID) !== undefined,
+                    'has-value': person.personID
+                  }"
+                  :title="getMatchForPerson(person.personID) ? 'Unassign face before changing person' : 'Click to select person'"
+                  @click="getMatchForPerson(person.personID) === undefined ? openPersonManagerForSelection(index) : null"
                 >
-                  <option value="">-- Select Person --</option>
-                  <option v-for="p in getAvailablePersons(index)" :key="p.personID" :value="p.personID">
-                    {{ getPersonDisplayName(p) }}
-                  </option>
-                </select>
+                  <span class="person-select-text">
+                    {{ person.personID ? getPersonDisplayName(persons.find(p => p.personID === person.personID)) : '-- Select Person --' }}
+                  </span>
+                  <span class="person-select-arrow">▼</span>
+                </div>
                 <button 
                   type="button"
                   @click="openPersonManager(person.personID)"
@@ -852,21 +854,6 @@ const getPersonDisplayName = (person) => {
   return baseName;
 };
 
-// Get available persons for a specific person entry (excludes already-assigned persons)
-// Get available persons for a specific dropdown (excluding already assigned persons)
-const getAvailablePersons = (currentIndex) => {
-  // Force dependency on personListKey to trigger reactivity
-  personListKey.value; // eslint-disable-line no-unused-expressions
-  
-  // Get all personIDs already assigned in this item (except the current entry being edited)
-  const assignedPersonIDs = item.value.person
-    .map((p, idx) => idx !== currentIndex ? p.personID : null)
-    .filter(id => id); // Remove nulls and empty strings
-  
-  // Filter out persons who are already assigned
-  return persons.value.filter(p => !assignedPersonIDs.includes(p.personID));
-};
-
 // Get available persons for face assignment (from item.person, excluding persons who already have faceTag assigned)
 const getAvailablePersonsForFaceAssignment = (faceIndex) => {
   personListKey.value; // Force reactivity
@@ -1043,6 +1030,27 @@ const openPersonManager = async (personID) => {
     await window.electronAPI.openPersonManager(id);
   } catch (err) {
     console.error('Error opening Person Manager:', err);
+  }
+};
+
+// State for tracking which person entry is being selected
+const personSelectionIndex = ref(null);
+
+// Open Person Manager in Select mode for choosing a person
+const openPersonManagerForSelection = async (personIndex) => {
+  try {
+    // Store which person entry we're selecting for
+    personSelectionIndex.value = personIndex;
+    
+    // Get already-assigned personIDs (excluding the current entry)
+    const assignedPersonIDs = item.value.person
+      .map((p, idx) => idx !== personIndex ? p.personID : null)
+      .filter(id => id);
+    
+    // Open Person Manager with select mode and context
+    await window.electronAPI.openPersonManagerForSelection(assignedPersonIDs);
+  } catch (err) {
+    console.error('Error opening Person Manager for selection:', err);
   }
 };
 
@@ -2398,6 +2406,45 @@ const navigateToQueueItem = (newIndex) => {
   window.location.search = searchParams;
 };
 
+// Find next item of same type (or specifically next photo if current is photo)
+const findNextItemOfSameType = async (startIndex, direction = 1) => {
+  if (!hasQueue.value) return -1;
+  
+  // If current item is not a photo, navigate normally
+  if (item.value.type !== 'photo') {
+    const nextIndex = startIndex + direction;
+    if (nextIndex >= 0 && nextIndex < queueData.value.queue.length) {
+      return nextIndex;
+    }
+    return -1;
+  }
+  
+  // Current item is a photo - find next photo
+  let index = startIndex + direction;
+  const maxAttempts = 20; // Prevent infinite loops
+  let attempts = 0;
+  
+  while (index >= 0 && index < queueData.value.queue.length && attempts < maxAttempts) {
+    attempts++;
+    const link = queueData.value.queue[index];
+    
+    try {
+      // Load just to check type
+      const testItem = await window.electronAPI.loadItem(link);
+      if (testItem && testItem.type === 'photo') {
+        return index; // Found a photo
+      }
+    } catch (err) {
+      console.error('Error checking item type:', err);
+    }
+    
+    // Not a photo, try next
+    index += direction;
+  }
+  
+  return -1; // No photo found in this direction
+};
+
 const handlePrevItem = async () => {
   if (!hasPrevItem.value) return;
   
@@ -2411,7 +2458,18 @@ const handlePrevItem = async () => {
     if (!confirmNav) return;
   }
   
-  navigateToQueueItem(currentQueueIndex.value - 1);
+  // Find previous item of same type (photo-only if current is photo)
+  const prevIndex = await findNextItemOfSameType(currentQueueIndex.value, -1);
+  
+  if (prevIndex === -1) {
+    if (item.value.type === 'photo') {
+      statusMessage.value = { type: 'info', text: 'No more photos in this direction' };
+      setTimeout(() => { statusMessage.value = null; }, 2000);
+    }
+    return;
+  }
+  
+  navigateToQueueItem(prevIndex);
 };
 
 const handleNextItem = async () => {
@@ -2427,10 +2485,34 @@ const handleNextItem = async () => {
     if (!confirmNav) return;
   }
   
-  navigateToQueueItem(currentQueueIndex.value + 1);
+  // Find next item of same type (photo-only if current is photo)
+  const nextIndex = await findNextItemOfSameType(currentQueueIndex.value, 1);
+  
+  if (nextIndex === -1) {
+    if (item.value.type === 'photo') {
+      statusMessage.value = { type: 'info', text: 'No more photos in queue' };
+      setTimeout(() => { statusMessage.value = null; }, 2000);
+    }
+    return;
+  }
+  
+  navigateToQueueItem(nextIndex);
 };
 
 const handleSaveAndNext = async () => {
+  // Check for unassigned faces (using unmatchedFaces which is already maintained)
+  if (unmatchedFaces.value.length > 0) {
+    const proceed = await showConfirm(
+      'Unassigned Faces',
+      `Warning: You have ${unmatchedFaces.value.length} detected face(s) that are not assigned to anyone.\n\nThis may mean you forgot to press the "Assign" button.\n\nDo you want to save anyway?`,
+      'Save Anyway',
+      'Go Back'
+    );
+    if (!proceed) {
+      return; // User canceled save to fix assignments
+    }
+  }
+  
   saving.value = true;
   
   try {
@@ -2487,9 +2569,23 @@ const handleSaveAndNext = async () => {
     if (result.success) {
       hasUnsavedChanges.value = false;
       
-      // Navigate to next item immediately
+      // Navigate to next item of same type (photo-only if current is photo)
       if (hasNextItem.value) {
-        navigateToQueueItem(currentQueueIndex.value + 1);
+        const nextIndex = await findNextItemOfSameType(currentQueueIndex.value, 1);
+        
+        if (nextIndex === -1) {
+          if (item.value.type === 'photo') {
+            statusMessage.value = { type: 'success', text: 'Saved! No more photos in queue.' };
+          } else {
+            statusMessage.value = { type: 'success', text: 'Saved! No more items in queue.' };
+          }
+          saving.value = false;
+        } else {
+          navigateToQueueItem(nextIndex);
+        }
+      } else {
+        statusMessage.value = { type: 'success', text: 'Saved! End of queue.' };
+        saving.value = false;
       }
     } else {
       statusMessage.value = { type: 'error', text: 'Error: ' + result.error };
@@ -2570,6 +2666,17 @@ onMounted(async () => {
       // Expand persons so each appears once per last name (matches nav column behavior)
       persons.value = expandPersonsByLastName(refreshedPersons);
       personListKey.value++; // Force re-render of dropdowns
+    });
+    
+    // Listen for person selection from Person Manager
+    window.electronAPI.onPersonSelected((personID) => {
+      console.log('Person selected from Person Manager:', personID);
+      if (personSelectionIndex.value !== null && item.value.person[personSelectionIndex.value]) {
+        // Set the selected person for the entry
+        item.value.person[personSelectionIndex.value].personID = personID;
+        personListKey.value++; // Force re-render
+        personSelectionIndex.value = null; // Clear selection index
+      }
     });
     
     // Listen for item load events from other windows
@@ -3567,6 +3674,52 @@ header h1 {
   font-size: 14px;
   border: 1px solid #ced4da;
   border-radius: 4px;
+}
+
+/* Person dropdown replacement - clickable field styled like dropdown */
+.person-select-field {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.375rem 0.5rem;
+  font-size: 14px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.person-select-field:hover:not(.disabled) {
+  border-color: #2196F3;
+  background: #f8f9fa;
+}
+
+.person-select-field.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f5f5f5;
+}
+
+.person-select-field .person-select-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.person-select-field .person-select-arrow {
+  flex-shrink: 0;
+  opacity: 0.5;
+  font-size: 0.8em;
+}
+
+.person-select-field.has-value {
+  font-weight: 500;
+  color: #333;
 }
 
 .btn-open-person {

@@ -609,7 +609,7 @@ export function createCollectionManagerWindow(mode, windowRef, modeRef, nconf) {
       x: x,
       y: y,
       width: nconf.get('ui:collectionManager:width') || 600,
-      height: nconf.get('ui:collectionManager:height') || 500
+      height: nconf.get('ui:collectionManager:height') || 600
     };
     
     windowRef.value = new BrowserWindow({
@@ -646,6 +646,16 @@ export function createCollectionManagerWindow(mode, windowRef, modeRef, nconf) {
 
     windowRef.value.webContents.on('destroyed', () => {
       windowRef.value = null;
+    });
+
+    // Handle programmatic close from renderer (saves state before closing)
+    electron.ipcMain.on('window:close', (event) => {
+      if (event.sender === windowRef.value?.webContents) {
+        if (windowRef.value && !windowRef.value.isDestroyed()) {
+          saveWindowState(windowRef.value, 'collectionManager', nconf);
+          windowRef.value.close();
+        }
+      }
     });
   } else {
     if (isValidWindow(windowRef)) {

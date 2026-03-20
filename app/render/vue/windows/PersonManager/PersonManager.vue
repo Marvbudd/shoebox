@@ -28,6 +28,17 @@
       </div>
     </header>
 
+    <!-- Mode Banners -->
+    <div v-if="mode === 'edit'" class="mode-banner edit-mode">
+      🟡 EDITING: {{ formatPersonName(selectedPerson) }}
+    </div>
+    <div v-if="mode === 'new'" class="mode-banner new-mode">
+      🟢 NEW PERSON
+    </div>
+    <div v-if="mode === 'select'" class="mode-banner select-mode">
+      🔵 SELECT PERSON FOR MEDIA ITEM
+    </div>
+
     <div class="content">
       <!-- Person List -->
       <aside class="person-list">
@@ -44,10 +55,11 @@
           <div 
             v-for="person in filteredPersons" 
             :key="person.personID"
-            @click="selectPerson(person)"
+            @click="(mode !== 'edit' && mode !== 'new') ? selectPerson(person) : null"
             :class="{ 
               'person-item': true, 
-              'selected': selectedPerson?.personID === person.personID 
+              'selected': selectedPerson?.personID === person.personID,
+              'disabled': mode === 'edit' || mode === 'new'
             }"
           >
             <div class="person-name">
@@ -68,7 +80,8 @@
       <!-- Person Editor -->
       <main class="person-editor">
         <div v-if="!selectedPerson" class="no-selection">
-          <p>Select a person to view details</p>
+          <p v-if="mode === 'select'">👈 Click a person to select them</p>
+          <p v-else>Select a person to view details</p>
         </div>
         
         <div v-else class="editor-content">
@@ -80,6 +93,7 @@
               v-model="selectedPerson.first" 
               type="text"
               placeholder="First name"
+              :disabled="mode === 'browse' || mode === 'select'"
             />
           </div>
 
@@ -95,8 +109,9 @@
                 type="text"
                 placeholder="Last name"
                 class="last-name-input"
+                :disabled="mode === 'browse' || mode === 'select'"
               />
-              <select v-model="lastName.type" class="name-type">
+              <select v-model="lastName.type" class="name-type" :disabled="mode === 'browse' || mode === 'select'">
                 <option value="">Birth/Maiden</option>
                 <option value="married">Married</option>
               </select>
@@ -104,12 +119,12 @@
                 @click="removeLastName(index)" 
                 type="button"
                 class="btn-remove"
-                :disabled="selectedPerson.last.length === 1"
+                :disabled="selectedPerson.last.length === 1 || mode === 'browse' || mode === 'select'"
               >
                 ✕
               </button>
             </div>
-            <button @click="addLastName" type="button" class="btn-add">
+            <button @click="addLastName" type="button" class="btn-add" :disabled="mode === 'browse' || mode === 'select'">
               + Add Last Name
             </button>
           </div>
@@ -121,6 +136,7 @@
               type="text"
               placeholder="The Master Genealogist ID"
               class="tmgid-input"
+              :disabled="mode === 'browse' || mode === 'select'"
             />
           </div>
 
@@ -130,6 +146,7 @@
                 v-model="selectedPerson.living" 
                 type="checkbox"
                 class="living-checkbox"
+                :disabled="mode === 'browse' || mode === 'select'"
               />
               Living
             </label>
@@ -142,6 +159,7 @@
               rows="4"
               placeholder="Optional notes about this person"
               class="notes-input"
+              :disabled="mode === 'browse' || mode === 'select'"
             ></textarea>
           </div>
 
@@ -169,24 +187,44 @@
           </div>
 
           <div class="form-actions">
-            <button @click="handleSave" :disabled="!isValid" class="btn-primary">
-              Save Changes
-            </button>
-            <button 
-              v-if="canDelete" 
-              @click="handleDelete" 
-              :disabled="deleting" 
-              class="btn-danger"
-              title="Delete person - no items reference this person"
-            >
-              {{ deleting ? 'Deleting...' : 'Delete Person' }}
-            </button>
-            <div v-if="!canDelete && !isNewPerson && selectedPerson" class="warning-message" style="color: #856404; background-color: #fff3cd; padding: 8px; border-radius: 4px; margin: 8px 0;">
-              ⚠️ Cannot delete: {{ selectedPerson.itemCount }} item(s) reference this person
-            </div>
-            <button @click="handleCancel" class="btn-secondary">
-              Cancel
-            </button>
+            <!-- Browse mode: Show Edit button -->
+            <template v-if="mode === 'browse'">
+              <button @click="enterEditMode" class="btn-primary">
+                Edit This Person
+              </button>
+            </template>
+            
+            <!-- Edit/New mode: Show Save, Delete, and Cancel -->
+            <template v-if="mode === 'edit' || mode === 'new'">
+              <button @click="handleSave" :disabled="!isValid" class="btn-primary">
+                {{ mode === 'new' ? 'Save New Person' : 'Save Changes' }}
+              </button>
+              <button 
+                v-if="mode === 'edit' && canDelete" 
+                @click="handleDelete" 
+                :disabled="deleting" 
+                class="btn-danger"
+                title="Delete person - no items reference this person"
+              >
+                {{ deleting ? 'Deleting...' : 'Delete Person' }}
+              </button>
+              <div v-if="mode === 'edit' && !canDelete && !isNewPerson && selectedPerson" class="warning-message" style="color: #856404; background-color: #fff3cd; padding: 8px; border-radius: 4px; margin: 8px 0;">
+                ⚠️ Cannot delete: {{ selectedPerson.itemCount }} item(s) reference this person
+              </div>
+              <button @click="handleCancel" class="btn-secondary">
+                Cancel
+              </button>
+            </template>
+            
+            <!-- Select mode: Show Select button -->
+            <template v-if="mode === 'select'">
+              <button @click="handleSelectPerson" class="btn-primary btn-primary-large" :disabled="!selectedPerson.personID">
+                ✓ Select This Person
+              </button>
+              <button @click="handleCancel" class="btn-secondary">
+                Cancel
+              </button>
+            </template>
           </div>
 
           <div v-if="saveMessage" :class="'save-message ' + saveMessage.type">
@@ -210,6 +248,9 @@ const searchQuery = ref('');
 const saveMessage = ref(null);
 const isNewPerson = ref(false);
 const deleting = ref(false);
+const mode = ref('browse'); // 'browse', 'edit', 'new', 'select'
+const previousMode = ref('browse'); // Track previous mode for returning after edit/new
+const contextPersonIDs = ref([]); // Already-assigned personIDs for Select mode
 
 // Modal state
 const showConfirmModal = ref(false);
@@ -334,7 +375,41 @@ const selectPerson = async (person) => {
   selectedPerson.value = personCopy;
   originalPerson.value = JSON.parse(JSON.stringify(personCopy));
   isNewPerson.value = false;
+  // Preserve select mode if active, otherwise return to browse
+  if (mode.value !== 'select') {
+    mode.value = 'browse';
+  }
   saveMessage.value = null;
+};
+
+const enterEditMode = () => {
+  if (!selectedPerson.value) return;
+  previousMode.value = mode.value; // Remember where we came from
+  mode.value = 'edit';
+  saveMessage.value = null;
+};
+
+const handleSelectPerson = async () => {
+  if (!selectedPerson.value || !selectedPerson.value.personID) return;
+  
+  // Check if person is already assigned (for validation)
+  if (contextPersonIDs.value.includes(selectedPerson.value.personID)) {
+    const confirmed = await showConfirm(
+      'Person Already Assigned',
+      `${formatPersonName(selectedPerson.value)} is already assigned to this media item. Select anyway?`,
+      'Select Anyway',
+      'Cancel'
+    );
+    if (!confirmed) {
+      return;
+    }
+  }
+  
+  // Send selection back to Media Manager
+  window.electronAPI.sendPersonSelection(selectedPerson.value.personID);
+  
+  // Close window
+  window.close();
 };
 
 const createNewPerson = async () => {
@@ -370,6 +445,9 @@ const createNewPerson = async () => {
   selectedPerson.value = newPerson;
   originalPerson.value = null;
   isNewPerson.value = true;
+  // Remember the mode we came from before entering new mode
+  previousMode.value = mode.value;
+  mode.value = 'new';
   saveMessage.value = null;
 };
 
@@ -438,9 +516,11 @@ const handleSave = async () => {
       selectedPerson.value = JSON.parse(JSON.stringify(personWithCount));
       originalPerson.value = JSON.parse(JSON.stringify(personWithCount));
       isNewPerson.value = false;
+      // Return to the mode we were in before entering edit/new mode
+      mode.value = previousMode.value;
+      previousMode.value = 'browse'; // Reset for next time
       
-      // Keep person selected for continued editing
-      // Clear success message after 3 seconds but keep selection
+      // Clear success message after 3 seconds
       setTimeout(() => {
         if (saveMessage.value?.type === 'success') {
           saveMessage.value = null;
@@ -490,6 +570,7 @@ const handleDelete = async () => {
       selectedPerson.value = null;
       originalPerson.value = null;
       deleting.value = false;
+      mode.value = 'browse'; // Return to browse mode
       
       // Clear success message after 3 seconds
       setTimeout(() => {
@@ -508,6 +589,35 @@ const handleDelete = async () => {
 };
 
 const handleCancel = async () => {
+  if (mode.value === 'select') {
+    // In select mode, just close the window
+    window.close();
+    return;
+  }
+  
+  if (mode.value === 'new') {
+    // Cancel new person - return to previous mode
+    selectedPerson.value = null;
+    originalPerson.value = null;
+    isNewPerson.value = false;
+    mode.value = previousMode.value;
+    previousMode.value = 'browse'; // Reset
+    saveMessage.value = null;
+    return;
+  }
+  
+  if (mode.value === 'edit') {
+    // Cancel edit - revert changes and return to previous mode
+    if (hasUnsavedChanges()) {
+      selectedPerson.value = JSON.parse(JSON.stringify(originalPerson.value));
+    }
+    mode.value = previousMode.value;
+    previousMode.value = 'browse'; // Reset
+    saveMessage.value = null;
+    return;
+  }
+  
+  // In browse mode with no selection or no changes
   if (isNewPerson.value) {
     // Discard new person and clear selection
     selectedPerson.value = null;
@@ -537,6 +647,33 @@ onMounted(async () => {
   // Load persons initially
   await loadPersons();
   
+  // Check if window was opened with mode and context parameters (initial load)
+  if (window.personManagerInitData) {
+    const { openMode, assignedPersonIDs } = window.personManagerInitData;
+    if (openMode) {
+      mode.value = openMode;
+    }
+    if (assignedPersonIDs) {
+      contextPersonIDs.value = assignedPersonIDs;
+    }
+  }
+  
+  // Listen for mode change events (when window is already open)
+  window.electronAPI.onModeChange((modeData) => {
+    console.log('Mode change event received:', modeData);
+    if (modeData.mode) {
+      mode.value = modeData.mode;
+      contextPersonIDs.value = modeData.assignedPersonIDs || [];
+      // Clear selection when switching to select mode
+      if (modeData.mode === 'select') {
+        selectedPerson.value = null;
+        originalPerson.value = null;
+        isNewPerson.value = false;
+        saveMessage.value = null;
+      }
+    }
+  });
+  
   // Listen for person selection events from other windows
   window.electronAPI.onPersonSelect((personID) => {
     if (personID) {
@@ -555,7 +692,7 @@ onMounted(async () => {
   
   // Warn before closing window if there are unsaved changes
   window.addEventListener('beforeunload', (e) => {
-    if (hasUnsavedChanges()) {
+    if (hasUnsavedChanges() && (mode.value === 'edit' || mode.value === 'new')) {
       e.preventDefault();
       e.returnValue = '';
     }
@@ -979,5 +1116,66 @@ header h1 {
 
 .btn-modal-cancel:hover {
   background-color: #545b62;
+}
+
+/* Mode Banners */
+.mode-banner {
+  padding: 12px 20px;
+  font-weight: 600;
+  font-size: 14px;
+  text-align: center;
+  border-bottom: 2px solid;
+}
+
+.mode-banner.edit-mode {
+  background-color: #fff3cd;
+  color: #856404;
+  border-color: #ffc107;
+}
+
+.mode-banner.new-mode {
+  background-color: #d4edda;
+  color: #155724;
+  border-color: #28a745;
+}
+
+.mode-banner.select-mode {
+  background-color: #d1ecf1;
+  color: #0c5460;
+  border-color: #17a2b8;
+}
+
+/* Disabled person list items */
+.person-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #f9f9f9;
+}
+
+.person-item.disabled:hover {
+  background-color: #f9f9f9;
+}
+
+/* Large primary button for Select mode */
+.btn-primary-large {
+  font-size: 16px;
+  padding: 14px 28px;
+  font-weight: 600;
+}
+
+/* Select mode styling */
+.select-mode + .content .person-item:not(.disabled) {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.select-mode + .content .person-item:not(.disabled):hover {
+  background-color: #e3f2fd;
+  border-left: 3px solid #90caf9;
+}
+
+.select-mode + .content .no-selection p {
+  font-size: 18px;
+  color: #0c5460;
 }
 </style>

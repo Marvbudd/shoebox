@@ -69,7 +69,7 @@
     }
   },
   "scripts": {
-    "start": "electron app/main/main.js",
+    "start": "./app/node_modules/.bin/electron app/main/main.js",
     "dev": "vite",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",

@@ -224,7 +224,7 @@ Items reference persons via stable UUID-based `personID` with optional item-spec
 
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
-| `personID` | string | Yes | UUID reference to `persons` object |
+| `personID` | string | Yes | personID reference to `persons` object |
 | `position` | string | No | Item-specific position/context |
 
 **Position Examples:**
@@ -255,7 +255,7 @@ Tracks how and when items were acquired:
 
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
-| `personID` | string | Yes | UUID reference to person who provided the item |
+| `personID` | string | Yes | personID reference to person who provided the item |
 | `received` | object | No | When the item was received (same format as `date`) |
 
 ## Persons Object
@@ -321,7 +321,7 @@ TMGID is NOT an ID number - it is a **stable page reference** (filename) from Se
 
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
-| `personID` | string | Yes | UUID - stable unique identifier |
+| `personID` | string | Yes | Stable unique identifier |
 | `TMGID` | string/null | Yes | TMG Link - stable page reference or null |
 | `first` | string/null | Yes | First/given name(s) |
 | `last` | array | Yes | Array of last name objects |
@@ -514,6 +514,15 @@ When sorting by person, each individual appears under ALL their last names (maid
 }
 ```
 
+## Managing Multiple Archives
+
+For advanced workflows involving multiple related archives, see [Managing Multiple Archives](managing-multiple-archives.md). This guide covers:
+
+- Importing persons to maintain personID consistency across archives
+- Full archive import with conflict detection
+- Collaborative workflows and archive consolidation
+- Best practices for multi-archive management
+
 ## Archive Validation
 
 A comprehensive validation tool is available via **Archive > Validate**. This generates a detailed report checking:
@@ -524,8 +533,27 @@ A comprehensive validation tool is available via **Archive > Validate**. This ge
 - **Time Formats**: Playlist time values match `HH:MM:SS.s` pattern
 - **Face Tags**: Face tag personIDs match item.person array
 - **Accession Numbers**: No duplicate accession values
+- **Orphaned Face Descriptors**: Face descriptors that don't match any items or person assignments
+- **Unreferenced Persons**: Persons not linked to any items
 
 Validation generates a timestamped log file with detailed error reports.
+
+### Cleanup Tools
+
+When validation detects issues that can be automatically cleaned up, buttons appear in the validation dialog:
+
+**Cleanup Orphaned Descriptors**
+- Removes face detection data (faceBioData) that no longer matches any items
+- Appears when orphaned face descriptors are detected
+- Creates backup before cleanup
+- Useful after deleting items or reorganizing person assignments
+
+**Cleanup Unreferenced Persons**
+- Removes persons not referenced by any items
+- Appears when unreferenced persons are detected  
+- Creates backup before cleanup
+- Shows list of removed persons by name
+- Useful after importing person libraries or removing items
 
 ## File Size and Performance
 

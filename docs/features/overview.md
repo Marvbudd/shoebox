@@ -50,7 +50,19 @@ Create subsets of your archive for sharing or thematic grouping.
 
 [Collections Guide](./collections.md)
 
-### 📝 Rich Metadata
+### � Multiple Archive Management
+
+Organize your collection across multiple archives while maintaining person identity consistency.
+
+- **Person Import**: Transfer person records between archives preserving identifiers
+- **Archive Import**: Merge archives with intelligent conflict detection
+- **Collaborative Workflows**: Share subsets, receive edits back, integrate changes
+- **Flexible Organization**: Thematic archives, time periods, or project-based splits
+- **Conflict Detection**: Never overwrites data - flags differences for manual resolution
+
+[Managing Multiple Archives Guide](../guide/managing-multiple-archives.md)
+
+### �📝 Rich Metadata
 
 Document the context and stories behind each item.
 

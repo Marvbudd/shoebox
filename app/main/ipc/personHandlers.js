@@ -326,4 +326,85 @@ export function registerPersonHandlers(ipcMain, getAccessionClass, verifyAccessi
       return { success: false, error: error.message };
     }
   });
+
+  ipcMain.handle('persons:cleanupUnreferencedPersons', async () => {
+    try {
+      verifyAccessions();
+      const accessionClass = getAccessionClass();
+      if (!accessionClass || !accessionClass.accessionJSON.persons) {
+        return { success: false, error: 'No accessions loaded' };
+      }
+
+      const personService = new PersonService(accessionClass.accessionJSON);
+      const items = accessionClass.accessionJSON.accessions?.item || [];
+      const result = personService.removeUnreferencedPersons(
+        accessionClass.accessionJSON.persons,
+        items
+      );
+      
+      if (result.totalRemoved > 0) {
+        accessionClass.accessionsChanged = true;
+      }
+      
+      return { success: true, ...result };
+    } catch (error) {
+      console.error('Failed to cleanup unreferenced persons:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('persons:import', async (_event, sourceFilePath, options) => {
+    try {
+      verifyAccessions();
+      const accessionClass = getAccessionClass();
+      if (!accessionClass || !accessionClass.accessionJSON.persons) {
+        return { success: false, error: 'No accessions loaded' };
+      }
+
+      const fs = await import('fs');
+      const path = await import('path');
+      
+      // Read and parse source accessions.json
+      let sourceData;
+      try {
+        const fileContent = await fs.promises.readFile(sourceFilePath, 'utf8');
+        sourceData = JSON.parse(fileContent);
+      } catch (error) {
+        return { 
+          success: false, 
+          error: `Failed to read source file: ${error.message}` 
+        };
+      }
+      
+      // Validate source file has persons object
+      if (!sourceData.persons || typeof sourceData.persons !== 'object') {
+        return { 
+          success: false, 
+          error: 'Source file does not contain a valid persons object' 
+        };
+      }
+      
+      // Perform import
+      const personService = new PersonService(accessionClass.accessionJSON);
+      const results = personService.importPersons(
+        sourceData.persons,
+        accessionClass.accessionJSON.persons,
+        options
+      );
+      
+      // Mark as changed if any persons were imported
+      if (results.imported.length > 0) {
+        accessionClass.accessionsChanged = true;
+      }
+      
+      return { 
+        success: true, 
+        sourceFile: path.basename(sourceFilePath),
+        ...results 
+      };
+    } catch (error) {
+      console.error('Failed to import persons:', error);
+      return { success: false, error: error.message };
+    }
+  });
 }

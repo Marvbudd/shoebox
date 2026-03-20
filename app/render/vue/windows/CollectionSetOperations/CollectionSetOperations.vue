@@ -82,9 +82,17 @@
               <span class="label">Items only in target (will remove):</span>
               <span class="value">{{ previewStats.toRemove }}</span>
             </div>
+            <div v-if="operation === 'addAll'" class="preview-item">
+              <span class="label">Total archive items:</span>
+              <span class="value">{{ archiveItems.length }} items</span>
+            </div>
             <div v-if="operation === 'addAll'" class="preview-item highlight">
               <span class="label">Archive items to add:</span>
               <span class="value">{{ previewStats.toAdd }}</span>
+            </div>
+            <div v-if="operation === 'addAll'" class="preview-item muted">
+              <span class="label">Already in collection (will be skipped):</span>
+              <span class="value">{{ previewStats.alreadyPresent }}</span>
             </div>
             <div class="preview-item result">
               <span class="label">Target size after operation:</span>
@@ -151,6 +159,7 @@ const targetItemCount = ref(0);
 const sourceItemCount = ref(0);
 const targetItems = ref([]);
 const sourceItems = ref([]);
+const archiveItems = ref([]); // For addAll operation
 
 // Computed
 const operationTitle = computed(() => {
@@ -262,9 +271,12 @@ const previewStats = computed(() => {
     stats.toRemove = targetItemCount.value - stats.toKeep;
     stats.finalCount = stats.toKeep;
   } else if (operation.value === 'addAll') {
-    // For addAll, we need the total archive count
-    // This will be set when we load archive data
-    stats.toAdd = 0;
+    // For addAll, calculate how many archive items are not in target
+    const targetLinks = new Set(targetItems.value);
+    const newItems = archiveItems.value.filter(link => !targetLinks.has(link));
+    
+    stats.toAdd = newItems.length;
+    stats.alreadyPresent = archiveItems.value.length - newItems.length;
     stats.finalCount = targetItemCount.value + stats.toAdd;
   }
 
@@ -292,6 +304,11 @@ const loadData = async () => {
     const targetItemsData = await window.electronAPI.getCollectionItems(targetCollectionKey.value);
     targetItemCount.value = targetItemsData.length;
     targetItems.value = targetItemsData;
+
+    // For addAll operation, load all archive items
+    if (operation.value === 'addAll') {
+      archiveItems.value = await window.electronAPI.getAllArchiveItemLinks();
+    }
 
   } catch (err) {
     console.error('Error loading data:', err);

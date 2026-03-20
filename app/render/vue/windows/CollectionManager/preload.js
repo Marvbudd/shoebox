@@ -6,5 +6,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMode: () => ipcRenderer.invoke('collectionManager:getMode'),
   getCollections: () => ipcRenderer.invoke('collections:list'),
   createCollection: (data) => ipcRenderer.invoke('collection:create', data),
-  deleteCollection: (collectionKey) => ipcRenderer.invoke('collection:delete', collectionKey)
+  deleteCollection: (collectionKey) => ipcRenderer.invoke('collection:delete', collectionKey),
+  closeWindow: () => ipcRenderer.send('window:close')
 });

@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   reverseGeocode: (latitude, longitude) => ipcRenderer.invoke('geocoding:reverse', latitude, longitude),
   getCurrentPlaybackTime: () => ipcRenderer.invoke('mediaPlayer:getCurrentTime'),
   openPersonManager: (personID) => ipcRenderer.invoke('window:openPersonManager', personID),
+  openPersonManagerForSelection: (assignedPersonIDs) => ipcRenderer.invoke('window:openPersonManagerForSelection', assignedPersonIDs),
   getConfig: (key) => ipcRenderer.invoke('config:get', key),
   setConfig: (key, value) => ipcRenderer.invoke('config:set', key, value),
   saveWindowGeometry: () => ipcRenderer.invoke('window:saveMediaManagerGeometry'),
@@ -29,6 +30,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Event listeners
   onPersonSaved: (callback) => {
     ipcRenderer.on('person:saved', (event, personID) => callback(personID));
+  },
+  onPersonSelected: (callback) => {
+    ipcRenderer.on('personManager:personSelected', (event, personID) => callback(personID));
   },
   onItemLoad: (callback) => {
     ipcRenderer.on('item:load', (event, identifier, queueData) => callback(identifier, queueData));

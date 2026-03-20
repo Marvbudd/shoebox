@@ -11,7 +11,6 @@
 import crypto from 'crypto';
 import path from 'path';
 import { AccessionClass } from '../../main/utils/AccessionClass.js';
-import { ValidationService } from '../utils/ValidationService.js';
 
 /**
  * Register accessions and media IPC handlers
@@ -204,11 +203,9 @@ export function registerAccessionsHandlers(
     try {
       verifyAccessions();
       const accessionClass = getAccessionClass();
-      const baseDir = path.dirname(accessionClass.accessionFilename);
       
-      const validationService = new ValidationService(accessionClass, baseDir);
-      await validationService.validate();
-      const result = await validationService.writeLogFile();
+      // Use AccessionClass method (properly encapsulated)
+      const result = await accessionClass.validateArchive();
       
       return { 
         success: true, 
@@ -253,6 +250,24 @@ export function registerAccessionsHandlers(
       return audioVideoItems;
     } catch (error) {
       console.error('Failed to get audio/video items:', error);
+      return [];
+    }
+  });
+
+  // Get all archive item links (for collection operations preview)
+  ipcMain.handle('accessions:getAllItemLinks', async (_event) => {
+    try {
+      verifyAccessions();
+      const accessionClass = getAccessionClass();
+      
+      if (!accessionClass.accessionJSON?.accessions?.item) {
+        return [];
+      }
+      
+      // Return just the links for efficient comparison
+      return accessionClass.accessionJSON.accessions.item.map(item => item.link);
+    } catch (error) {
+      console.error('Failed to get all item links:', error);
       return [];
     }
   });
@@ -305,4 +320,42 @@ export function registerAccessionsHandlers(
         error: error.message
       };
     }
-  });}
+  });
+
+  // Import full archive (persons + items)
+  ipcMain.handle('archive:import', async (_event, sourceFilePath, options = {}) => {
+    try {
+      verifyAccessions();
+      const accessionClass = getAccessionClass();
+      
+      // Read source file
+      const fs = await import('fs');
+      const sourceContent = await fs.promises.readFile(sourceFilePath, 'utf8');
+      const sourceData = JSON.parse(sourceContent);
+      
+      // Validate source has required structure
+      if (!sourceData.persons || !sourceData.accessions) {
+        return {
+          success: false,
+          error: 'Source file does not contain valid archive structure (missing persons or accessions)'
+        };
+      }
+      
+      // Import using AccessionClass method (properly encapsulated)
+      const result = await accessionClass.importArchive(sourceData, sourceFilePath, options);
+      
+      return {
+        success: true,
+        results: result.results,
+        logContent: result.logContent
+      };
+      
+    } catch (error) {
+      console.error('Archive import error:', error);
+      return {
+        success: false,
+        error: error.message || String(error)
+      };
+    }
+  });
+}

@@ -11,7 +11,6 @@
  */
 
 import { dialog, shell } from 'electron';
-import { ValidationService } from '../utils/ValidationService.js';
 
 /**
  * Register all collection-related IPC handlers
@@ -166,18 +165,13 @@ export function registerCollectionHandlers(
         };
       }
       
-      // Create validation service and validate the collection
-      const baseDirectory = accessionClass.baseDirectory;
-      const validationService = new ValidationService(accessionClass, baseDirectory);
-      const results = await validationService.validateCollection(collectionKey, collection);
-      
-      // Write log file
-      const logInfo = await validationService.writeCollectionLogFile(collectionKey, results);
+      // Use CollectionsClass method (properly encapsulated)
+      const { results, logInfo, collectionText } = await accessionClass.collections.validateCollection(collectionKey, accessionClass);
       
       // Show dialog with results
       const message = results.errorCount === 0 && results.warningCount === 0
-        ? `Collection "${collectionKey}" validation complete!\n\nNo errors or warnings found.\n\nLog file: ${logInfo.filename}`
-        : `Collection "${collectionKey}" validation complete!\n\nErrors: ${results.errorCount}\nWarnings: ${results.warningCount}\n\nLog file: ${logInfo.filename}`;
+        ? `Collection "${collectionText}" validation complete!\n\nNo errors or warnings found.\n\nLog file: ${logInfo.filename}`
+        : `Collection "${collectionText}" validation complete!\n\nErrors: ${results.errorCount}\nWarnings: ${results.warningCount}\n\nLog file: ${logInfo.filename}`;
       
       const buttons = results.errorCount === 0 && results.warningCount === 0
         ? ['OK']

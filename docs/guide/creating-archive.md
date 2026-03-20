@@ -232,7 +232,7 @@ People are stored in the `persons` section of accessions.json and referenced by 
 - Living status (optional checkbox for privacy management)
 - Face biometric data (when faces are tagged)
 - Notes for biographical information
-- Stable UUID identifier (never changes)
+- Stable personID identifier (never changes)
 
 ::: tip Genealogy Integration
 If you use The Master Genealogist or generate websites with Second Site, add TMGID values to your persons. This enables clickable links from Shoebox to your family tree website.

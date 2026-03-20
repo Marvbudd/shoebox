@@ -5,5 +5,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   getCollections: () => ipcRenderer.invoke('collections:list'),
   getCollectionItems: (collectionKey) => ipcRenderer.invoke('collection:getItems', collectionKey),
+  getAllArchiveItemLinks: () => ipcRenderer.invoke('accessions:getAllItemLinks'),
   executeCollectionOperation: (operationData) => ipcRenderer.invoke('collection:executeSetOperation', operationData)
 });

@@ -31,6 +31,7 @@ export default defineConfig({
           items: [
             { text: 'Archives vs Collections', link: '/guide/archives-vs-collections' },
             { text: 'Data Structure', link: '/guide/data-structure' },
+            { text: 'Managing Multiple Archives', link: '/guide/managing-multiple-archives' },
             { text: 'Keyboard Shortcuts', link: '/guide/keyboard-shortcuts' }
           ]
         }

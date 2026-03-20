@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { formatPersonName } from '../../shared/personHelpers.js';
 
 /**
  * PersonService - Centralized service for person data management
@@ -643,6 +644,161 @@ export class PersonService {
           results.set(personID, descriptor);
         }
       }
+    });
+    
+    return results;
+  }
+
+  /**
+   * Remove unreferenced persons (persons not linked to any items)
+   * @param {Object} persons - The persons object
+   * @param {Array} items - Array of all items
+   * @returns {Object} { totalRemoved, removedPersons: Array<{personID, name}> }
+   */
+  removeUnreferencedPersons(persons, items) {
+    // Build set of all referenced person IDs
+    const referencedPersonIDs = new Set();
+    
+    items.forEach(item => {
+      // Check item.person array
+      if (item.person && Array.isArray(item.person)) {
+        item.person.forEach(p => {
+          if (p.personID) {
+            referencedPersonIDs.add(p.personID);
+          }
+        });
+      }
+      
+      // Check item.source array
+      if (item.source && Array.isArray(item.source)) {
+        item.source.forEach(s => {
+          if (s.personID) {
+            referencedPersonIDs.add(s.personID);
+          }
+        });
+      }
+    });
+    
+    // Find and remove unreferenced persons
+    const removedPersons = [];
+    const personIDs = Object.keys(persons);
+    
+    personIDs.forEach(personID => {
+      if (!referencedPersonIDs.has(personID)) {
+        const person = persons[personID];
+        const name = formatPersonName(person);
+        removedPersons.push({ personID, name });
+        delete persons[personID];
+      }
+    });
+    
+    return {
+      totalRemoved: removedPersons.length,
+      removedPersons
+    };
+  }
+
+  /**
+   * Import persons from source archive into target archive
+   * @param {Object} sourcePersons - Source persons object
+   * @param {Object} targetPersons - Target persons object (will be modified)
+   * @param {Object} options - Import options
+   * @param {boolean} options.includeFaceDescriptors - Whether to include faceBioData
+   * @returns {Object} Import results with statistics
+   */
+  importPersons(sourcePersons, targetPersons, options = {}) {
+    const includeFaceDescriptors = options.includeFaceDescriptors !== false;
+    
+    const results = {
+      imported: [],
+      skipped: [],
+      tmgidConflicts: [],
+      uuidCollisions: []
+    };
+    
+    // Build map of existing TMGIDs in target for conflict detection
+    const targetTMGIDMap = new Map();
+    Object.entries(targetPersons).forEach(([personID, person]) => {
+      if (person.TMGID) {
+        targetTMGIDMap.set(person.TMGID, personID);
+      }
+    });
+    
+    // Process each person from source
+    Object.entries(sourcePersons).forEach(([sourcePersonID, sourcePerson]) => {
+      // Check 1: UUID already exists in target (skip - already have this person)
+      if (targetPersons[sourcePersonID]) {
+        const existingPerson = targetPersons[sourcePersonID];
+        
+        // Check if it's truly the same person or a collision
+        // Only compare core identity fields (first, last, TMGID)
+        // Normalize values: treat null/undefined/empty string as equivalent
+        const normalizeString = (val) => val || null;
+        
+        const sourceFirst = normalizeString(sourcePerson.first);
+        const targetFirst = normalizeString(existingPerson.first);
+        const sourceTMGID = sourcePerson.TMGID || null;
+        const targetTMGID = existingPerson.TMGID || null;
+        
+        const isSamePerson = 
+          sourceFirst === targetFirst &&
+          JSON.stringify(sourcePerson.last) === JSON.stringify(existingPerson.last) &&
+          sourceTMGID === targetTMGID;
+        
+        if (isSamePerson) {
+          results.skipped.push({
+            personID: sourcePersonID,
+            name: formatPersonName(sourcePerson),
+            reason: 'UUID_MATCH'
+          });
+        } else {
+          // UUID collision - same UUID, different person data
+          results.uuidCollisions.push({
+            personID: sourcePersonID,
+            sourceName: formatPersonName(sourcePerson),
+            targetName: formatPersonName(existingPerson),
+            sourcePerson,
+            targetPerson: existingPerson
+          });
+        }
+        return;
+      }
+      
+      // Check 2: TMGID conflict (different UUID, same TMGID)
+      if (sourcePerson.TMGID && targetTMGIDMap.has(sourcePerson.TMGID)) {
+        const conflictingPersonID = targetTMGIDMap.get(sourcePerson.TMGID);
+        results.tmgidConflicts.push({
+          sourcePersonID: sourcePersonID,
+          sourceName: formatPersonName(sourcePerson),
+          targetPersonID: conflictingPersonID,
+          targetName: formatPersonName(targetPersons[conflictingPersonID]),
+          tmgid: sourcePerson.TMGID
+        });
+        // Continue with import anyway (as per design)
+      }
+      
+      // Import this person
+      const importedPerson = {
+        personID: sourcePerson.personID,
+        TMGID: sourcePerson.TMGID || null,
+        first: sourcePerson.first || null,
+        last: sourcePerson.last || [],
+        notes: sourcePerson.notes || '',
+        living: sourcePerson.living || false
+      };
+      
+      // Include face descriptors if requested
+      if (includeFaceDescriptors && sourcePerson.faceBioData) {
+        importedPerson.faceBioData = sourcePerson.faceBioData;
+      }
+      // Otherwise faceBioData is omitted (stripped)
+      
+      targetPersons[sourcePersonID] = importedPerson;
+      
+      results.imported.push({
+        personID: sourcePersonID,
+        name: formatPersonName(importedPerson)
+      });
     });
     
     return results;

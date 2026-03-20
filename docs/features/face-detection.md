@@ -189,7 +189,7 @@ Access via **People > Manage Persons** or the 👤 button in Media Manager.
 - **First Name**: Given name
 - **Last Names**: One or more surnames (maiden, married, etc.)
 - **TMGID**: The Master Genealogist ID for integration with genealogy software
-- **Person ID**: Stable UUID identifier (read-only)
+- **Person ID**: Stable unique identifier (read-only)
 - **Face Descriptors**: Items where this person has tagged faces (read-only)
 
 ## Using Face Detection Effectively

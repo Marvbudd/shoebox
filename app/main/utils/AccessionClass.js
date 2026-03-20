@@ -54,6 +54,8 @@ const subdirectories = {
  * - savePerson(person)
  * - updatePersonTMGID(personID, tmgid)
  * - toggleItemInCollection(collectionKey, link)
+ * - importPersonsFromArchive(sourcePersons, options)
+ * - importArchive(sourceData, sourceFilePath, options)
  * 
  * @class AccessionClass
  */
@@ -917,6 +919,62 @@ export class AccessionClass {
   }
 
   /**
+   * Import persons from a source persons object
+   * Properly encapsulates PersonService and sets accessionsChanged flag
+   * @param {Object} sourcePersons - Source persons object from another archive
+   * @param {Object} options - Import options
+   * @param {boolean} options.includeFaceDescriptors - Whether to include faceBioData
+   * @returns {Object} Import results with statistics
+   */
+  importPersonsFromArchive(sourcePersons, options = {}) {
+    const personService = new PersonService(this.accessionJSON);
+    const result = personService.importPersons(
+      sourcePersons,
+      this.accessionJSON.persons,
+      options
+    );
+    
+    // Mark as changed if any persons were imported
+    if (result.imported.length > 0) {
+      this.accessionsChanged = true;
+    }
+    
+    return result;
+  }
+
+  /**
+   * Import full archive (persons + items) from source archive
+   * Properly encapsulates ArchiveImportService and sets accessionsChanged flag
+   * @param {Object} sourceData - Parsed source accessions.json
+   * @param {string} sourceFilePath - Path to source accessions.json
+   * @param {Object} options - Import options
+   * @param {boolean} options.dryRun - Preview mode: analyze but don't modify
+   * @param {boolean} options.hashVerification - Use SHA-256 hash for file verification
+   * @returns {Promise<Object>} Import results with statistics and log content
+   */
+  async importArchive(sourceData, sourceFilePath, options = {}) {
+    // Dynamic import to avoid circular dependencies
+    const { ArchiveImportService } = await import('./ArchiveImportService.js');
+    
+    const importService = new ArchiveImportService(
+      sourceData,
+      this.accessionJSON,
+      sourceFilePath,
+      this.accessionFilename,
+      options
+    );
+    
+    const result = await importService.execute();
+    
+    // Mark as changed if any modifications were made
+    if (result.modified && (result.results.persons.imported.length > 0 || result.results.items.imported.length > 0)) {
+      this.accessionsChanged = true;
+    }
+    
+    return result;
+  }
+
+  /**
    * Find all items that reference a person
    * @param {string} personID - The person's UUID
    * @returns {array} Array of item accession numbers
@@ -992,6 +1050,24 @@ export class AccessionClass {
   }
 
   /**
+   * Clean up unreferenced persons
+   * Removes persons not linked to any items
+   * @returns {Object} Result with totalRemoved count and removedPersons array
+   */
+  cleanupUnreferencedPersons() {
+    const persons = this.accessionJSON.persons || {};
+    const items = this.accessionJSON.accessions?.item || [];
+    
+    const result = this.personService.removeUnreferencedPersons(persons, items);
+    
+    if (result.totalRemoved > 0) {
+      this.accessionsChanged = true;
+    }
+    
+    return result;
+  }
+
+  /**
    * Validate the entire archive
    * @returns {Promise<object>} Validation results and log file info
    */
@@ -1007,9 +1083,15 @@ export class AccessionClass {
       w.type === 'ORPHANED_FACE_DESCRIPTOR' || w.type === 'ORPHANED_FACE_DESCRIPTOR_NO_ITEM'
     );
     
+    // Count unreferenced persons
+    const unreferencedPersons = results.info.filter(i => 
+      i.type === 'UNREFERENCED_PERSON'
+    );
+    
     return {
       ...logInfo,
-      orphanedDescriptorCount: orphanedDescriptors.length
+      orphanedDescriptorCount: orphanedDescriptors.length,
+      unreferencedPersonCount: unreferencedPersons.length
     };
   }
 

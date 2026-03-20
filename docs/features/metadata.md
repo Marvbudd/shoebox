@@ -83,13 +83,31 @@ The Person Manager maintains biographical data:
 
 For complete details on using Person Manager, see [Creating Your Archive - Managing People](../guide/creating-archive.md#managing-people).
 
+### Managing Person Records at Scale
+
+**Deleting Unused Person Records**
+
+After reorganizing archives or removing items, you may have person records that aren't linked to any items:
+
+- Run **Archive > Validate** to detect unreferenced persons
+- Click **Cleanup Unreferenced Persons** button to remove them
+- Backup created automatically before cleanup
+- See validation log for list of removed persons
+
+**Importing Persons from Another Archive**
+
+For advanced workflows involving multiple archives, see [Managing Multiple Archives](../guide/managing-multiple-archives.md). This includes:
+- Importing persons to maintain personID consistency
+- Full archive import with conflict detection  
+- Collaborative workflows and consolidation strategies
+
 ## Data Storage
 
 All metadata is stored in the `accessions.json` file:
 
-- **Person Library Pattern**: Person biographical data stored once, referenced by UUID
+- **Person Library Pattern**: Person biographical data stored once, referenced by personID
 - **Item Metadata**: Each photo/video/audio item stores dates, locations, descriptions, playlists
-- **Relationships**: Items reference people via PersonID, not by storing names directly
+- **Relationships**: Items reference people via personID, not by storing names directly
 - **Portability**: All paths relative to accessions.json location
 
 For complete technical reference, see [Data Structure Guide](../guide/data-structure.md).
@@ -250,26 +268,37 @@ Keep your Person Library clean by removing person records that are no longer ref
 2. A **Delete Person** button appears (only when no items reference this person)
 3. Click to remove the person record
 
+**Using Archive Validation** (Archive > Validate):
+
+1. Run validation to detect unreferenced persons
+2. If unreferenced persons are found, a "Cleanup Unreferenced Persons" button appears
+3. Click to remove all unreferenced persons at once
+4. A list of removed persons is shown for confirmation
+5. Archive is automatically backed up before cleanup
+
 **Safety Features:**
 - Delete button only appears when itemCount is 0 (no references)
 - Shows warning when person cannot be deleted: "Cannot delete: X item(s) reference this person"
 - Item count displayed for each person in the library
 - Prevents deletion of persons linked to your media
 - Requires confirmation before deleting
+- Automatic backup before batch cleanup via validation
 
 **When to Delete Persons:**
 - Test persons created during face detection experiments
 - Duplicate person records that were consolidated
 - Persons added by mistake
 - After removing all items that referenced a specific person
+- After importing person library and using only a subset
 
 ::: tip Cleanup Strategy
 For large cleanup operations:
 1. Create backups first (Archive > Backup Archive)
 2. Delete poor quality media files in batches
 3. Use Media Manager to review and clean metadata
-4. Run Person Manager periodically to remove unused persons
-5. Verify your archive integrity after major cleanups
+4. Run Archive Validation (Archive > Validate) to identify cleanup opportunities
+5. Use validation cleanup buttons for batch removal of orphaned data
+6. Verify your archive integrity after major cleanups
 :::
 
 ## Related

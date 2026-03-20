@@ -17,7 +17,8 @@ Shoebox is a cross-platform desktop application for managing your family archive
 - 🎞️ **Slideshow Mode**: Auto-cycling photo frame with speed control, random mode, and direction reversal
 - 👤 **Face Detection**: AI-powered face recognition and tagging under user control
 - 🗂️ **Collections**: Create themed subsets for sharing or presentations with set operations support
-- 📝 **Rich Metadata**: Document people, places, dates, and stories
+- � **Multiple Archives**: Organize across multiple archives with person identity consistency and intelligent conflict detection
+- �📝 **Rich Metadata**: Document people, places, dates, and stories
 - 🎵 **Playlists & Inverse Playlists**: Attach time-based playlists to items and automatically see reverse references on related media
 - 📇 **Person Manager**: Centralized biographical data for consistent maintenance across archive
 - 🔗 **TMG Integration**: Links to The Master Genealogist data in Second Site websites via TMG ID
@@ -43,6 +44,7 @@ Comprehensive documentation is available at our [documentation site](https://mar
 ### Core Concepts
 - [Archives vs Collections](https://marvbudd.github.io/shoebox/guide/archives-vs-collections)
 - [Data Structure](https://marvbudd.github.io/shoebox/guide/data-structure)
+- [Managing Multiple Archives](https://marvbudd.github.io/shoebox/guide/managing-multiple-archives)
 - [Keyboard Shortcuts](https://marvbudd.github.io/shoebox/guide/keyboard-shortcuts)
 
 ### Features

@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Import Persons from Archive** feature (Archive > Import Persons from Archive...). Import person library from another archive while preserving UUIDs for person identity consistency across multiple archives. Features include:
+  - UUID-strict matching: Automatically skips persons already in target archive
+  - UUID collision detection: Detects rare cases where same UUID has different person data
+  - TMGID conflict detection: Flags when different UUIDs share same genealogy ID
+  - Face descriptor handling: Option to include or strip face descriptors during import
+  - Import preview: Shows source archive title, person count, and import statistics
+  - Automatic backup before import (optional, enabled by default)
+  - Detailed results: Lists imported persons and any conflicts detected
+  - Conflict resolution: Directs user to validation for TMGID conflicts
+- Cleanup Unreferenced Persons feature in Archive Validation. When validation detects persons not referenced by any items, a "Cleanup Unreferenced Persons" button appears in the validation dialog. This helps maintain a clean Person Library after importing person data or reorganizing archives.
+- **Person Manager Mode-Based Workflow** - Complete redesign of Person Manager for clearer, safer person management:
+  - **Four distinct modes**:
+    - **Browse mode** (default): View person details, navigate list, click "Edit This Person" to modify
+    - **Edit mode**: Active form editing with person list disabled (prevents accidental navigation mid-edit)
+    - **New Person mode**: Create new persons with UUID generation, form active, list disabled
+    - **Select mode**: Choose persons from Media Manager with context-aware validation
+  - **Visual mode indicators**: Color-coded banners (Yellow=Edit, Green=New, Blue=Select) show current mode
+  - **Field disabling**: Person list disabled during Edit/New to prevent accidental navigation; form fields disabled during Browse/Select to prevent accidental edits
+  - **Never auto-enter edit mode**: Explicit "Edit This Person" button required for editing
+  - **Never auto-create persons**: Explicit "New Person" button required for creation
+  - **Search functionality**: Real-time filtering at top of person list (works in Browse and Select modes)
+  - **Selection validation**: In Select mode, warns if person is already assigned to the media item
+- **Simplified Media Manager Person Selection**:
+  - Replaced person dropdown with clickable field that opens Person Manager in Select mode
+  - Removed complex dropdown filtering logic (now handled by Person Manager)
+  - Person Manager handles all selection validation and duplicate prevention
+  - Clickable field styled like dropdown with down arrow (▼) indicator
+  - Field disabled when face already assigned (same behavior as before)
+  - Already-assigned persons shown as context to Person Manager for validation
+
+### Changed
+- Person Manager workflow now requires explicit actions: click "Edit This Person" to edit, "New Person" to create. No more accidental edits by clicking person names.
+- Person selection in Media Manager now leverages existing Person Manager with search capability instead of scrolling through long dropdown lists.
+- Mode-based UI locks navigation during editing/creation to prevent accidental data loss.
+
+### Removed
+- Removed `getAvailablePersons()` function from Media Manager (filtering now handled by Person Manager validation)
+- Removed person dropdown option generation in Media Manager (replaced with Person Manager integration)
+
+### Fixed
+- Fixed Collection Manager window (Create/Delete Collection) opening too small to show bottom buttons. Default height increased from 500px to 600px, and window size persistence now works correctly when closing via Cancel or Create Collection buttons (not just the window X button).
+- Fixed "Add All Archive Items" preview showing zero items to add. Preview now correctly compares all archive items against target collection to show accurate count of items to be added and items already in collection.
+- Fixed "Save and Next" button in Media Manager bypassing unassigned faces validation. Now shows same confirmation dialog as regular Save when unmatched faces are detected.
+- Fixed Media Manager queue navigation showing videos with face detection UI. When working with photos (face detection active), Previous/Next/Save and Next buttons now automatically skip non-photo items to maintain workflow focus. Shows "No more photos in queue" message when reaching the end.
+
 ## [3.0.12] - 2026-03-01
 
 ### Fixed

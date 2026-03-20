@@ -151,7 +151,7 @@ const handleCreate = async () => {
         text: 'Collection created successfully!' 
       };
       setTimeout(() => {
-        window.close();
+        window.electronAPI.closeWindow();
       }, 1500);
     } else {
       statusMessage.value = { type: 'error', text: 'Error: ' + result.error };
@@ -180,7 +180,7 @@ const handleDelete = async () => {
         text: 'Collection deleted successfully!' 
       };
       setTimeout(() => {
-        window.close();
+        window.electronAPI.closeWindow();
       }, 1500);
     } else {
       statusMessage.value = { type: 'error', text: 'Error: ' + result.error };
@@ -193,7 +193,7 @@ const handleDelete = async () => {
 };
 
 const handleCancel = () => {
-  window.close();
+  window.electronAPI.closeWindow();
 };
 
 onMounted(async () => {

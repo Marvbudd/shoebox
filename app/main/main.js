@@ -399,6 +399,53 @@ const createWindow = () => {
     }
   }); // window:openPersonManager
 
+  // Open Person Manager in Select mode for choosing a person (from Media Manager)
+  ipcMain.handle('window:openPersonManagerForSelection', async (event, assignedPersonIDs) => {
+    try {
+      // Open or focus the Person Manager window
+      createPersonManagerWindow();
+      
+      // Send mode change event to Person Manager window
+      if (windowRefs.personManager.value && windowRefs.personManager.value.webContents) {
+        const sendModeChange = () => {
+          if (windowRefs.personManager.value && !windowRefs.personManager.value.isDestroyed()) {
+            windowRefs.personManager.value.webContents.send('personManager:modeChange', {
+              mode: 'select',
+              assignedPersonIDs: assignedPersonIDs || []
+            });
+          }
+        };
+        
+        // If window is already loaded, send immediately
+        if (!windowRefs.personManager.value.webContents.isLoading()) {
+          setTimeout(sendModeChange, 100);
+        } else {
+          // Otherwise wait for the did-finish-load event
+          windowRefs.personManager.value.webContents.once('did-finish-load', () => {
+            setTimeout(sendModeChange, 100);
+          });
+        }
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Error opening Person Manager for selection:', error);
+      return { success: false, error: error.message };
+    }
+  }); // window:openPersonManagerForSelection
+
+  // Receive person selection from Person Manager and forward to Media Manager
+  ipcMain.on('personManager:personSelected', (event, personID) => {
+    try {
+      // Forward the selection to all Media Manager windows
+      if (windowRefs.mediaManager && windowRefs.mediaManager.value && !windowRefs.mediaManager.value.isDestroyed()) {
+        windowRefs.mediaManager.value.webContents.send('personManager:personSelected', personID);
+      }
+    } catch (error) {
+      console.error('Error forwarding person selection:', error);
+    }
+  }); // personManager:personSelected
+
   // Save Media Manager window geometry before closing
   ipcMain.handle('window:saveMediaManagerGeometry', async (event) => {
     try {
@@ -660,12 +707,21 @@ async function validateDatabase() {
       `Errors: ${logInfo.errorCount}\n` +
       `Warnings: ${logInfo.warningCount}\n` +
       (logInfo.orphanedDescriptorCount > 0 ? `Orphaned Face Descriptors: ${logInfo.orphanedDescriptorCount}\n` : '') +
+      (logInfo.unreferencedPersonCount > 0 ? `Unreferenced Persons: ${logInfo.unreferencedPersonCount}\n` : '') +
       `\nLog file saved to:\n${logInfo.filename}`;
     
-    // Build buttons array - include cleanup button only if orphans exist
+    // Build buttons array - include cleanup buttons only if needed
     const buttons = ['OK', 'Open Log File'];
+    let orphanedDescButtonIndex = -1;
+    let unreferencedPersonsButtonIndex = -1;
+    
     if (logInfo.orphanedDescriptorCount > 0) {
+      orphanedDescButtonIndex = buttons.length;
       buttons.push('Cleanup Orphaned Descriptors');
+    }
+    if (logInfo.unreferencedPersonCount > 0) {
+      unreferencedPersonsButtonIndex = buttons.length;
+      buttons.push('Cleanup Unreferenced Persons');
     }
     
     const response = await dialog.showMessageBox(mainWindow, {
@@ -678,9 +734,12 @@ async function validateDatabase() {
     if (response.response === 1) {
       // Open Log File
       shell.openPath(logInfo.path);
-    } else if (response.response === 2 && logInfo.orphanedDescriptorCount > 0) {
+    } else if (response.response === orphanedDescButtonIndex && orphanedDescButtonIndex !== -1) {
       // Cleanup Orphaned Descriptors
       await cleanupOrphanedDescriptors();
+    } else if (response.response === unreferencedPersonsButtonIndex && unreferencedPersonsButtonIndex !== -1) {
+      // Cleanup Unreferenced Persons
+      await cleanupUnreferencedPersons();
     }
   } catch (error) {
     console.error('Validation error:', error);
@@ -742,6 +801,472 @@ async function cleanupOrphanedDescriptors() {
     dialog.showErrorBox('Cleanup Error', `Failed to cleanup orphaned descriptors: ${error.message}`);
   }
 } // cleanupOrphanedDescriptors
+
+async function cleanupUnreferencedPersons() {
+  try {
+    verifyAccessions();
+    
+    // Backup archive before cleanup
+    const backupResult = accessionClass.backupAccessions();
+    if (!backupResult.success) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Backup Failed',
+        message: 'Cannot proceed with cleanup',
+        detail: `Failed to backup archive: ${backupResult.error}\n\nOperation aborted to protect data integrity.`,
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    const result = accessionClass.cleanupUnreferencedPersons();
+    
+    const message = result.totalRemoved > 0
+      ? `Successfully removed ${result.totalRemoved} unreferenced person(s).`
+      : `No unreferenced persons found to cleanup.`;
+    
+    let detail = result.totalRemoved > 0
+      ? `The following persons were not referenced in any items and have been removed:\n\n`
+      : undefined;
+    
+    if (detail && result.removedPersons) {
+      const names = result.removedPersons.map(p => `  • ${p.name}`).join('\n');
+      detail += names;
+    }
+    
+    await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Cleanup Complete',
+      message: message,
+      detail: detail,
+      buttons: ['OK']
+    });
+    
+    // Optionally re-run validation to confirm cleanup
+    if (result.totalRemoved > 0) {
+      const revalidate = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: 'Re-run Validation?',
+        message: 'Would you like to re-run validation to confirm the unreferenced persons were removed?',
+        buttons: ['Yes', 'No'],
+        defaultId: 0
+      });
+      
+      if (revalidate.response === 0) {
+        await validateDatabase();
+      }
+    }
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    dialog.showErrorBox('Cleanup Error', `Failed to cleanup unreferenced persons: ${error.message}`);
+  }
+} // cleanupUnreferencedPersons
+
+async function importPersonsFromArchive() {
+  try {
+    verifyAccessions();
+    
+    // Open file picker for source accessions.json
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Source Archive',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Accessions JSON', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      message: 'Select the accessions.json file to import persons from'
+    });
+    
+    if (result.canceled || result.filePaths.length === 0) {
+      return;
+    }
+    
+    const sourceFilePath = result.filePaths[0];
+    
+    // Prevent importing from the same archive
+    if (path.resolve(sourceFilePath) === path.resolve(accessionClass.accessionFilename)) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Invalid Source',
+        message: 'Cannot import from the same archive',
+        detail: 'You cannot import persons from the currently open archive. Please select a different archive file.',
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    // Read and parse source file to show preview
+    let sourceData;
+    try {
+      const fileContent = await fs.promises.readFile(sourceFilePath, 'utf8');
+      sourceData = JSON.parse(fileContent);
+    } catch (error) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Invalid File',
+        message: 'Failed to read source file',
+        detail: error.message,
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    if (!sourceData.persons || typeof sourceData.persons !== 'object') {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Invalid File',
+        message: 'Source file does not contain a valid persons object',
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    const sourcePersonCount = Object.keys(sourceData.persons).length;
+    const sourceArchiveTitle = sourceData.accessions?.title || 'Unknown Archive';
+    
+    // Show preview/confirmation dialog
+    const confirmation = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      title: 'Import Persons',
+      message: `Import Person Library from:\n${sourceArchiveTitle}`,
+      detail: `Source file: ${path.basename(sourceFilePath)}\nPersons in source: ${sourcePersonCount}\n\nOptions:`,
+      buttons: ['Cancel', 'Import (Strip Face Descriptors)', 'Import (Include Face Descriptors)'],
+      defaultId: 1,
+      cancelId: 0,
+      checkboxLabel: 'Create backup before import',
+      checkboxChecked: true
+    });
+    
+    if (confirmation.response === 0) {
+      return; // Canceled
+    }
+    
+    const includeFaceDescriptors = confirmation.response === 2;
+    const createBackup = confirmation.checkboxChecked;
+    
+    // Backup if requested
+    if (createBackup) {
+      const backupResult = accessionClass.backupAccessions();
+      if (!backupResult.success) {
+        await dialog.showMessageBox(mainWindow, {
+          type: 'error',
+          title: 'Backup Failed',
+          message: 'Cannot proceed with import',
+          detail: `Failed to backup archive: ${backupResult.error}\n\nOperation aborted to protect data integrity.`,
+          buttons: ['OK']
+        });
+        return;
+      }
+    }
+    
+    // Perform import using AccessionClass method
+    const importResult = accessionClass.importPersonsFromArchive(
+      sourceData.persons,
+      { includeFaceDescriptors }
+    );
+    
+    // Show results
+    const {
+      imported = [],
+      skipped = [],
+      tmgidConflicts = [],
+      uuidCollisions = []
+    } = importResult;
+    
+    let message = `Import complete!\n\n`;
+    message += `Persons imported: ${imported.length}\n`;
+    message += `Persons skipped (already exist): ${skipped.length}\n`;
+    
+    if (uuidCollisions.length > 0) {
+      message += `\n⚠️ UUID collisions detected: ${uuidCollisions.length}\n`;
+      message += `(Same UUID but different person data - requires manual resolution)\n`;
+    }
+    
+    if (tmgidConflicts.length > 0) {
+      message += `\n⚠️ TMGID conflicts detected: ${tmgidConflicts.length}\n`;
+      message += `(Different persons with same TMGID - run Archive > Validate to review)\n`;
+    }
+    
+    const buttons = ['OK'];
+    let detailText = '';
+    
+    if (imported.length > 0 && imported.length <= 20) {
+      detailText += 'Imported persons:\n';
+      detailText += imported.map(p => `  • ${p.name}`).join('\n');
+    } else if (imported.length > 20) {
+      detailText += `Imported ${imported.length} persons (too many to list)`;
+    }
+    
+    if (uuidCollisions.length > 0) {
+      buttons.push('Show UUID Collisions');
+    }
+    
+    if (tmgidConflicts.length > 0) {
+      buttons.push('Run Validation');
+    }
+    
+    const response = await dialog.showMessageBox(mainWindow, {
+      type: uuidCollisions.length > 0 ? 'warning' : 'info',
+      title: 'Import Complete',
+      message: message,
+      detail: detailText || undefined,
+      buttons: buttons
+    });
+    
+    // Handle button responses
+    if (response.response === buttons.indexOf('Show UUID Collisions')) {
+      let collisionDetail = 'UUID Collisions (Manual Resolution Required):\n\n';
+      uuidCollisions.forEach((collision, index) => {
+        collisionDetail += `${index + 1}. UUID: ${collision.personID}\n`;
+        collisionDetail += `   Source: ${collision.sourceName}\n`;
+        collisionDetail += `   Target: ${collision.targetName}\n\n`;
+      });
+      collisionDetail += 'These persons have the same UUID but different data.\n';
+      collisionDetail += 'You may need to manually adjust UUIDs or merge data.';
+      
+      await dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'UUID Collisions',
+        message: collisionDetail,
+        buttons: ['OK']
+      });
+    } else if (response.response === buttons.indexOf('Run Validation')) {
+      await validateDatabase();
+    }
+    
+  } catch (error) {
+    console.error('Import persons error:', error);
+    dialog.showErrorBox('Import Error', `Failed to import persons: ${error.message}`);
+  }
+} // importPersonsFromArchive
+
+async function importArchive(providedSourceFilePath = null, providedSourceData = null) {
+  try {
+    verifyAccessions();
+    
+    let sourceFilePath = providedSourceFilePath;
+    let sourceData = providedSourceData;
+    
+    // Open file picker for source accessions.json only if not already provided
+    if (!sourceFilePath) {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Source Archive',
+        properties: ['openFile'],
+        filters: [
+          { name: 'Accessions JSON', extensions: ['json'] },
+          { name: 'All Files', extensions: ['*'] }
+        ],
+        message: 'Select the accessions.json file to import from'
+      });
+      
+      if (result.canceled || result.filePaths.length === 0) {
+        return;
+      }
+      
+      sourceFilePath = result.filePaths[0];
+    }
+    
+    // Prevent importing from the same archive
+    if (path.resolve(sourceFilePath) === path.resolve(accessionClass.accessionFilename)) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Invalid Source',
+        message: 'Cannot import from the same archive',
+        detail: 'You cannot import from the currently open archive. Please select a different archive file.',
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    // Read and parse source file to show preview (only if not already provided)
+    if (!sourceData) {
+      try {
+        const fileContent = await fs.promises.readFile(sourceFilePath, 'utf8');
+        sourceData = JSON.parse(fileContent);
+      } catch (error) {
+        await dialog.showMessageBox(mainWindow, {
+          type: 'error',
+          title: 'Invalid File',
+          message: 'Failed to read source file',
+          detail: error.message,
+          buttons: ['OK']
+        });
+        return;
+      }
+    }
+    
+    if (!sourceData.persons || !sourceData.accessions) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Invalid File',
+        message: 'Source file does not contain a valid archive structure',
+        detail: 'The file must contain both "persons" and "accessions" sections.',
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    const sourcePersonCount = Object.keys(sourceData.persons).length;
+    const sourceItemCount = sourceData.accessions.item?.length || 0;
+    const sourceArchiveTitle = sourceData.accessions?.title || 'Unknown Archive';
+    
+    // Check if _ImportConflicts collection already exists
+    if (accessionClass.accessionJSON.collections && accessionClass.accessionJSON.collections['_ImportConflicts']) {
+      const confirmReplace = await dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Conflict Collection Exists',
+        message: 'The "_ImportConflicts" collection already exists in this archive.',
+        detail: 'Import will replace this collection with new conflict data. Do you want to continue?',
+        buttons: ['Cancel', 'Continue Import'],
+        defaultId: 0,
+        cancelId: 0
+      });
+      
+      if (confirmReplace.response === 0) {
+        return;
+      }
+    }
+    
+    // Show preview/confirmation dialog with dry-run option (only if doing initial selection)
+    let dryRun = false;
+    let hashVerification = true;
+    
+    if (!providedSourceFilePath) {
+      const confirmation = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: 'Import Archive',
+        message: `Import Archive from:\n${sourceArchiveTitle}`,
+        detail: `Source file: ${path.basename(sourceFilePath)}\nPersons in source: ${sourcePersonCount}\nItems in source: ${sourceItemCount}\n\n⚠️  TIP: Consider running as dry-run first to preview conflicts.\n\nBackup will be created automatically before import.`,
+        buttons: ['Cancel', 'Import (Full)', 'Dry Run (Preview Only)'],
+        defaultId: 2,
+        cancelId: 0,
+        checkboxLabel: 'Hash verification (slower but thorough)',
+        checkboxChecked: true
+      });
+      
+      if (confirmation.response === 0) {
+        return; // Canceled
+      }
+      
+      dryRun = confirmation.response === 2;
+      hashVerification = confirmation.checkboxChecked;
+    }
+    // If source was provided, we're doing a full import (not a dry run)
+    
+    // Backup if not dry run (mandatory)
+    if (!dryRun) {
+      const backupResult = accessionClass.backupAccessions();
+      if (!backupResult.success) {
+        await dialog.showMessageBox(mainWindow, {
+          type: 'error',
+          title: 'Backup Failed',
+          message: 'Cannot proceed with import',
+          detail: `Failed to backup archive: ${backupResult.error}\n\nOperation aborted to protect data integrity.`,
+          buttons: ['OK']
+        });
+        return;
+      }
+    }
+    
+    // Perform import using AccessionClass method
+    const executeResult = await accessionClass.importArchive(
+      sourceData,
+      sourceFilePath,
+      {
+        dryRun: dryRun,
+        hashVerification: hashVerification
+      }
+    );
+    
+    const importResult = {
+      success: true,
+      results: executeResult.results,
+      logContent: executeResult.logContent
+    };
+    
+    if (!importResult || !importResult.success) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Import Failed',
+        message: 'Failed to import archive',
+        detail: importResult?.error || 'Unknown error occurred',
+        buttons: ['OK']
+      });
+      return;
+    }
+    
+    // Save log file
+    const timestamp = generateTimestamp();
+    const logFileName = `import-log-${timestamp}.txt`;
+    const logFilePath = path.join(path.dirname(accessionClass.accessionFilename), logFileName);
+    
+    try {
+      await fs.promises.writeFile(logFilePath, importResult.logContent, 'utf8');
+    } catch (error) {
+      console.error('Failed to write log file:', error);
+    }
+    
+    // Show results
+    const {
+      persons = { imported: [], skipped: [], conflicts: [] },
+      items = { imported: [], skipped: [], conflicts: [], filesRestored: [] },
+      files = { verified: [], sizeMismatches: [], hashMismatches: [], symlinkDetected: false }
+    } = importResult.results;
+    
+    const totalPersonConflicts = persons.conflicts.length;
+    const totalItemConflicts = items.conflicts.length;
+    const totalConflicts = totalPersonConflicts + totalItemConflicts;
+    
+    let message = dryRun ? 'Dry Run Complete (No Changes Made)\n\n' : 'Import Complete!\n\n';
+    message += `Persons: ${persons.imported.length} imported, ${persons.skipped.length} skipped\n`;
+    message += `Items: ${items.imported.length} imported, ${items.skipped.length} skipped\n`;
+    
+    if (items.filesRestored && items.filesRestored.length > 0 && !dryRun) {
+      message += `\n✓ ${items.filesRestored.length} missing file(s) restored from source\n`;
+    }
+    
+    if (totalConflicts > 0) {
+      message += `\n⚠️  Conflicts detected: ${totalConflicts} total\n`;
+      message += `   - Person conflicts: ${totalPersonConflicts}\n`;
+      message += `   - Item conflicts: ${totalItemConflicts}\n`;
+      if (!dryRun) {
+        message += `\n"_ImportConflicts" collection created for review.\n`;
+      }
+    }
+    
+    if (files.symlinkDetected) {
+      message += `\n⚠️  Symlinks detected in resource directories.\n`;
+    }
+    
+    const buttons = ['OK'];
+    if (totalConflicts > 0) {
+      buttons.push('Open Import Log');
+    }
+    if (dryRun && totalConflicts === 0) {
+      buttons.push('Proceed with Full Import');
+    }
+    
+    const response = await dialog.showMessageBox(mainWindow, {
+      type: totalConflicts > 0 ? 'warning' : 'info',
+      title: dryRun ? 'Dry Run Complete' : 'Import Complete',
+      message: message,
+      detail: `Log file: ${logFileName}`,
+      buttons: buttons
+    });
+    
+    // Handle button responses
+    if (response.response === buttons.indexOf('Open Import Log')) {
+      shell.openPath(logFilePath);
+    } else if (response.response === buttons.indexOf('Proceed with Full Import')) {
+      // Call importArchive again with the same source, but as full import
+      await importArchive(sourceFilePath, sourceData);
+    }
+    
+  } catch (error) {
+    console.error('Import archive error:', error);
+    dialog.showErrorBox('Import Error', `Failed to import archive: ${error.message}`);
+  }
+} // importArchive
 
 async function validateCollection() {
   try {
@@ -1362,7 +1887,9 @@ function createMenu() {
     intersectWithCollection,
     addAllItemsToCollection,
     createBulkEditItemsWindow: createUpdateCollectionWindow, // Alias for now
-    editMediaFromMenu
+    editMediaFromMenu,
+    importPersonsFromArchive,
+    importArchive
   });
 } // createMenu
 
