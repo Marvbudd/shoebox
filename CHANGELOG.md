@@ -56,9 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed Media Manager queue navigation showing videos with face detection UI. When working with photos (face detection active), Previous/Next/Save and Next buttons now automatically skip non-photo items to maintain workflow focus. Shows "No more photos in queue" message when reaching the end.
 - Fixed Media Manager Add Person UX: newly added person row now automatically scrolls into view with smooth animation for better visibility when list contains many people.
 
-### Updated
-- Updated Electron from 40.7.0 to 41.0.3
-
 ## [3.0.12] - 2026-03-01
 
 ### Fixed
