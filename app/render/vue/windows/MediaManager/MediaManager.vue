@@ -950,9 +950,17 @@ const getStateAbbreviation = (stateName) => {
   return stateMap[stateName.toLowerCase()] || null;
 };
 
-const addPerson = () => {
+const addPerson = async () => {
   try {
     item.value.person.push({ personID: '', position: '' });
+    
+    // Scroll the newly added person into view
+    await nextTick();
+    const personRows = document.querySelectorAll('.person-face-row');
+    if (personRows.length > 0) {
+      const lastRow = personRows[personRows.length - 1];
+      lastRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   } catch (err) {
     console.error('Error adding person:', err);
   }
