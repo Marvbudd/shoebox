@@ -22,6 +22,7 @@ jobs:
     env:
       YARN_ENABLE_IMMUTABLE_INSTALLS: "false"
       YARN_ENABLE_SCRIPTS: "false"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -31,7 +32,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: yarn
 
       - name: Setup Pages
@@ -55,6 +56,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     name: Deploy
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
