@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-03-20
+
 ### Added
 - **Import Persons from Archive** feature (Archive > Import Persons from Archive...). Import person library from another archive while preserving UUIDs for person identity consistency across multiple archives. Features include:
   - UUID-strict matching: Automatically skips persons already in target archive
@@ -52,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed "Add All Archive Items" preview showing zero items to add. Preview now correctly compares all archive items against target collection to show accurate count of items to be added and items already in collection.
 - Fixed "Save and Next" button in Media Manager bypassing unassigned faces validation. Now shows same confirmation dialog as regular Save when unmatched faces are detected.
 - Fixed Media Manager queue navigation showing videos with face detection UI. When working with photos (face detection active), Previous/Next/Save and Next buttons now automatically skip non-photo items to maintain workflow focus. Shows "No more photos in queue" message when reaching the end.
+- Fixed Media Manager Add Person UX: newly added person row now automatically scrolls into view with smooth animation for better visibility when list contains many people.
+
+### Updated
+- Updated Electron from 40.7.0 to 41.0.3
 
 ## [3.0.12] - 2026-03-01
 
