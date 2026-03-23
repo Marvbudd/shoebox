@@ -7,14 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.2] - 2026-03-23
+
+### Fixed
+- **Unsupported video codec detection**: Media Player now detects and displays a user-friendly error overlay when attempting to play videos encoded with unsupported codecs (such as HEVC/H.265)
+  - Error overlay appears within the preview area when codec is not supported by Chromium
+  - Detection works by checking for videos with no dimensions but valid duration
+  - Chromium/Electron only supports H.264 video codec (HEVC/H.265 not supported due to patent licensing)
+  - Users can convert unsupported videos to H.264 before adding to archive
+- **Linux VAAPI errors**: Disabled hardware-accelerated video decoding to prevent VAAPI initialization errors on Linux systems
+  - Prevents console errors about libva and VAAPI driver initialization failures
+  - Video playback now uses software decoding (minimal performance impact on modern systems)
+
 ## [3.1.1] - 2026-03-23
 
 ### Fixed
-- **Windows symlink support**: Fixed media display issues on Windows when using symlinked photo/video/audio directories. Changed file URL construction to use Node.js `pathToFileURL()` instead of manual string concatenation, which properly handles Windows backslashes and follows symlinks. Affects:
-  - Media Manager preview display (was showing broken images)
-  - Main window media display (now more efficient, no longer base64-encodes photos)
-  - Collection Set Operations window loading
-  - All audio and video playback on Windows with symlinked directories
+- **Windows symlink support**: Fixed media display issues on Windows when using symlinked photo/video/audio directories:
+  - Media Manager now displays all media types correctly on Windows with symlinks
+  - Implemented custom `media://` protocol handler for secure audio/video streaming
+  - Photos use base64 encoding (efficient for small files in sandboxed renderer)
+  - Audio/Video use custom protocol (supports streaming, proper MIME types, no size limits)
+  - Fixed MOV file playback with correct `video/quicktime` MIME type
+  - Main window continues to use base64 for photos, file paths for audio/video
+
+### Changed
+- Moved utility scripts from main Shoebox repository to separate [shoebox-utilities](https://github.com/Marvbudd/shoebox-utilities) repository
+- Updated documentation for source person tracking format
 
 ## [3.1.0] - 2026-03-20
 

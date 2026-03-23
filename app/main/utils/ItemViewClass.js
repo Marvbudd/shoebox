@@ -1,7 +1,6 @@
 import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
-import url from 'url';
 import { AppendString } from './AppendString.js';
 import { formatLastName, formatPersonName } from '../../shared/personHelpers.js';
 import { fileURLToPath } from 'url'
@@ -235,13 +234,12 @@ export class ItemViewClass {
     if (this.itemJSON) {
       viewObject.link = this.getLink();
       mediaPath = this.accessionClass.getMediaPath(this.itemJSON.type, viewObject.link);
-      // Use pathToFileURL for proper Windows and symlink handling
-      const mediaUrl = url.pathToFileURL(mediaPath).href;
       switch (this.itemJSON.type) {
         case 'photo':
           try {
-            // Use file URL directly instead of base64 encoding for better performance
-            viewObject.mediaTag = `<a target="_blank" href="${mediaUrl}"><img id="previewImg" alt="The Photo" src="${mediaUrl}" /></a>`;
+            const data = fs.readFileSync(mediaPath);
+            const imgEncoded = data.toString('base64');
+            viewObject.mediaTag = `<a target="_blank" href="${mediaPath}"><img id="previewImg" alt="The Photo" src="data:image/jpg;base64,${imgEncoded}" /></a>`;
             
             // Add face tags data for photos
             viewObject.faceTags = this.getFaceRegionsData();
@@ -250,10 +248,10 @@ export class ItemViewClass {
           }
           break;
         case 'audio':
-          viewObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaUrl}" type="audio/mp3" /></audio>`;
+          viewObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`;
           break;
         case 'video':
-          viewObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaUrl}" type="video/mp4" /></video>`;
+          viewObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`;
           break;
       }
       viewObject.descDetail = this.showNodeDescription();

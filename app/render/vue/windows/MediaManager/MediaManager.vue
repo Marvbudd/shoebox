@@ -414,7 +414,7 @@
           <!-- Media Preview -->
           <div v-if="mediaPreviewPath || item.type === 'photo'" class="preview-section">
             <div class="preview-and-controls">
-              <div class="preview-container" :style="{ position: 'relative', display: 'inline-block' }">
+              <div class="preview-container">
                 <img 
                   v-if="item.type === 'photo'" 
                   ref="imageElement"
@@ -428,10 +428,13 @@
                 />
                 <video 
                   v-else-if="item.type === 'video'" 
+                  ref="videoElement"
                   :src="mediaPreviewPath" 
                   controls 
                   class="media-preview"
                   @click="openMediaInWindow"
+                  @error="videoError = true"
+                  @loadedmetadata="checkVideoLoaded"
                   style="cursor: pointer;"
                   title="Click to open in external window"
                 ></video>
@@ -441,9 +444,31 @@
                   controls 
                   class="media-preview"
                   @click="openMediaInWindow"
+                  @error="videoError = true"
+                  @loadeddata="videoError = false"
                   style="cursor: pointer;"
                   title="Click to open in external window"
                 ></audio>
+                
+                <!-- Unsupported format overlay -->
+                <div v-if="videoError && (item.type === 'video' || item.type === 'audio')" class="format-error-overlay">
+                  <div class="format-error-content">
+                    <div class="format-error-icon">⚠️</div>
+                    <div class="format-error-title">Format Not Supported</div>
+                    <div class="format-error-message">
+                      This {{ item.type }} format ({{ item.link.split('.').pop().toUpperCase() }}) 
+                      cannot be played in the browser.
+                      <br>
+                      Common unsupported formats: HEVC/H.265 video, some MOV codecs.
+                    </div>
+                    <button @click="openMediaInWindow" class="btn-open-external" type="button">
+                      Open in External Player
+                    </button>
+                    <div class="format-error-hint">
+                      Or click anywhere on the preview above
+                    </div>
+                  </div>
+                </div>
                 
                 <!-- Face overlay canvas (only for photos) -->
                 <canvas 
@@ -752,6 +777,8 @@ const error = ref(null);
 const statusMessage = ref(null);
 const isMounted = ref(true);
 const mediaPreviewPath = ref(null);
+const videoError = ref(false); // Track if video/audio failed to load
+const videoElement = ref(null); // Reference to video element
 
 // Queue navigation state
 const queueData = ref(null); // { collectionKey, collectionText, queue: [...links] }
@@ -774,6 +801,8 @@ const detectingFaces = ref(false);
 const showFaceOverlays = ref(false);
 const faceDetectionStatus = ref('');
 const imageDimensions = ref({ width: 0, height: 0 });
+
+
 
 // Face detection advanced settings
 const showAdvancedSettings = ref(false);
@@ -1247,10 +1276,32 @@ const onImageLoad = () => {
   }
 };
 
+// Check if video has valid video track (not audio-only)
+const checkVideoLoaded = (event) => {
+  const videoEl = event.target;
+  // If video has no dimensions but has duration, it's audio-only (unsupported video codec)
+  if (item.value.type === 'video' && videoEl.videoWidth === 0 && videoEl.videoHeight === 0 && videoEl.duration > 0) {
+    videoError.value = true;
+  } else {
+    videoError.value = false;
+  }
+};
+
 // Open media in external window
-const openMediaInWindow = () => {
-  if (mediaPreviewPath.value) {
-    window.open(mediaPreviewPath.value, '_blank');
+const openMediaInWindow = async () => {
+  if (item.value.type && item.value.link) {
+    try {
+      const result = await window.electronAPI.openMediaExternal(item.value.type, item.value.link);
+      if (!result.success) {
+        console.error('Failed to open file:', result.error);
+        statusMessage.value = { type: 'error', text: 'Failed to open file: ' + result.error };
+        setTimeout(() => { statusMessage.value = null; }, 3000);
+      }
+    } catch (error) {
+      console.error('Error opening file:', error);
+      statusMessage.value = { type: 'error', text: 'Error opening file: ' + error.message };
+      setTimeout(() => { statusMessage.value = null; }, 3000);
+    }
   }
 };
 
@@ -1281,11 +1332,8 @@ const loadExistingFaceBioData = async () => {
     }
     
     if (facesData.length === 0) {
-      console.log('[FACE LOAD] No existing faceBioData found');
       return;
     }
-    
-    console.log('[FACE LOAD] Found faceBioData for', facesData.length, 'person(s)');
     
     // Determine which model to use (prefer most common)
     const modelCounts = {};
@@ -1304,8 +1352,6 @@ const loadExistingFaceBioData = async () => {
         selectedModel = model;
       }
     });
-    
-    console.log('[FACE LOAD] Using model:', selectedModel, 'Model counts:', modelCounts);
     
     // Reconstruct detectedFaces and matchedFaces
     const loadedDetectedFaces = [];
@@ -1346,8 +1392,6 @@ const loadExistingFaceBioData = async () => {
       
       const modelName = availableModels.value.find(m => m.key === selectedModel)?.name || selectedModel;
       faceDetectionStatus.value = `Loaded ${loadedDetectedFaces.length} ${loadedDetectedFaces.length === 1 ? 'face' : 'faces'} (${modelName})`;
-      
-      console.log('[FACE LOAD] Successfully loaded', loadedDetectedFaces.length, 'face(s)');
       
       // Draw overlays after a short delay to ensure image is rendered
       setTimeout(() => {
@@ -1959,7 +2003,6 @@ const autoAssignUnmatchedFaces = async () => {
       // Skip if this face is already assigned to another person
       const faceAlreadySelected = Object.values(faceAssignments.value).includes(faceIndex);
       if (faceAlreadySelected) {
-        console.log(`[AUTO-ASSIGN] Face #${faceIndex + 1}: Skipping ${match.first} ${match.last} (${match.confidence}%) - face already assigned to someone else`);
         continue;
       }
       
@@ -1972,7 +2015,6 @@ const autoAssignUnmatchedFaces = async () => {
         
         if (!existingPhase2Match) {
           // Person was in photo before Phase 2 started (Phase 1 match) - never touch these
-          console.log(`[AUTO-ASSIGN] Face #${faceIndex + 1}: Skipping ${match.first} ${match.last} (${match.confidence}%) - matched in Phase 1`);
           continue;
         }
         
@@ -1980,7 +2022,6 @@ const autoAssignUnmatchedFaces = async () => {
         if (match.confidence > existingPhase2Match.confidence) {
           // New match is better! Replace the old assignment
           const oldFaceIndex = existingPhase2Match.faceIndex;
-          console.log(`[AUTO-UPGRADE] Face #${faceIndex + 1}: Upgrading ${match.first} ${match.last} from ${existingPhase2Match.confidence}% (Face #${oldFaceIndex + 1}) to ${match.confidence}%`);
           
           // Unassign old face (becomes available again)
           delete faceAssignments.value[match.personID];
@@ -1996,13 +2037,11 @@ const autoAssignUnmatchedFaces = async () => {
           break;
         } else {
           // Existing match is better - skip
-          console.log(`[AUTO-ASSIGN] Face #${faceIndex + 1}: Skipping ${match.first} ${match.last} (${match.confidence}%) - existing Phase 2 match is better (${existingPhase2Match.confidence}%)`);
           continue;
         }
       }
       
       // Found a new match without conflicts - use it
-      console.log(`[AUTO-SELECT] Face #${faceIndex + 1}: ${match.first} ${match.last} (${match.confidence}%)`);
       
       // Add person to photo (we already verified they're not in it)
       const newPerson = {
@@ -2021,11 +2060,6 @@ const autoAssignUnmatchedFaces = async () => {
       selectedCount++;
       assignedThisFace = true;
       break; // Successfully assigned this face, move to next face
-    }
-    
-    if (!assignedThisFace && matches.length > 0 && matches[0].distance <= distanceThreshold) {
-      // Had good matches but all already have faces assigned
-      console.log(`[AUTO-SELECT] Face #${faceIndex + 1}: All matches already have faces assigned/selected`);
     }
   }
   
@@ -2107,18 +2141,14 @@ const closeSimilaritySearch = () => {
 
 // Open reference photo in system default viewer
 const openReferencePhoto = async (link) => {
-  console.log('[REFERENCE PHOTO] Opening reference photo for link:', link);
-  
   // Don't show messages if component has been unmounted
   if (!isMounted.value) {
-    console.log('[REFERENCE PHOTO] Component unmounted, skipping');
     return;
   }
   
   try {
     // Get the full file path for the photo
     const filePath = await window.electronAPI.getMediaPath('photo', link);
-    console.log('[REFERENCE PHOTO] File path:', filePath);
     
     // Open in system default viewer
     const result = await window.electronAPI.openFile(filePath);
@@ -2129,8 +2159,6 @@ const openReferencePhoto = async (link) => {
       setTimeout(() => {
         if (isMounted.value) statusMessage.value = null;
       }, 3000);
-    } else {
-      console.log('[REFERENCE PHOTO] File opened successfully');
     }
   } catch (error) {
     console.error('[REFERENCE PHOTO] Error opening reference photo:', error);
@@ -2614,9 +2642,6 @@ watch(item, () => {
 }, { deep: true });
 
 onMounted(async () => {
-  const mountStart = performance.now();
-  console.log('[TIMING] MediaManager onMounted started');
-  
   try {
     // Get item identifier and queue data from query string
     const urlParams = new URLSearchParams(window.location.search);
@@ -2643,8 +2668,6 @@ onMounted(async () => {
     }
     
     // Load persons and audio/video items in parallel
-    console.log('[TIMING] Starting persons and audio/video load');
-    const personsLoadStart = performance.now();
     const [loadedPersons, loadedAudioVideo, savedConfidenceThreshold, savedAutoAssignThreshold] = await Promise.all([
       window.electronAPI.getExistingPersons(),
       window.electronAPI.getAudioVideoItems(),
@@ -2659,7 +2682,6 @@ onMounted(async () => {
     if (savedAutoAssignThreshold !== undefined) {
       autoAssignThreshold.value = savedAutoAssignThreshold;
     };
-    console.log('[TIMING] Persons and audio/video loaded in:', (performance.now() - personsLoadStart).toFixed(2), 'ms');
     
     // Expand persons so each appears once per last name (matches nav column behavior)
     persons.value = expandPersonsByLastName(loadedPersons);
@@ -2669,7 +2691,6 @@ onMounted(async () => {
     
     // Listen for person saved events to refresh the persons list
     window.electronAPI.onPersonSaved(async () => {
-      console.log('Person saved event received, refreshing persons list');
       const refreshedPersons = await window.electronAPI.getExistingPersons();
       // Expand persons so each appears once per last name (matches nav column behavior)
       persons.value = expandPersonsByLastName(refreshedPersons);
@@ -2678,7 +2699,6 @@ onMounted(async () => {
     
     // Listen for person selection from Person Manager
     window.electronAPI.onPersonSelected((personID) => {
-      console.log('Person selected from Person Manager:', personID);
       if (personSelectionIndex.value !== null && item.value.person[personSelectionIndex.value]) {
         // Set the selected person for the entry
         item.value.person[personSelectionIndex.value].personID = personID;
@@ -2710,12 +2730,8 @@ onMounted(async () => {
       window.location.search = searchParams;
     });
     
-    console.log('[TIMING] Starting item load for:', identifier);
-    const itemLoadStart = performance.now();
-    
     // Load the item
     const loadedItem = await window.electronAPI.loadItem(identifier);
-    console.log('[TIMING] Item loaded in:', (performance.now() - itemLoadStart).toFixed(2), 'ms');
     
     if (!loadedItem) {
       error.value = 'Item not found';
@@ -2744,18 +2760,13 @@ onMounted(async () => {
     
     // Get media preview path
     if (item.value.type && item.value.link) {
-      console.log('[TIMING] Starting media path load');
-      const mediaStart = performance.now();
       mediaPreviewPath.value = await window.electronAPI.getMediaPath(item.value.type, item.value.link);
-      console.log('[TIMING] Media path loaded in:', (performance.now() - mediaStart).toFixed(2), 'ms');
+      videoError.value = false; // Reset error state for new media
     }
     
     // Load available face detection models and pre-select based on prior usage
     if (item.value.type === 'photo') {
-      console.log('[TIMING] Starting models load');
-      const modelsStart = performance.now();
       const modelsResult = await window.electronAPI.getFaceDetectionModels();
-      console.log('[TIMING] Models loaded in:', (performance.now() - modelsStart).toFixed(2), 'ms');
       
       if (modelsResult.success) {
         availableModels.value = modelsResult.models;
@@ -2764,10 +2775,7 @@ onMounted(async () => {
       // Pre-select model based on prior descriptors for this link
       if (item.value.link) {
         try {
-          console.log('[TIMING] Starting descriptors load for link:', item.value.link);
-          const descriptorsStart = performance.now();
           const descriptors = await window.electronAPI.getDescriptorsForLink(item.value.link);
-          console.log('[TIMING] Descriptors loaded in:', (performance.now() - descriptorsStart).toFixed(2), 'ms', 'Found:', descriptors?.length || 0);
           if (descriptors && descriptors.length > 0) {
             // Count model usage for this link
             const modelCounts = {};
@@ -2775,8 +2783,6 @@ onMounted(async () => {
               const model = desc.model || 'ssd';
               modelCounts[model] = (modelCounts[model] || 0) + 1;
             });
-            
-            console.log('[MODEL PRE-SELECT] Model counts for this link:', modelCounts);
             
             // Find most common model
             let maxCount = 0;
@@ -2788,16 +2794,10 @@ onMounted(async () => {
               }
             });
             
-            console.log('[MODEL PRE-SELECT] Most common model:', mostCommonModel, 'with', maxCount, 'descriptors');
-            console.log('[MODEL PRE-SELECT] Available models:', availableModels.value);
-            
             // Pre-select the most common model if it's available
             const modelAvailable = availableModels.value.find(m => m.key === mostCommonModel && m.available);
             if (modelAvailable) {
               selectedModels.value = [mostCommonModel];
-              console.log(`[MODEL PRE-SELECT] Pre-selected model ${mostCommonModel} based on ${maxCount} prior descriptor(s) for this photo`);
-            } else {
-              console.log('[MODEL PRE-SELECT] Could not pre-select model - model not available or not loaded');
             }
           }
         } catch (err) {
@@ -2815,10 +2815,8 @@ onMounted(async () => {
       }, 200);
     }
     
-    console.log('[TIMING] MediaManager total onMounted time:', (performance.now() - mountStart).toFixed(2), 'ms');
     loading.value = false;
   } catch (err) {
-    console.log('[TIMING] MediaManager onMounted error after:', (performance.now() - mountStart).toFixed(2), 'ms');
     error.value = err.message;
     loading.value = false;
   }
@@ -3012,6 +3010,7 @@ header h1 {
 .preview-container {
   flex-shrink: 0;
   width: 100%;
+  min-height: 350px;
   position: relative;
   display: flex;
   justify-content: center;
@@ -3020,12 +3019,70 @@ header h1 {
 
 .media-preview {
   max-width: 100%;
-  max-height: calc(100vh - 400px);
+  max-height: calc(100vh - 200px);
   width: auto;
   height: auto;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   object-fit: contain;
+}
+
+/* Format error overlay */
+.format-error-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.98);
+  border: 3px solid #ff9800;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  max-width: 90%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+.format-error-icon {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+}
+
+.format-error-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.75rem;
+}
+
+.format-error-message {
+  font-size: 0.9rem;
+  color: #666;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.btn-open-external {
+  background: #ff9800;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.btn-open-external:hover {
+  background: #f57c00;
+}
+
+.format-error-hint {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: #999;
+  font-style: italic;
 }
 
 .form-section {

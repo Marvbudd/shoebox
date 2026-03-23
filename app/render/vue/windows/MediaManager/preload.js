@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveItem: (itemData) => ipcRenderer.invoke('item:save', itemData),
   deleteItem: (link) => ipcRenderer.invoke('item:delete', link),
   openFile: (filePath) => ipcRenderer.invoke('file:open', filePath),
+  openMediaExternal: (type, link) => ipcRenderer.invoke('media:openExternal', type, link),
   getExistingPersons: () => ipcRenderer.invoke('persons:getFromAccessions'),
   getPersonsWithDescriptors: () => ipcRenderer.invoke('persons:getWithDescriptors'),
   getDescriptorsForLink: (link) => ipcRenderer.invoke('persons:getDescriptorsForLink', link),

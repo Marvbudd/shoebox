@@ -11,6 +11,21 @@
     
     <div id="previewDiv" v-html="previewContent"></div>
     
+    <!-- Unsupported format overlay (positioned over preview area) -->
+    <div v-if="videoError" class="format-error-overlay">
+      <div class="format-error-content">
+        <div class="format-error-icon">⚠️</div>
+        <div class="format-error-title">Format Not Supported</div>
+        <div class="format-error-message">
+          This video format cannot be played in the browser.
+          <br>
+          Common unsupported formats: HEVC/H.265 video codec.
+          <br><br>
+          The video needs to be converted to H.264 before archiving.
+        </div>
+      </div>
+    </div>
+    
     <!-- Playback controls (only show when audio/video is present) -->
     <div v-if="hasMediaElement" class="playback-controls">
       <button @click="seekBackward" class="control-btn" title="Go back 10 seconds">⏪ -10s</button>
@@ -30,6 +45,7 @@ const detailContent = ref('');
 const detailsExpanded = ref(false);
 const hasMediaElement = ref(false);
 const currentTimeDisplay = ref('00:00:00.0');
+const videoError = ref(false); // Track if video has unsupported codec
 let mediaElement = null;
 let updateInterval = null;
 let durationTimer = null;  // Store timeout for playlist duration auto-pause
@@ -145,6 +161,28 @@ const handleMediaDisplay = (mediaData) => {
     hasMediaElement.value = !!mediaElement;
     
     if (mediaElement) {
+      // Reset error state for new media
+      videoError.value = false;
+      
+      // Check for unsupported video codec (HEVC)
+      const checkVideoCodec = () => {
+        if (mediaElement.tagName === 'VIDEO') {
+          // If video has no dimensions but has audio/duration, codec is unsupported
+          if (mediaElement.videoWidth === 0 && mediaElement.videoHeight === 0 && mediaElement.duration > 0) {
+            videoError.value = true;
+          } else {
+            videoError.value = false;
+          }
+        }
+      };
+      
+      // Listen for various video events
+      mediaElement.addEventListener('loadedmetadata', checkVideoCodec);
+      mediaElement.addEventListener('canplay', checkVideoCodec);
+      mediaElement.addEventListener('error', () => {
+        videoError.value = true;
+      });
+      
       // Start updating current time display
       updateInterval = setInterval(updateCurrentTime, 100);
       
@@ -392,6 +430,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative; /* For error overlay positioning */
 }
 
 #previewVideo {
@@ -505,5 +544,41 @@ A:link {
 
 A:visited {
   color: Navy;
+}
+
+/* Unsupported format error overlay */
+.format-error-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.98);
+  border: 3px solid #ff9800;
+  border-radius: 12px;
+  padding: 1.5rem;
+  text-align: center;
+  max-width: 90%;
+  max-height: 90%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  overflow: auto;
+}
+
+.format-error-icon {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+}
+
+.format-error-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #d32f2f;
+  margin-bottom: 0.75rem;
+}
+
+.format-error-message {
+  font-size: 0.95rem;
+  color: #333;
+  line-height: 1.5;
 }
 </style>

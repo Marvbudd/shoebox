@@ -9,8 +9,8 @@
  */
 
 import crypto from 'crypto';
+import fs from 'fs';
 import path from 'path';
-import url from 'url';
 import { AccessionClass } from '../../main/utils/AccessionClass.js';
 
 /**
@@ -164,14 +164,26 @@ export function registerAccessionsHandlers(
   });
 
   // Get media file path
+  // Returns base64 data URL for photos (small, need to be loaded completely)
+  // Returns custom protocol URL for audio/video (large, need streaming)
   ipcMain.handle('media:getPath', async (_event, type, link) => {
     try {
       verifyAccessions();
       const accessionClass = getAccessionClass();
       const baseDir = path.dirname(accessionClass.accessionFilename);
       const resourcePath = path.resolve(baseDir, type, link);
-      // Use pathToFileURL for proper Windows and symlink handling
-      return url.pathToFileURL(resourcePath).href;
+      
+     // For photos, use base64 encoding (better for small images in sandboxed renderer)
+      if (type === 'photo') {
+        const data = fs.readFileSync(resourcePath);
+        const encoded = data.toString('base64');
+        return `data:image/jpg;base64,${encoded}`;
+      }
+      
+      // For audio/video, use custom protocol (supports streaming, no size limits)
+      // Format: media://type/filename
+      return `media://${type}/${link}`;
+      
     } catch (error) {
       console.error('Failed to get media path:', error);
       return null;
@@ -196,6 +208,34 @@ export function registerAccessionsHandlers(
       return { success: true };
     } catch (error) {
       console.error('Failed to open file:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Open media file by type and link
+  ipcMain.handle('media:openExternal', async (_event, type, link) => {
+    try {
+      verifyAccessions();
+      const accessionClass = getAccessionClass();
+      const baseDir = path.dirname(accessionClass.accessionFilename);
+      const fullPath = path.resolve(baseDir, type, link);
+      
+      if (!fs.existsSync(fullPath)) {
+        return { success: false, error: 'File not found: ' + fullPath };
+      }
+
+      // shell.openPath returns "" on success, or error message string on failure
+      const result = await shell.openPath(fullPath);
+      
+      if (result) {
+        // Non-empty string means error
+        console.error('Failed to open media file:', result);
+        return { success: false, error: result };
+      }
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to open media file:', error);
       return { success: false, error: error.message };
     }
   });
