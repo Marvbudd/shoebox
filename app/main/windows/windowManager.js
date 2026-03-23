@@ -7,7 +7,7 @@
 import { BrowserWindow, shell } from 'electron';
 import electron from 'electron';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -539,7 +539,9 @@ export function createCollectionSetOperationsWindow(operation, targetCollection,
       operation,
       targetCollection
     });
-    const urlWithParams = `file://${vueDistPath}?${queryParams.toString()}`;
+    // Use pathToFileURL for proper Windows path handling
+    const baseUrl = pathToFileURL(vueDistPath).href;
+    const urlWithParams = `${baseUrl}?${queryParams.toString()}`;
     
     console.log('Loading Collection Set Operations from:', urlWithParams);
     

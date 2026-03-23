@@ -70,7 +70,7 @@ Document the context and stories behind each item.
 - **Dates**: Precise or partial (year, month, day)
 - **Locations**: Multi-level hierarchy (city, state, country)
 - **Descriptions**: Free-text narratives and transcriptions
-- **Sources**: Track how items entered your archive
+- **Sources**: Track who provided items (person with date received)
 - **Safe Cleanup**: Delete orphaned metadata for removed media files and unused person records
 
 [Metadata Guide](./metadata.md)

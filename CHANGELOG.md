@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-03-23
+
+### Fixed
+- **Windows symlink support**: Fixed media display issues on Windows when using symlinked photo/video/audio directories. Changed file URL construction to use Node.js `pathToFileURL()` instead of manual string concatenation, which properly handles Windows backslashes and follows symlinks. Affects:
+  - Media Manager preview display (was showing broken images)
+  - Main window media display (now more efficient, no longer base64-encodes photos)
+  - Collection Set Operations window loading
+  - All audio and video playback on Windows with symlinked directories
+
 ## [3.1.0] - 2026-03-20
 
 ### Added

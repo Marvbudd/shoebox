@@ -10,6 +10,7 @@
 
 import crypto from 'crypto';
 import path from 'path';
+import url from 'url';
 import { AccessionClass } from '../../main/utils/AccessionClass.js';
 
 /**
@@ -169,7 +170,8 @@ export function registerAccessionsHandlers(
       const accessionClass = getAccessionClass();
       const baseDir = path.dirname(accessionClass.accessionFilename);
       const resourcePath = path.resolve(baseDir, type, link);
-      return `file://${resourcePath}`;
+      // Use pathToFileURL for proper Windows and symlink handling
+      return url.pathToFileURL(resourcePath).href;
     } catch (error) {
       console.error('Failed to get media path:', error);
       return null;

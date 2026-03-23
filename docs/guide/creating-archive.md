@@ -59,7 +59,7 @@ You have two main options for organizing files into the required structure:
 If you have hundreds or thousands of files, consider writing a script to automate the linking process. This is especially useful if your existing file organization differs significantly from Shoebox's structure.
 :::
 
-### File Naming
+### File Naming Suggestions
 
 - Use descriptive names: `family-reunion-2020.jpg` not `IMG_1234.jpg`
 - Avoid special characters: stick to letters, numbers, hyphens, underscores
@@ -113,7 +113,7 @@ When starting a new archive, the **only way to add items** is through the **File
 
 Once you have an `accessions.json` file with items:
 - **Adding more media**: Simply run Add Media Metadata again with the same directory or accessions.json - it will add any new items found
-- **Re-scanning**: Running the same import multiple times is safe - existing items won't be duplicated
+- **Re-scanning**: Running the same import multiple times is safe - existing items won't be duplicated or modified
 - **Incremental growth**: Your archive grows as you add new media files to the photo/video/audio directories
 :::
 
@@ -187,7 +187,7 @@ Once items are in your archive, you have better tools for detailed metadata:
    - Add playlist entries
 
 **For Batch Updates:**
-- Use **Collection > Update Collection** update all items in a collection
+- Use **Collection > Bulk Edit Items in Collection** update all items in a collection
 
 **Best Practice:**
 1. **Initial import**: Use Add Media Metadata to get files into the archive quickly
@@ -300,8 +300,8 @@ After marking people as living, create maintenance collections (**Collections > 
 ### Locations
 
 Use hierarchical structure:
-- City, State, Country
-- Be specific: "Portland, Oregon, USA" not just "Portland"
+- City, State
+- Be specific: "Portland, Oregon" not just "Portland"
 - Consistent spelling: don't mix "NY" and "New York"
 
 ### Descriptions
@@ -313,10 +313,10 @@ Use hierarchical structure:
 
 ### Sources
 
-Track how items entered your archive:
-- "Scanned from Mom's photo album, 2023"
-- "Digital photo taken by John, 2020"
-- "Copied from Uncle Bob's VHS tape, 2019"
+Track who provided items to your archive as person records with date received:
+- Smith, Mary, 2023-06-15
+- Doe, John, 2020-08-10  
+- Johnson, Bob, 2019-12-03
 
 This provenance is valuable for genealogy research.
 
