@@ -53,6 +53,7 @@ import electron from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { getMimeType } from './utils/mimeTypes.js';
 import { createRequire } from 'module';
 import nconf from 'nconf';
 import { AccessionClass } from '../main/utils/AccessionClass.js';
@@ -697,7 +698,7 @@ app.whenReady().then(() => {
       // Parse URL: media://type/filename
       const url = new URL(request.url);
       const type = url.hostname; // 'photo', 'audio', or 'video'
-      const link = url.pathname.substring(1); // Remove leading slash
+      const link = decodeURIComponent(url.pathname.substring(1)); // Remove leading slash and decode URL encoding
       
       if (!accessionClass) {
         return new Response('Accessions not loaded', { status: 500 });
@@ -709,30 +710,8 @@ app.whenReady().then(() => {
       // Read file
       const fileBuffer = await fs.promises.readFile(filePath);
       
-      // Determine MIME type based on file extension
-      const ext = path.extname(link).toLowerCase();
-      let mimeType;
-      
-      if (type === 'photo') {
-        if (ext === '.png') mimeType = 'image/png';
-        else if (ext === '.gif') mimeType = 'image/gif';
-        else if (ext === '.webp') mimeType = 'image/webp';
-        else mimeType = 'image/jpeg'; // default for .jpg, .jpeg
-      } else if (type === 'audio') {
-        if (ext === '.mp3') mimeType = 'audio/mpeg';
-        else if (ext === '.wav') mimeType = 'audio/wav';
-        else if (ext === '.ogg') mimeType = 'audio/ogg';
-        else mimeType = 'audio/mpeg'; // default
-      } else if (type === 'video') {
-        if (ext === '.mp4') mimeType = 'video/mp4';
-        else if (ext === '.mov' || ext === '.qt') mimeType = 'video/quicktime';
-        else if (ext === '.webm') mimeType = 'video/webm';
-        else if (ext === '.ogv') mimeType = 'video/ogg';
-        else if (ext === '.avi') mimeType = 'video/x-msvideo';
-        else mimeType = 'video/mp4'; // default
-      } else {
-        mimeType = 'application/octet-stream';
-      }
+      // Determine MIME type from shared utility (single source of truth)
+      const mimeType = getMimeType(type, link);
       
       return new Response(fileBuffer, {
         headers: { 'Content-Type': mimeType }

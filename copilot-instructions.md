@@ -148,3 +148,92 @@ When in doubt:
 2. Is this just reading? → Direct access OK, but prefer getters
 3. Is this complex logic? → Create a service, wrap in AccessionClass method
 4. Am I setting `accessionsChanged`? → Should be in AccessionClass, not caller
+
+---
+
+## OS Interface / Electron IPC Pattern
+
+### Rule: One Implementation Per OS-Level Operation
+
+Any operation that interfaces with the OS (opening files, launching external apps, MIME type detection, etc.) **must have exactly one implementation**. Duplicated OS interface code leads to bugs that appear on only one platform.
+
+#### ❌ NEVER DO THIS:
+```javascript
+// DON'T: Different code paths for the same OS operation
+// Main window uses <a target="_blank" href="filepath"> → blank window on Windows
+// Media Manager uses shell.openPath via IPC → works correctly
+// MIME type logic duplicated in main.js AND ItemViewClass.js → gets out of sync
+```
+
+#### ✅ ALWAYS DO THIS:
+```javascript
+// DO: Single IPC handler for opening files in the system default app
+// Defined in: app/main/ipc/accessionsHandlers.js → 'media:openExternal'
+// All windows must call: window.electronAPI.openMediaExternal(type, link)
+
+// DO: Shared utility for MIME types
+// Defined in: app/main/utils/mimeTypes.js → getMimeType(type, link)
+// Used by: main.js (media:// protocol handler) AND ItemViewClass.js
+```
+
+#### Canonical OS Interface Implementations
+
+| Operation | IPC Channel | Handler Location | Notes |
+|-----------|-------------|------------------|-------|
+| Open file in system default app | `media:openExternal` | `accessionsHandlers.js` | Pass (type, link); resolves full path internally |
+| Open arbitrary file path | `file:open` | `accessionsHandlers.js` | Pass full path; used for log files etc. |
+| MIME type detection | (utility) | `utils/mimeTypes.js` → `getMimeType(type, link)` | Import directly in main process code |
+
+#### Why `<a target="_blank">` Fails in Electron
+
+Never use `<a target="_blank" href="filepath">` to open local files. In Electron's sandboxed renderer, clicking such a link opens a new blank Electron BrowserWindow attempting to navigate to the file path — it does **not** open the system viewer. Always use `shell.openPath()` via IPC instead.
+
+#### Why Raw File Paths Fail as `<video src>` / `<audio src>` in Electron
+
+The Electron renderer sandbox **blocks raw file system paths** as media `src` attributes (e.g., `src="/home/user/video/file.mov"`). The media element will exist in the DOM but fail silently — no video loads, no events fire, codec detection never runs.
+
+**Always use `media://type/link` URLs** for audio/video `src` attributes in any renderer window. The `media://` custom protocol handler (registered in `main.js`) serves the file securely with correct MIME types.
+
+```javascript
+// ❌ WRONG - raw path is blocked by renderer sandbox
+`<video><source src="${filePath}" /></video>`
+
+// ✅ CORRECT - use media:// protocol
+`<video><source src="media://${type}/${link}" /></video>`
+```
+
+**In Vue components**: Never use `v-html` to inject `<video>` or `<audio>` elements. Use Vue template binding (`:src`) which handles media loading correctly:
+
+```vue
+<!-- ✅ CORRECT: Template binding loads media automatically -->
+<video :src="mediaPreviewPath" controls @loadedmetadata="checkCodec"></video>
+
+<!-- ❌ WRONG: v-html doesn't trigger media load -->
+<div v-html="htmlWithVideoTag"></div>  <!-- video never loads, events never fire -->
+```
+
+To get `mediaPreviewPath`: Call `window.electronAPI.getMediaPath(type, link)` in the component, which returns `media://type/link` URLs.
+
+#### Shared Renderer Utilities
+
+| Utility | File Path | Purpose | Usage |
+|---------|-----------|---------|-------|
+| Video codec detection | `app/render/vue/shared/videoCodecDetection.js` | Detect HEVC/unsupported codecs | Import `hasUnsupportedCodec(videoElement)` in any Vue component |
+
+**Pattern**: Both Media Player and Media Manager must use the same codec detection logic via the shared utility. Never duplicate codec checks inline.
+
+```javascript
+// DO: Use shared utility in all Vue components
+import { hasUnsupportedCodec } from '../../shared/videoCodecDetection.js';
+
+const checkVideoCodec = (event) => {
+  if (hasUnsupportedCodec(event.target)) {
+    videoError.value = true;  // Show "Format Not Supported" overlay
+  }
+};
+```
+
+---
+
+## Vue.js Patterns
+

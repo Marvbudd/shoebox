@@ -10,6 +10,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
   
+  // Get media path (returns media:// protocol URL for audio/video, base64 for photos)
+  getMediaPath: (type, link) => ipcRenderer.invoke('media:getPath', type, link),
+  
+  // Open media in external player
+  openMediaExternal: (type, link) => ipcRenderer.invoke('media:openExternal', type, link),
+  
   // Play media item from playlist
   playItem: (entry) => ipcRenderer.invoke('item:Play', entry),
   

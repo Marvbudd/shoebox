@@ -9,7 +9,46 @@
       <button class="reference-banner-close" @click="dismissReference" title="Dismiss reference">×</button>
     </div>
     
-    <div id="previewDiv" v-html="previewContent"></div>
+    <!-- Media preview section (using template binding like Media Manager) -->
+    <div id="previewDiv">
+      <img 
+        v-if="itemType === 'photo' && mediaPreviewPath" 
+        :src="mediaPreviewPath" 
+        alt="Photo preview"
+      />
+      <video 
+        v-else-if="itemType === 'video' && mediaPreviewPath"
+        ref="videoElement"
+        id="previewVideo"
+        :src="mediaPreviewPath" 
+        alt="The Video"
+        controls
+        @loadedmetadata="checkVideoCodec"
+        @canplay="checkVideoCodec"
+        @error="videoError = true"
+        @click="openMediaInWindow"
+        style="cursor: pointer;"
+        title="Click to open in external player"
+      ></video>
+      <audio 
+        v-else-if="itemType === 'audio' && mediaPreviewPath"
+        ref="audioElement"
+        id="previewAudio"
+        :src="mediaPreviewPath" 
+        controls
+        @error="videoError = true"
+        @loadeddata="videoError = false"
+        @click="openMediaInWindow"
+        style="cursor: pointer;"
+        title="Click to open in external player"
+      ></audio>
+      <div v-else-if="itemType && !mediaPreviewPath">
+        Loading media...
+      </div>
+      <div v-else>
+        {{ previewFallbackText }}
+      </div>
+    </div>
     
     <!-- Unsupported format overlay (positioned over preview area) -->
     <div v-if="videoError" class="format-error-overlay">
@@ -17,11 +56,16 @@
         <div class="format-error-icon">⚠️</div>
         <div class="format-error-title">Format Not Supported</div>
         <div class="format-error-message">
-          This video format cannot be played in the browser.
+          This {{ itemType }} format ({{ itemLink ? itemLink.split('.').pop().toUpperCase() : '' }}) 
+          cannot be played in the browser.
           <br>
-          Common unsupported formats: HEVC/H.265 video codec.
-          <br><br>
-          The video needs to be converted to H.264 before archiving.
+          Common unsupported formats: HEVC/H.265 video, some MOV codecs.
+        </div>
+        <button @click="openMediaInWindow" class="btn-open-external" type="button">
+          Open in External Player
+        </button>
+        <div class="format-error-hint">
+          Or click anywhere on the preview above
         </div>
       </div>
     </div>
@@ -39,13 +83,19 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { hasUnsupportedCodec } from '../../shared/videoCodecDetection.js';
 
-const previewContent = ref('Move mouse over the left column of the main window to select something to display.');
+const previewFallbackText = ref('Move mouse over the left column of the main window to select something to display.');
+const mediaPreviewPath = ref(null);
+const itemType = ref(null);
+const itemLink = ref(null);
 const detailContent = ref('');
 const detailsExpanded = ref(false);
 const hasMediaElement = ref(false);
 const currentTimeDisplay = ref('00:00:00.0');
 const videoError = ref(false); // Track if video has unsupported codec
+const videoElement = ref(null);
+const audioElement = ref(null);
 let mediaElement = null;
 let updateInterval = null;
 let durationTimer = null;  // Store timeout for playlist duration auto-pause
@@ -59,6 +109,30 @@ const referenceInfo = ref({
   timeDisplay: '',
   sourceName: ''
 });
+
+// Shared codec detection function
+const checkVideoCodec = () => {
+  const videoEl = videoElement.value;
+  if (videoEl && hasUnsupportedCodec(videoEl)) {
+    videoError.value = true;
+  } else {
+    videoError.value = false;
+  }
+};
+
+// Open media in external player
+const openMediaInWindow = async () => {
+  if (itemType.value && itemLink.value) {
+    try {
+      const result = await window.electronAPI.openMediaExternal(itemType.value, itemLink.value);
+      if (!result.success) {
+        console.error('Failed to open file:', result.error);
+      }
+    } catch (error) {
+      console.error('Error opening file:', error);
+    }
+  }
+};
 
 // Format seconds to HH:MM:SS.s
 const formatTime = (seconds) => {
@@ -120,14 +194,25 @@ const getCurrentPlaybackInfo = () => {
 window.getCurrentPlaybackTime = getCurrentPlaybackInfo;
 
 // Receive media display data from main process
-const handleMediaDisplay = (mediaData) => {
+const handleMediaDisplay = async (mediaData) => {
   const itemObject = typeof mediaData === 'string' ? JSON.parse(mediaData) : mediaData;
   
   detailContent.value = itemObject.descDetail;
-  previewContent.value = itemObject.mediaTag;
   document.title = itemObject.link || 'Shoebox Media';
   currentMediaLink = itemObject.link || null;
   detailsExpanded.value = false;
+  
+  // Store item type and link
+  itemType.value = itemObject.type;
+  itemLink.value = itemObject.link;
+  
+  // Get media path via IPC (same as Media Manager)
+  if (itemType.value && itemLink.value) {
+    mediaPreviewPath.value = await window.electronAPI.getMediaPath(itemType.value, itemLink.value);
+    videoError.value = false; // Reset error state for new media
+  } else {
+    mediaPreviewPath.value = null;
+  }
   
   // Check if this was opened from a playlist reference
   if (itemObject.entry && itemObject.entry.startSeconds !== undefined) {
@@ -157,32 +242,10 @@ const handleMediaDisplay = (mediaData) => {
   
   // Wait for DOM update to find media element
   nextTick(() => {
-    mediaElement = document.querySelector('#previewAudio') || document.querySelector('#previewVideo');
+    mediaElement = videoElement.value || audioElement.value;
     hasMediaElement.value = !!mediaElement;
     
     if (mediaElement) {
-      // Reset error state for new media
-      videoError.value = false;
-      
-      // Check for unsupported video codec (HEVC)
-      const checkVideoCodec = () => {
-        if (mediaElement.tagName === 'VIDEO') {
-          // If video has no dimensions but has audio/duration, codec is unsupported
-          if (mediaElement.videoWidth === 0 && mediaElement.videoHeight === 0 && mediaElement.duration > 0) {
-            videoError.value = true;
-          } else {
-            videoError.value = false;
-          }
-        }
-      };
-      
-      // Listen for various video events
-      mediaElement.addEventListener('loadedmetadata', checkVideoCodec);
-      mediaElement.addEventListener('canplay', checkVideoCodec);
-      mediaElement.addEventListener('error', () => {
-        videoError.value = true;
-      });
-      
       // Start updating current time display
       updateInterval = setInterval(updateCurrentTime, 100);
       
@@ -580,5 +643,29 @@ A:visited {
   font-size: 0.95rem;
   color: #333;
   line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.btn-open-external {
+  background: #ff9800;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.btn-open-external:hover {
+  background: #f57c00;
+}
+
+.format-error-hint {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: #999;
+  font-style: italic;
 }
 </style>

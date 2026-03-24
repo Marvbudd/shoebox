@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Edit item (opens MediaManager window)
   editItem: (accession, collectionKey, includeQueue, sortBy) => ipcRenderer.invoke('item:Edit', accession, collectionKey, includeQueue, sortBy),
 
+  // Open media file in the system default external application
+  openMediaExternal: (type, link) => ipcRenderer.invoke('media:openExternal', type, link),
+
   // Prevent display sleep/screensaver during slideshow
   setSlideshowDisplaySleepBlock: (shouldBlock) => ipcRenderer.invoke('slideshow:setDisplaySleepBlock', shouldBlock),
   

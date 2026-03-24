@@ -753,6 +753,7 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { formatPersonName, expandPersonsByLastName } from '../../../../shared/personHelpers.js';
 import DateInput from '../../components/DateInput.vue';
+import { hasUnsupportedCodec } from '../../shared/videoCodecDetection.js';
 
 const item = ref({
   accession: '',
@@ -1277,10 +1278,11 @@ const onImageLoad = () => {
 };
 
 // Check if video has valid video track (not audio-only)
+// Shared codec detection function
 const checkVideoLoaded = (event) => {
   const videoEl = event.target;
-  // If video has no dimensions but has duration, it's audio-only (unsupported video codec)
-  if (item.value.type === 'video' && videoEl.videoWidth === 0 && videoEl.videoHeight === 0 && videoEl.duration > 0) {
+  // Use shared utility to check for unsupported codec
+  if (item.value.type === 'video' && hasUnsupportedCodec(videoEl)) {
     videoError.value = true;
   } else {
     videoError.value = false;

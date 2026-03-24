@@ -536,6 +536,18 @@ const setupDetailEventListeners = () => {
       await handleEditMedia();
     });
   }
+
+  // Open photo in system default external viewer (uses IPC, not <a target="_blank">)
+  const previewImg = document.getElementById('previewImg');
+  if (previewImg) {
+    previewImg.addEventListener('click', async () => {
+      const type = previewImg.getAttribute('data-type');
+      const link = previewImg.getAttribute('data-link');
+      if (type && link) {
+        await window.electronAPI.openMediaExternal(type, link);
+      }
+    });
+  }
   
   const openWebsiteBtn = document.getElementById('openWebsite');
   if (openWebsiteBtn) {

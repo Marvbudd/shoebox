@@ -7,17 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.3] - 2026-03-23
+
+### Fixed
+- **Photo external open in main window**: Clicking a photo in the main window now correctly opens it in the system default viewer on all platforms, including Windows. Previously used `<a target="_blank">` which opened a blank Electron window. Now uses `shell.openPath()` via IPC.
+- **Unsupported video codec detection**: Both Media Player and Media Manager now reliably detect and display a user-friendly error overlay for videos with unsupported codecs (HEVC/H.265)
+  - Shared codec detection utility distinguishes audio-only files from unsupported video codecs
+  - Uses track APIs and file extension heuristics for accurate detection
+  - Error overlay includes "Open in External Player" button in both windows
+  - Chromium/Electron only supports H.264 video codec (HEVC/H.265 not supported)
+- **Media Player video loading**: Fixed videos not loading in Media Player on Linux. Refactored to use Vue template binding (`:src`) instead of v-html injection, matching Media Manager's architecture.
+- **Filenames with spaces**: Fixed media files with spaces in filenames (e.g., "Sound clip 13.mp4") not loading. Protocol handler now properly decodes URL-encoded filenames.
+
+### Changed
+- **Consolidated MIME type detection** into single shared utility (`app/main/utils/mimeTypes.js`). Previously duplicated between protocol handler and ItemViewClass.
+- **Unified media loading architecture**: Media Player and Media Manager now use identical code paths:
+  - Both call `getMediaPath` IPC to obtain `media://` protocol URLs
+  - Both use Vue template binding (`:src`) for media elements
+  - Both import shared codec detection utility (`videoCodecDetection.js`)
+  - Ensures consistent behavior across all windows and platforms
+- **Added OS interface pattern guidelines** to copilot-instructions.md documenting why raw file paths fail in sandboxed renderer, why v-html doesn't work for media elements, and requirement for shared implementations.
+
 ## [3.1.2] - 2026-03-23
 
 ### Fixed
-- **Unsupported video codec detection**: Media Player now detects and displays a user-friendly error overlay when attempting to play videos encoded with unsupported codecs (such as HEVC/H.265)
-  - Error overlay appears within the preview area when codec is not supported by Chromium
-  - Detection works by checking for videos with no dimensions but valid duration
-  - Chromium/Electron only supports H.264 video codec (HEVC/H.265 not supported due to patent licensing)
-  - Users can convert unsupported videos to H.264 before adding to archive
-- **Linux VAAPI errors**: Disabled hardware-accelerated video decoding to prevent VAAPI initialization errors on Linux systems
-  - Prevents console errors about libva and VAAPI driver initialization failures
-  - Video playback now uses software decoding (minimal performance impact on modern systems)
+- Increased Media Manager preview pane size for better visibility
+  - Changed max-height from `calc(100vh - 400px)` to `calc(100vh - 200px)`
+  - Added min-height: 350px to ensure error overlays are fully visible
 
 ## [3.1.1] - 2026-03-23
 

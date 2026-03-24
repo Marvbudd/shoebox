@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { AppendString } from './AppendString.js';
 import { formatLastName, formatPersonName } from '../../shared/personHelpers.js';
+import { getMimeType } from './mimeTypes.js';
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 const __filename = fileURLToPath(import.meta.url)
@@ -230,16 +231,20 @@ export class ItemViewClass {
 
   getViewObject(callback) {
     let viewObject = {};
-    let mediaPath;
     if (this.itemJSON) {
       viewObject.link = this.getLink();
-      mediaPath = this.accessionClass.getMediaPath(this.itemJSON.type, viewObject.link);
+      viewObject.type = this.itemJSON.type;  // Add type for renderer to call getMediaPath IPC
+      // Raw file path - only needed for photo base64 encoding (photos can't use media:// in main process)
+      const filePath = this.accessionClass.getMediaPath(this.itemJSON.type, viewObject.link);
+      // media:// URL - used for audio/video src in renderer (sandbox blocks raw file paths)
+      const mediaUrl = `media://${this.itemJSON.type}/${viewObject.link}`;
       switch (this.itemJSON.type) {
         case 'photo':
           try {
-            const data = fs.readFileSync(mediaPath);
+            const data = fs.readFileSync(filePath);
             const imgEncoded = data.toString('base64');
-            viewObject.mediaTag = `<a target="_blank" href="${mediaPath}"><img id="previewImg" alt="The Photo" src="data:image/jpg;base64,${imgEncoded}" /></a>`;
+            const imgMime = getMimeType('photo', viewObject.link);
+            viewObject.mediaTag = `<img id="previewImg" alt="The Photo" src="data:${imgMime};base64,${imgEncoded}" data-type="photo" data-link="${viewObject.link}" style="cursor:pointer;" title="Click to open in external viewer" />`;
             
             // Add face tags data for photos
             viewObject.faceTags = this.getFaceRegionsData();
@@ -248,10 +253,10 @@ export class ItemViewClass {
           }
           break;
         case 'audio':
-          viewObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaPath}" type="audio/mp3" /></audio>`;
+          viewObject.mediaTag = `<audio id="previewAudio" alt="The Audio" controls><source src="${mediaUrl}" type="${getMimeType('audio', viewObject.link)}" /></audio>`;
           break;
         case 'video':
-          viewObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaPath}" type="video/mp4" /></video>`;
+          viewObject.mediaTag = `<video id="previewVideo" alt="The Video" controls><source src="${mediaUrl}" type="${getMimeType('video', viewObject.link)}" /></video>`;
           break;
       }
       viewObject.descDetail = this.showNodeDescription();
