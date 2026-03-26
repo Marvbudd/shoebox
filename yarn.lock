@@ -2577,16 +2577,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"electron@npm:^41.0.3":
-  version: 41.0.3
-  resolution: "electron@npm:41.0.3"
+"electron@npm:^40.7.0":
+  version: 40.8.4
+  resolution: "electron@npm:40.8.4"
   dependencies:
     "@electron/get": "npm:^2.0.0"
     "@types/node": "npm:^24.9.0"
     extract-zip: "npm:^2.0.1"
   bin:
     electron: cli.js
-  checksum: 10c0/3f9aea3394eac7576a658f26d7a69b0b2c5274d89f089d6c7538427d85652aa447b0e885556a7e2a6e0197b1b896a504d15bc695e2d173fe51a3c1b29f31b82a
+  checksum: 10c0/c56c4c7da3176620d780e58d38056c74ac830845015de416220af1b25e8ae2eedca2a368015f0eb5cc06a71aeb44b9b320db4bb6cc724282fb9bf6c330eef9d3
   languageName: node
   linkType: hard
 
@@ -4372,9 +4372,9 @@ __metadata:
   linkType: hard
 
 "picomatch@npm:^4.0.3":
-  version: 4.0.3
-  resolution: "picomatch@npm:4.0.3"
-  checksum: 10c0/9582c951e95eebee5434f59e426cddd228a7b97a0161a375aed4be244bd3fe8e3a31b846808ea14ef2c8a2527a6eeab7b3946a67d5979e81694654f939473ae2
+  version: 4.0.4
+  resolution: "picomatch@npm:4.0.4"
+  checksum: 10c0/e2c6023372cc7b5764719a5ffb9da0f8e781212fa7ca4bd0562db929df8e117460f00dff3cb7509dacfc06b86de924b247f504d0ce1806a37fac4633081466b0
   languageName: node
   linkType: hard
 
@@ -4917,7 +4917,7 @@ __metadata:
   dependencies:
     "@vitejs/plugin-vue": "npm:^6.0.5"
     canvas: "npm:^3.2.1"
-    electron: "npm:^41.0.3"
+    electron: "npm:^40.7.0"
     electron-builder: "npm:^26.8.1"
     electron-updater: "npm:^6.8.3"
     exifr: "npm:^7.1.3"
