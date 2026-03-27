@@ -11,6 +11,9 @@ updates:
       # See CHANGELOG.md for full security analysis
       - dependency-name: "tar"
         update-types: ["version-update:semver-major"]
+      # Electron 41+ is currently incompatible with node-abi/@electron/rebuild in CI
+      - dependency-name: "electron"
+        update-types: ["version-update:semver-major"]
 
   # App package dependencies
   - package-ecosystem: "npm"
@@ -20,6 +23,9 @@ updates:
     ignore:
       # Same tar compatibility issue as root
       - dependency-name: "tar"
+        update-types: ["version-update:semver-major"]
+      # Electron 41+ is currently incompatible with node-abi/@electron/rebuild in CI
+      - dependency-name: "electron"
         update-types: ["version-update:semver-major"]
 
   # GitHub Actions
