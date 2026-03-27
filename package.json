@@ -113,7 +113,7 @@
   "license": "MIT",
   "copyright": "Copyright © 2001-2026, Marvin E Budd",
   "dependencies": {
-    "canvas": "^3.2.1",
+    "canvas": "^3.2.2",
     "electron-builder": "^26.8.1",
     "electron-updater": "^6.8.3",
     "exifr": "^7.1.3",
