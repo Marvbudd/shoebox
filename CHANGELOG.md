@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - Updated dependencies:
   - `electron` from 41.0.3 to 41.0.4 (root and app)
-  - `canvas` from 3.2.1 to 3.2.2 (root and app)
+  - `canvas` from 3.2.1 to 3.2.3 (root and app)
+  - `@xmldom/xmldom` from 0.8.11 to 0.8.12 (root and app)
   - `handlebars` from 4.7.8 to 4.7.9 (root and app)
   - `brace-expansion` from 5.0.2 to 5.0.5 (root and app)
   - `vite` from 8.0.1 to 8.0.3
