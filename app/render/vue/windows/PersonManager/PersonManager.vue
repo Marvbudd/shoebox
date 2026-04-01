@@ -20,6 +20,7 @@
       <h1>Person Management</h1>
       <div class="search-bar">
         <input 
+          ref="searchInput"
           v-model="searchQuery" 
           type="text"
           placeholder="Search by name, TMGID..."
@@ -248,7 +249,13 @@ const searchQuery = ref('');
 const saveMessage = ref(null);
 const isNewPerson = ref(false);
 const deleting = ref(false);
+const searchInput = ref(null);
 const mode = ref('browse'); // 'browse', 'edit', 'new', 'select'
+
+const focusSearchInput = async () => {
+  await nextTick();
+  searchInput.value?.focus();
+};
 const previousMode = ref('browse'); // Track previous mode for returning after edit/new
 const contextPersonIDs = ref([]); // Already-assigned personIDs for Select mode
 
@@ -656,6 +663,9 @@ onMounted(async () => {
     if (assignedPersonIDs) {
       contextPersonIDs.value = assignedPersonIDs;
     }
+    if (openMode === 'select') {
+      focusSearchInput();
+    }
   }
   
   // Listen for mode change events (when window is already open)
@@ -670,6 +680,7 @@ onMounted(async () => {
         originalPerson.value = null;
         isNewPerson.value = false;
         saveMessage.value = null;
+        focusSearchInput();
       }
     }
   });

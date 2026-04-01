@@ -1929,7 +1929,7 @@ const searchPersonLibrary = async (faceIndex, personsWithDescriptors, distanceTh
   // Convert to array and sort by distance (best matches first)
   const matches = Object.values(personBestMatches);
   matches.sort((a, b) => a.distance - b.distance);
-  return matches.slice(0, 10);
+  return matches.slice(0, 20);
 };
 
 // Calculate Euclidean distance between two face descriptors
@@ -2149,11 +2149,8 @@ const openReferencePhoto = async (link) => {
   }
   
   try {
-    // Get the full file path for the photo
-    const filePath = await window.electronAPI.getMediaPath('photo', link);
-    
-    // Open in system default viewer
-    const result = await window.electronAPI.openFile(filePath);
+    // Open in system default viewer using canonical OS IPC path
+    const result = await window.electronAPI.openMediaExternal('photo', link);
     
     if (!result.success && isMounted.value) {
       console.error('[REFERENCE PHOTO] Failed to open:', result.error);

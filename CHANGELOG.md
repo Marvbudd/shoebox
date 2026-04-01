@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.4] - 2026-03-29
+
+### Fixed
+- **View reference photo link in face similarity search**: Fixed "View reference photo" link in face similarity search modal. Was incorrectly calling `getMediaPath()` (which returns base64 data URLs) and passing to `openFile()`. Now directly uses `openMediaExternal('photo', link)` IPC to open photos in system viewer.
+
+### Changed
+- **Electron version pinned to 40.2.3** for build tooling compatibility. Dependabot configured to ignore Electron major version bumps to prevent breaking changes in development/build environment.
+- **Person Manager search field autofocus**: When clicking "+ Add Person" in Media Manager, the Person Manager window now automatically focuses the search field, allowing immediate typing to search for people.
+- **Face similarity search results limit increased**: Face similarity search now displays up to 20 potential matches instead of 10, providing better visibility into matching options when assigning faces.
+
+### Security
+- Updated dependencies:
+  - `electron` from 41.0.3 to 41.0.4 (root and app)
+  - `canvas` from 3.2.1 to 3.2.2 (root and app)
+  - `handlebars` from 4.7.8 to 4.7.9 (root and app)
+  - `brace-expansion` from 5.0.2 to 5.0.5 (root and app)
+  - `vite` from 8.0.1 to 8.0.3
+  - `vue` from 3.5.30 to 3.5.31
+  - `picomatch` from 4.0.3 to 4.0.4 (root and app)
+- Updated GitHub Actions:
+  - `actions/configure-pages` from 5 to 6
+  - `actions/deploy-pages` from 4 to 5
+
 ## [3.1.3] - 2026-03-23
 
 ### Fixed
