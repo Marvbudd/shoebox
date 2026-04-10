@@ -3,9 +3,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
-  loadItem: (identifier) => ipcRenderer.invoke('item:load', identifier),
+  loadItem: (link) => ipcRenderer.invoke('item:load', link),
   saveItem: (itemData) => ipcRenderer.invoke('item:save', itemData),
-  deleteItem: (link) => ipcRenderer.invoke('item:delete', link),
+  deleteItem: (payload) => ipcRenderer.invoke('item:delete', payload),
   openFile: (filePath) => ipcRenderer.invoke('file:open', filePath),
   openMediaExternal: (type, link) => ipcRenderer.invoke('media:openExternal', type, link),
   getExistingPersons: () => ipcRenderer.invoke('persons:getFromAccessions'),
@@ -16,10 +16,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeFaceDescriptor: (personID, link) => ipcRenderer.invoke('persons:removeFaceDescriptor', personID, link),
   getAudioVideoItems: () => ipcRenderer.invoke('accessions:getAudioVideoItems'),
   getMediaPath: (type, link) => ipcRenderer.invoke('media:getPath', type, link),
-  detectFaces: (accession, options) => ipcRenderer.invoke('face-detection:detect', accession, options),
+  detectFaces: (link, options) => ipcRenderer.invoke('face-detection:detect', link, options),
   getFaceDetectionStatus: () => ipcRenderer.invoke('face-detection:status'),
   getFaceDetectionModels: () => ipcRenderer.invoke('face-detection:get-models'),
-  matchFaces: (accession, detectedFaces) => ipcRenderer.invoke('face-detection:match', accession, detectedFaces),
+  matchFaces: (link, detectedFaces) => ipcRenderer.invoke('face-detection:match', link, detectedFaces),
   reverseGeocode: (latitude, longitude) => ipcRenderer.invoke('geocoding:reverse', latitude, longitude),
   getCurrentPlaybackTime: () => ipcRenderer.invoke('mediaPlayer:getCurrentTime'),
   openPersonManager: (personID) => ipcRenderer.invoke('window:openPersonManager', personID),
@@ -36,6 +36,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('personManager:personSelected', (event, personID) => callback(personID));
   },
   onItemLoad: (callback) => {
-    ipcRenderer.on('item:load', (event, identifier, queueData) => callback(identifier, queueData));
+    ipcRenderer.on('item:load', (event, link, queueData) => callback(link, queueData));
   }
 });

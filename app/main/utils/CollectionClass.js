@@ -2,47 +2,34 @@ import { readFileSync, writeFileSync, copyFileSync } from 'fs';
 import { basename } from 'path';
 
 /**
- * CollectionClass - Manages individual collection data with proper encapsulation and persistence.
+ * CollectionClass - Manages individual collection data.
  * 
- * CRITICAL ARCHITECTURE PATTERN:
+ * DEFERRED-SAVE PATTERN:
  * 
- * This class uses a deferred-save pattern to improve performance and ensure data integrity:
+ * 1. ALL mutations go through class methods (never modify itemKeys directly)
+ * 2. Mutation methods set `this.collectionChanged = true`
+ * 3. tofile() called ONLY when parent CollectionsClass.saveCollections() is invoked
  * 
- * 1. ALL data mutations MUST go through class methods (never modify itemKeys directly)
- * 2. Mutation methods set `this.collectionChanged = true` to flag pending changes
- * 3. tofile() is called ONLY when:
- *    - Parent CollectionsClass.saveCollections() is invoked (typically on app close)
- *    - Deleting a collection (to archive the current state)
- *    - Switching to different accessions
+ * DO NOT call tofile() from external code!
  * 
- * DO NOT call tofile() from external code or after individual changes!
- * This would cause:
- * - Poor performance (disk write on every change)
- * - Broken encapsulation (external code controlling persistence)
- * - Potential data loss (incomplete transactions)
- * 
- * CORRECT PATTERN:
- *   // In code using CollectionClass
- *   collection.addItem(link);  // Method sets collectionChanged flag
- *   // Do NOT call collection.tofile() here
- * 
- * INCORRECT PATTERN:
- *   // DON'T DO THIS!
- *   collection.itemKeys.push(link);  // Direct mutation
- *   collection.tofile(filePath);     // Immediate save
+ * Example:
+ *   collection.addItem(link);  // Sets collectionChanged flag
+ *   // Parent AccessionClass will call saveCollections() which calls tofile()
  * 
  * DATA STRUCTURE:
- * Collections now use link as the primary identifier (simplified from previous {accession, link} pairs).
- * itemKeys is an array of link strings: ['photo1.jpg', 'photo2.jpg', ...]
+ * itemKeys is an array of link strings: ['photo1.jpg', 'photo2.jpg']
+ * (Migrated from old {accession, link} pairs format)
  * 
- * Mutation Methods (all set collectionChanged flag):
+ * Mutation Methods (set collectionChanged flag):
  * - addItem(link)
  * - removeItem(link)
  * - deleteCollection() (marks for archival)
  * 
- * Read-Only Methods (do NOT modify state):
+ * Read-Only Methods:
  * - hasItem(link)
- * - getLinks() (use instead of direct itemKeys access)
+ * - getLinks()
+ * 
+ * See docs/guide/architecture.md for architectural rationale.
  * 
  * @class CollectionClass
  */

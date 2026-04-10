@@ -1,4 +1,10 @@
+---
+audience: general
+---
+
 # Getting Started
+
+> Audience: General users
 
 Welcome to Shoebox! This guide will help you get up and running with your personal family history archive.
 

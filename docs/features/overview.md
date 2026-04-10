@@ -1,4 +1,10 @@
+---
+audience: general
+---
+
 # Features Overview
+
+> Audience: General users
 
 Shoebox provides powerful tools for organizing and enjoying your family archive.
 
@@ -71,7 +77,7 @@ Document the context and stories behind each item.
 - **Locations**: Multi-level hierarchy (city, state, country)
 - **Descriptions**: Free-text narratives and transcriptions
 - **Sources**: Track who provided items (person with date received)
-- **Safe Cleanup**: Delete orphaned metadata for removed media files and unused person records
+- **Safe Cleanup**: Review file status in Media Manager and safely remove metadata, archive files, symlinks, or unused person records
 
 [Metadata Guide](./metadata.md)
 

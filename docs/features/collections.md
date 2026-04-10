@@ -1,4 +1,10 @@
+---
+audience: general
+---
+
 # Collections
+
+> Audience: General users
 
 Collections allow you to create themed subsets of your archive for organizing, sharing, or presentations.
 

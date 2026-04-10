@@ -16,6 +16,71 @@
       </div>
     </div>
 
+    <!-- Delete Review Modal -->
+    <div v-if="showDeleteModal" class="modal-overlay" @click="closeDeleteModal">
+      <div class="modal-dialog delete-modal" @click.stop>
+        <div class="modal-header">
+          <h3>Delete Item</h3>
+        </div>
+        <div class="modal-body delete-modal-body">
+          <p class="delete-modal-warning">This cannot be undone.</p>
+          <div class="delete-modal-detail">
+            <strong>Archive path:</strong>
+            <div class="delete-modal-path">{{ deleteInfo.mediaPath }}</div>
+          </div>
+          <div v-if="deleteInfo.isSymlink" class="delete-modal-detail">
+            <strong>Symlink:</strong>
+            <div class="delete-modal-path">{{ deleteInfo.symlinkPath }}</div>
+          </div>
+          <div v-if="deleteInfo.isSymlink && deleteInfo.targetExists" class="delete-modal-detail">
+            <strong>Target:</strong>
+            <div class="delete-modal-path">{{ deleteInfo.targetPath }}</div>
+          </div>
+          <div class="delete-modal-detail">
+            <strong>File size:</strong>
+            <span>{{ formattedFileSize }}</span>
+          </div>
+          <p v-if="!deleteInfo.fileExists" class="delete-modal-missing">The file is already missing from the filesystem.</p>
+        </div>
+        <div class="modal-footer delete-modal-footer">
+          <button
+            v-if="!deleteInfo.archiveEntryExists"
+            @click="confirmDelete('metadata-only')"
+            class="btn-modal-ok"
+            :disabled="deleting"
+          >
+            Delete Metadata
+          </button>
+          <template v-else-if="deleteInfo.isSymlink">
+            <button
+              @click="confirmDelete('trash-symlink')"
+              class="btn-modal-alt-danger"
+              :disabled="deleting"
+            >
+              Delete Item + Symlink
+            </button>
+            <button
+              v-if="deleteInfo.targetExists"
+              @click="confirmDelete('trash-symlink-and-target')"
+              class="btn-modal-ok"
+              :disabled="deleting"
+            >
+              Delete Item + Symlink + Target
+            </button>
+          </template>
+          <button
+            v-else
+            @click="confirmDelete('trash-file')"
+            class="btn-modal-ok"
+            :disabled="deleting"
+          >
+            Delete Item + File
+          </button>
+          <button @click="closeDeleteModal" class="btn-modal-cancel" :disabled="deleting">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <header>
       <h1>Media Manager</h1>
       <p class="subtitle">Edit media item metadata</p>
@@ -227,6 +292,24 @@
                 <div class="info-item">
                   <label>Type:</label>
                   <span class="info-value">{{ item.type }}</span>
+                </div>
+              </div>
+              <div class="file-detail-list">
+                <div class="file-detail-row">
+                  <label>Archive Path:</label>
+                  <span class="info-value path-value">{{ deleteInfo.mediaPath }}</span>
+                </div>
+                <div v-if="deleteInfo.isSymlink" class="file-detail-row">
+                  <label>Symlink:</label>
+                  <span class="info-value path-value">{{ deleteInfo.symlinkPath }}</span>
+                </div>
+                <div class="file-detail-row">
+                  <label>File Size:</label>
+                  <span class="info-value">{{ formattedFileSize }}</span>
+                </div>
+                <div v-if="showFileStatus" class="file-detail-row">
+                  <label>Status:</label>
+                  <span class="file-status" :class="fileStatusClass">{{ fileStatusText }}</span>
                 </div>
               </div>
             </div>
@@ -588,14 +671,20 @@
       >
         Save and Next ▶
       </button>
-      <button v-if="!fileExists && !isReferencedInPlaylists" type="button" @click="handleDelete" :disabled="saving || deleting" class="btn-danger" title="Delete item - media file not found in filesystem">
-        {{ deleting ? 'Deleting...' : 'Delete Item (File Missing)' }}
+      <button
+        type="button"
+        @click="handleDelete"
+        :disabled="saving || deleting || !deleteInfo.canDelete"
+        class="btn-danger"
+        :title="deleteButtonTitle"
+      >
+        {{ deleting ? 'Deleting...' : deleteButtonText }}
       </button>
       <button type="button" @click="handleCancel" :disabled="saving || deleting" class="btn-secondary">
         Cancel
       </button>
-      <div v-if="!fileExists && isReferencedInPlaylists" class="warning-message">
-        ⚠️ Cannot delete: Item is referenced in playlist(s)
+      <div v-if="deleteInfo.deleteBlockReason" class="warning-message">
+        ⚠️ {{ deleteInfo.deleteBlockReason }}
       </div>
       <div v-if="statusMessage" :class="'status-message ' + statusMessage.type">
         {{ statusMessage.text }}
@@ -781,6 +870,22 @@ const mediaPreviewPath = ref(null);
 const videoError = ref(false); // Track if video/audio failed to load
 const videoElement = ref(null); // Reference to video element
 
+const createEmptyDeleteInfo = () => ({
+  mediaPath: '',
+  archiveEntryExists: false,
+  fileExists: true,
+  isSymlink: false,
+  symlinkPath: null,
+  targetPath: null,
+  targetExists: false,
+  sizeBytes: null,
+  deleteKind: 'metadata-only',
+  canDelete: true,
+  deleteBlockReason: null
+});
+
+const deleteInfo = ref(createEmptyDeleteInfo());
+
 // Queue navigation state
 const queueData = ref(null); // { collectionKey, collectionText, queue: [...links] }
 const currentQueueIndex = ref(-1);
@@ -793,6 +898,8 @@ const confirmModalMessage = ref('');
 const confirmOkText = ref('OK');
 const confirmCancelText = ref('Cancel');
 let confirmResolve = null;
+
+const showDeleteModal = ref(false);
 
 // Face detection state
 const imageElement = ref(null);
@@ -858,6 +965,80 @@ const isLookingUpLocation = ref(false);
 const geocodingAttribution = ref(false);
 const geocodingCache = new Map(); // Cache results to avoid duplicate requests
 let lastGeocodingRequest = 0; // Timestamp of last request for rate limiting
+
+const formatFileSize = (sizeBytes) => {
+  if (sizeBytes === null || sizeBytes === undefined || Number.isNaN(sizeBytes)) {
+    return 'Unknown';
+  }
+
+  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+  let size = sizeBytes;
+  let unitIndex = 0;
+
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+
+  const decimals = unitIndex === 0 ? 0 : 1;
+  return `${size.toFixed(decimals)} ${units[unitIndex]}`;
+};
+
+const formattedFileSize = computed(() => formatFileSize(deleteInfo.value.sizeBytes));
+
+const showFileStatus = computed(() => !deleteInfo.value.fileExists || deleteInfo.value.sizeBytes === null);
+
+const fileStatusClass = computed(() => {
+  if (!deleteInfo.value.fileExists) {
+    return 'missing';
+  }
+
+  return 'warning';
+});
+
+const fileStatusText = computed(() => {
+  if (deleteInfo.value.archiveEntryExists && deleteInfo.value.isSymlink) {
+    return 'Target Missing';
+  }
+
+  if (!deleteInfo.value.archiveEntryExists) {
+    return 'File Missing';
+  }
+
+  if (deleteInfo.value.sizeBytes === null) {
+    return 'Size Unavailable';
+  }
+
+  return '';
+});
+
+const deleteButtonText = computed(() => {
+  if (!deleteInfo.value.archiveEntryExists) {
+    return 'Delete Metadata (File Missing)';
+  }
+
+  if (deleteInfo.value.isSymlink) {
+    return 'Delete Item';
+  }
+
+  return 'Delete Item + File';
+});
+
+const deleteButtonTitle = computed(() => {
+  if (!deleteInfo.value.canDelete) {
+    return deleteInfo.value.deleteBlockReason || 'Delete unavailable';
+  }
+
+  if (!deleteInfo.value.archiveEntryExists) {
+    return 'Delete item metadata only because the archive file is missing';
+  }
+
+  if (deleteInfo.value.isSymlink) {
+    return 'Review symlink delete options';
+  }
+
+  return 'Move file to trash and delete item metadata';
+});
 
 // Format person display name for dropdowns/lists
 const getPersonDisplayName = (person) => {
@@ -1117,6 +1298,54 @@ const handleModalCancel = () => {
   if (confirmResolve) {
     confirmResolve(false);
     confirmResolve = null;
+  }
+};
+
+const closeDeleteModal = () => {
+  if (deleting.value) {
+    return;
+  }
+  showDeleteModal.value = false;
+};
+
+const navigateAfterDelete = async () => {
+  if (hasQueue.value && queueData.value?.queue) {
+    queueData.value.queue = queueData.value.queue.filter(link => link !== item.value.link);
+
+    if (queueData.value.queue.length > 0 && currentQueueIndex.value < queueData.value.queue.length) {
+      navigateToQueueItem(currentQueueIndex.value);
+      return;
+    }
+  }
+
+  setTimeout(async () => {
+    await window.electronAPI.saveWindowGeometry();
+    window.close();
+  }, 1200);
+};
+
+const confirmDelete = async (deleteMode) => {
+  showDeleteModal.value = false;
+  deleting.value = true;
+  statusMessage.value = { type: 'info', text: 'Deleting item...' };
+
+  try {
+    const result = await window.electronAPI.deleteItem({
+      link: item.value.link,
+      deleteMode
+    });
+
+    if (result.success) {
+      hasUnsavedChanges.value = false;
+      statusMessage.value = { type: 'success', text: 'Item deleted successfully!' };
+      await navigateAfterDelete();
+    } else {
+      statusMessage.value = { type: 'error', text: 'Error: ' + result.error };
+      deleting.value = false;
+    }
+  } catch (err) {
+    statusMessage.value = { type: 'error', text: 'Error deleting: ' + err.message };
+    deleting.value = false;
   }
 };
 
@@ -1443,8 +1672,8 @@ const loadExistingFaceBioData = async () => {
  *   8. User clicks Save → backend updates person library
  */
 const handleDetectFaces = async () => {
-  if (!item.value.accession) {
-    faceDetectionStatus.value = 'Error: No accession number';
+  if (!item.value.link) {
+    faceDetectionStatus.value = 'Error: No item link';
     return;
   }
   
@@ -1475,7 +1704,7 @@ const handleDetectFaces = async () => {
   
   try {
     // Step 1: Detect faces with selected models
-    const result = await window.electronAPI.detectFaces(item.value.accession, {
+    const result = await window.electronAPI.detectFaces(item.value.link, {
       models: [...selectedModels.value], // Create plain array copy
       minConfidence: confidenceThreshold.value
     });
@@ -1500,7 +1729,7 @@ const handleDetectFaces = async () => {
         }));
         
         const matchResult = await window.electronAPI.matchFaces(
-          item.value.accession,
+          item.value.link,
           facesForMatching
         );
         
@@ -2386,37 +2615,11 @@ const handleSave = async () => {
 };
 
 const handleDelete = async () => {
-  const confirmed = await showConfirm(
-    'Delete Item',
-    `Are you sure you want to delete item "${item.value.link}"? This cannot be undone.`,
-    'Delete',
-    'Cancel'
-  );
-  
-  if (!confirmed) {
+  if (!deleteInfo.value.canDelete) {
     return;
   }
-  
-  deleting.value = true;
-  statusMessage.value = { type: 'info', text: 'Deleting item...' };
-  
-  try {
-    const result = await window.electronAPI.deleteItem(item.value.link);
-    
-    if (result.success) {
-      statusMessage.value = { type: 'success', text: 'Item deleted successfully!' };
-      setTimeout(async () => {
-        await window.electronAPI.saveWindowGeometry();
-        window.close();
-      }, 1500);
-    } else {
-      statusMessage.value = { type: 'error', text: 'Error: ' + result.error };
-      deleting.value = false;
-    }
-  } catch (err) {
-    statusMessage.value = { type: 'error', text: 'Error deleting: ' + err.message };
-    deleting.value = false;
-  }
+
+  showDeleteModal.value = true;
 };
 
 const handleCancel = async () => {
@@ -2738,9 +2941,10 @@ onMounted(async () => {
       return;
     }
     
-    // Track file existence status
-    fileExists.value = loadedItem.fileExists ?? true;
-      isReferencedInPlaylists.value = loadedItem.isReferencedInPlaylists ?? false;
+    // Track file existence and delete status
+    deleteInfo.value = loadedItem.deleteInfo || createEmptyDeleteInfo();
+    fileExists.value = deleteInfo.value.fileExists ?? true;
+    isReferencedInPlaylists.value = loadedItem.isReferencedInPlaylists ?? false;
     // Initialize item with defaults for missing arrays/objects
     item.value = {
       accession: loadedItem.accession || '',
@@ -2970,6 +3174,7 @@ header h1 {
   border-top: 1px solid #dee2e6;
   padding: 1rem 2rem;
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   align-items: center;
   box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
@@ -3108,6 +3313,7 @@ header h1 {
 
 .info-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 2rem;
   background: #f8f9fa;
   padding: 1rem;
@@ -3127,6 +3333,46 @@ header h1 {
 .info-value {
   font-family: 'Courier New', monospace;
   color: #666;
+}
+
+.file-detail-list {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.file-detail-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.file-detail-row label {
+  width: 96px;
+  flex: 0 0 96px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.path-value {
+  word-break: break-all;
+}
+
+.file-status {
+  font-weight: 600;
+}
+
+.file-status.present {
+  color: #1f6f43;
+}
+
+.file-status.missing {
+  color: #b42318;
+}
+
+.file-status.warning {
+  color: #9a6700;
 }
 
 .form-section input,
@@ -4115,6 +4361,10 @@ header h1 {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
 
+.delete-modal {
+  max-width: 640px;
+}
+
 .modal-content {
   background: white;
   border-radius: 12px;
@@ -4170,6 +4420,38 @@ header h1 {
   padding: 1.5rem;
   overflow-y: auto;
   flex: 1;
+}
+
+.delete-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.delete-modal-warning {
+  margin: 0;
+  color: #b42318;
+  font-weight: 600;
+}
+
+.delete-modal-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.delete-modal-path {
+  font-family: 'Courier New', monospace;
+  color: #444;
+  word-break: break-all;
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.delete-modal-missing {
+  margin: 0;
+  color: #b42318;
 }
 
 .search-info {
@@ -4372,6 +4654,22 @@ header h1 {
 
 .btn-modal-ok:hover {
   background: #c82333;
+}
+
+.btn-modal-alt-danger {
+  padding: 0.75rem 1.5rem;
+  background: white;
+  color: #b42318;
+  border: 1px solid #b42318;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-modal-alt-danger:hover {
+  background: #fef3f2;
 }
 
 .btn-modal-cancel {

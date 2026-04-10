@@ -9,9 +9,114 @@
  * - Item reloading
  */
 
-import { BrowserWindow, Menu } from 'electron';
+import { BrowserWindow, Menu, shell } from 'electron';
 import fs from 'fs';
+import path from 'path';
 import { PersonService } from '../utils/PersonService.js';
+
+function getDeleteBlockReason(item, accessionClass) {
+  const hasPlaylistEntries = item.playlist
+    && Array.isArray(item.playlist.entry)
+    && item.playlist.entry.some(entry => entry.ref);
+
+  if (item.type === 'photo' && hasPlaylistEntries) {
+    return 'Cannot delete: Photo has playlist entries';
+  }
+
+  if ((item.type === 'audio' || item.type === 'video') && accessionClass.isItemReferencedInPlaylists(item.link)) {
+    return `Cannot delete: ${item.type} is referenced in playlist(s)`;
+  }
+
+  return null;
+}
+
+function buildDeleteInfo(accessionClass, item) {
+  const mediaPath = accessionClass.getMediaPath(item.type, item.link);
+
+  let archiveEntryExists = false;
+  let isSymlink = false;
+  let symlinkPath = null;
+  let targetPath = null;
+  let targetExists = false;
+  let sizeBytes = null;
+
+  try {
+    const archiveStats = fs.lstatSync(mediaPath);
+    archiveEntryExists = true;
+    isSymlink = archiveStats.isSymbolicLink();
+
+    if (!isSymlink) {
+      sizeBytes = archiveStats.size;
+    }
+  } catch (_error) {
+    archiveEntryExists = false;
+  }
+
+  if (isSymlink) {
+    symlinkPath = fs.readlinkSync(mediaPath);
+    targetPath = path.isAbsolute(symlinkPath)
+      ? symlinkPath
+      : path.resolve(path.dirname(mediaPath), symlinkPath);
+
+    try {
+      const targetStats = fs.statSync(targetPath);
+      targetExists = true;
+      sizeBytes = targetStats.size;
+    } catch (_error) {
+      targetExists = false;
+    }
+  }
+
+  const fileExists = isSymlink ? targetExists : archiveEntryExists;
+  const deleteBlockReason = getDeleteBlockReason(item, accessionClass);
+
+  let deleteKind = 'metadata-only';
+  if (archiveEntryExists && isSymlink) {
+    deleteKind = 'symlink';
+  } else if (archiveEntryExists) {
+    deleteKind = 'trash-file';
+  }
+
+  return {
+    mediaPath,
+    archiveEntryExists,
+    fileExists,
+    isSymlink,
+    symlinkPath,
+    targetPath,
+    targetExists,
+    sizeBytes,
+    deleteKind,
+    canDelete: !deleteBlockReason,
+    deleteBlockReason
+  };
+}
+
+async function trashForDelete(deleteInfo, deleteMode) {
+  if (deleteMode === 'metadata-only' || !deleteInfo.archiveEntryExists) {
+    return;
+  }
+
+  if (deleteMode === 'trash-file') {
+    await shell.trashItem(deleteInfo.mediaPath);
+    return;
+  }
+
+  if (deleteMode === 'trash-symlink') {
+    await shell.trashItem(deleteInfo.mediaPath);
+    return;
+  }
+
+  if (deleteMode === 'trash-symlink-and-target') {
+    await shell.trashItem(deleteInfo.mediaPath);
+    if (deleteInfo.targetExists) {
+      await shell.trashItem(deleteInfo.targetPath);
+    }
+    return;
+  }
+
+  throw new Error(`Unsupported delete mode: ${deleteMode}`);
+}
 
 /**
  * Register all item-related IPC handlers
@@ -83,11 +188,11 @@ export function registerItemHandlers(
   }); // items:getList
 
   // Get detail for a specific item (async version for Vue)
-  ipcMain.handle('item:getDetail', async (_, accession) => {
+  ipcMain.handle('item:getDetail', async (_, link) => {
     // This fires when requesting any item from the left-hand list
     verifyAccessions();
     const accessionClass = getAccessionClass();
-    let itemView = accessionClass.getItemView(accession);
+    const itemView = accessionClass.getItemView(null, link);
     if (itemView) {
       return new Promise((resolve) => {
         itemView.getViewObject((viewObject) => {
@@ -168,39 +273,36 @@ export function registerItemHandlers(
     return null;
   }); // item:Play
 
-  // Edit an item
-  ipcMain.handle('item:Edit', async (_, identifier, collectionKey = null, includeQueue = false, sortBy = '1') => {
+  // Edit an item by link
+  ipcMain.handle('item:Edit', async (_, link, collectionKey = null, includeQueue = false, sortBy = '1') => {
     // This fires when requesting to edit an item
     // includeQueue flag determines whether to build navigation queue from collection
     // sortBy determines the sort order for the queue ('1'=Date, '2'=Person, etc.)
-    createMediaManagerWindow(identifier, includeQueue ? collectionKey : null, sortBy);
+    createMediaManagerWindow(link, includeQueue ? collectionKey : null, sortBy);
     return { success: true };
   }); // item:Edit
 
-  // Load a specific item by identifier
-  ipcMain.handle('item:load', async (_event, identifier) => {
+  // Load a specific item by link
+  ipcMain.handle('item:load', async (_event, link) => {
     try {
       verifyAccessions();
       const accessionClass = getAccessionClass();
       const items = accessionClass.accessionJSON.accessions?.item || [];
-      
-      // Search by accession or link
-      const item = items.find(i => 
-        i.accession === identifier || i.link === identifier
-      );
+
+      const item = items.find(i => i.link === link);
       
       if (!item) {
         return null;
       }
       
-      // Check if media file exists in filesystem
-      const mediaPath = accessionClass.getMediaPath(item.type, item.link);
-      const fileExists = fs.existsSync(mediaPath);
+      const deleteInfo = buildDeleteInfo(accessionClass, item);
       
       // Return item with file existence info
       return {
         ...item,
-        fileExists
+        fileExists: deleteInfo.fileExists,
+        isReferencedInPlaylists: accessionClass.isItemReferencedInPlaylists(item.link),
+        deleteInfo
       };
     } catch (error) {
       console.error('Failed to load item:', error);
@@ -291,13 +393,46 @@ export function registerItemHandlers(
   });
 
   // Delete an item
-  ipcMain.handle('item:delete', async (_event, link) => {
+  ipcMain.handle('item:delete', async (_event, payload) => {
     try {
       verifyAccessions();
       const accessionClass = getAccessionClass();
+      const request = typeof payload === 'string'
+        ? { link: payload }
+        : payload;
+
+      const items = accessionClass.accessionJSON.accessions?.item || [];
+      const item = items.find(candidate => candidate.link === request.link);
+
+      if (!item) {
+        return { success: false, error: 'Item not found' };
+      }
+
+      const deleteInfo = buildDeleteInfo(accessionClass, item);
+
+      if (!deleteInfo.canDelete) {
+        return { success: false, error: deleteInfo.deleteBlockReason };
+      }
+
+      const deleteMode = request.deleteMode
+        || (!deleteInfo.archiveEntryExists
+          ? 'metadata-only'
+          : deleteInfo.isSymlink
+            ? 'trash-symlink'
+            : 'trash-file');
+
+      if (deleteMode === 'trash-symlink-and-target' && !deleteInfo.isSymlink) {
+        return { success: false, error: 'Delete target option is only valid for symlinks' };
+      }
+
+      if (deleteMode === 'trash-symlink' && !deleteInfo.isSymlink) {
+        return { success: false, error: 'Symlink delete option is only valid for symlinks' };
+      }
+
+      await trashForDelete(deleteInfo, deleteMode);
       
       // Use encapsulated method to delete item
-      const success = accessionClass.deleteItem(link);
+      const success = accessionClass.deleteItem(request.link);
       
       if (!success) {
         return { success: false, error: 'Item not found' };
@@ -364,11 +499,11 @@ export function registerItemHandlers(
     Menu.setApplicationMenu(createMenu());
   }); // items:getList
 
-  ipcMain.on('item:getDetail', async (_, accession) => {
+  ipcMain.on('item:getDetail', async (_, link) => {
     // This fires when requesting any item from the left-hand list
     verifyAccessions();
     const accessionClass = getAccessionClass();
-    let itemView = accessionClass.getItemView(accession);
+    const itemView = accessionClass.getItemView(null, link);
     if (itemView) {
       itemView.getViewObject((viewObject) => {
         const mainWindow = getMainWindow();
@@ -379,7 +514,7 @@ export function registerItemHandlers(
         }
       })
     } else {
-      console.error('No itemView found for accession:', accession);
+      console.error('No itemView found for link:', link);
     }
   }); // item:getDetail
 

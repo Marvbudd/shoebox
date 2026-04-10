@@ -1,4 +1,10 @@
+---
+audience: advanced
+---
+
 # Managing Multiple Archives
+
+> Audience: Advanced users
 
 **Advanced Topic** - This guide covers strategies for working with multiple related archives while maintaining data consistency.
 

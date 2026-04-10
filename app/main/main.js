@@ -490,15 +490,15 @@ const createWindow = () => {
   };
 
   // Detect faces in a photo
-  ipcMain.handle('face-detection:detect', async (event, accession, options = {}) => {
+  ipcMain.handle('face-detection:detect', async (event, link, options = {}) => {
     try {
       verifyAccessions();
       const service = await initFaceDetection();
       
       // Get image path
-      const itemView = accessionClass.getItemView(accession);
+      const itemView = accessionClass.getItemView(null, link);
       if (!itemView) {
-        throw new Error(`Item not found: ${accession}`);
+        throw new Error(`Item not found: ${link}`);
       }
       
       if (itemView.getType() !== 'photo') {
@@ -515,7 +515,7 @@ const createWindow = () => {
       
       return {
         success: true,
-        accession,
+        link,
         facesDetected: faces.length,
         faces: faces.map(face => ({
           descriptor: Array.from(face.descriptor), // Convert Float32Array to regular array for IPC
@@ -565,7 +565,7 @@ const createWindow = () => {
   });
 
   // Match detected faces to persons already listed in this photo
-  ipcMain.handle('face-detection:match', async (event, accession, detectedFaces) => {
+  ipcMain.handle('face-detection:match', async (event, link, detectedFaces) => {
     try {
       verifyAccessions();
       
@@ -573,9 +573,9 @@ const createWindow = () => {
         return { success: true, matches: [], unmatchedFaces: [] };
       }
       
-      const itemView = accessionClass.getItemView(accession);
+      const itemView = accessionClass.getItemView(null, link);
       if (!itemView) {
-        throw new Error(`Item not found: ${accession}`);
+        throw new Error(`Item not found: ${link}`);
       }
       
       const item = itemView.itemJSON;

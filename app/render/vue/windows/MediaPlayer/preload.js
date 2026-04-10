@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   playItem: (entry) => ipcRenderer.invoke('item:Play', entry),
   
   // Edit item (opens MediaManager window)
-  editItem: (accession) => ipcRenderer.invoke('item:Edit', accession),
+  editItem: (link) => ipcRenderer.invoke('item:Edit', link),
   
   // Open website/tree window
   openWebsite: () => ipcRenderer.invoke('open:Website')

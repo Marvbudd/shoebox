@@ -1,4 +1,10 @@
+---
+audience: general
+---
+
 # Creating Your Archive
+
+> Audience: General users
 
 Ready to start organizing your family's multimedia memories? This guide walks you through creating your own archive.
 
@@ -381,11 +387,16 @@ Sometimes you'll want to remove duplicate or poor quality media:
 **Safe Deletion Workflow:**
 
 1. **Create a backup first**: Archive > Backup Archive
-2. **Identify files to remove**: Review your media in the filesystem
-3. **Delete from filesystem**: Remove unwanted files from photo/, video/, or audio/ directories
-4. **Clean up metadata**: Use Archive > Edit Media to delete orphaned metadata entries
-   - Delete button appears only when physical file is missing
-   - Prevents deletion if item is referenced in playlists
+2. **Identify items to remove**: Review them in Shoebox or in the filesystem
+3. **Open Media Manager**: Use Archive > Edit Media to inspect the item before deleting
+4. **Review file details**: Confirm archive path, symlink path if present, file size, and file status
+5. **Delete using the review dialog**:
+   - Missing file: remove metadata only
+   - Regular file: move the file to system trash and remove metadata
+   - Symlink: remove metadata plus symlink, or metadata plus symlink plus target file
+6. **Respect playlist protections**:
+   - Photos with playlist entries cannot be deleted
+   - Audio/video items referenced by playlists cannot be deleted
 
 See [Metadata Cleanup](../features/metadata.md#metadata-cleanup) for complete details.
 

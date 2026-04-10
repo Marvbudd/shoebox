@@ -133,7 +133,7 @@ const KEYBOARD_NAV_SUPPRESS_MS = 300; // Suppress mouseover for 300ms after keyb
 const MOUSE_MOVEMENT_THRESHOLD = 10; // Pixels - require significant movement to clear keyboard nav
 let mouseoverRequestCounter = 0; // Track latest mouseover request to prevent race conditions
 let mouseoverDebounceTimer = null; // Debounce timer to avoid excessive requests during rapid movement
-let mouseoverDebounceAccession = null; // Track which accession the current timer is for
+let mouseoverDebounceLink = null; // Track which item the current timer is for
 
 // Slideshow state
 const isAutoCycling = ref(false);
@@ -299,6 +299,8 @@ const hideHighlightFilter = () => {
 };
 
 // Handle mouseover on table rows
+const getRowLink = (row) => row?.getAttribute('link');
+
 const handleMouseOver = async (event) => {
   // Check if we're within the keyboard navigation suppress period
   // Must check this FIRST before potentially clearing the isKeyboardNavigating flag
@@ -342,7 +344,8 @@ const handleMouseOver = async (event) => {
   const target = event.target;
   if (target.nodeName === 'DIV' && target.parentElement.nodeName === 'TD') {
     const row = target.closest('tr');
-    if (row && row.hasAttribute('accession')) {
+    const itemLink = getRowLink(row);
+    if (row && itemLink) {
       // Update mouse tracking for movement detection
       lastMouseX.value = event.clientX;
       lastMouseY.value = event.clientY;
@@ -368,17 +371,17 @@ const handleMouseOver = async (event) => {
                       row.classList.contains('video') ? 'video' : null;
       
       if (itemType === 'photo') {
-        const accession = row.getAttribute('accession');
+        const nextLink = getRowLink(row);
         
         // Only clear and restart timer if we've moved to a different item
-        if (mouseoverDebounceAccession !== accession) {
+        if (mouseoverDebounceLink !== nextLink) {
           // Clear any existing timer
           if (mouseoverDebounceTimer) {
             clearTimeout(mouseoverDebounceTimer);
           }
           
           // Track which item this timer is for
-          mouseoverDebounceAccession = accession;
+          mouseoverDebounceLink = nextLink;
           
           // Set a new timer to fetch item detail after a brief delay
           // Timer fetches the highlighted row's photo, regardless of where mouse is when it fires
@@ -388,7 +391,7 @@ const handleMouseOver = async (event) => {
             const thisRequestId = mouseoverRequestCounter;
             
             try {
-              const itemData = await window.electronAPI.getItemDetail(mouseoverDebounceAccession);
+              const itemData = await window.electronAPI.getItemDetail(mouseoverDebounceLink);
               
               // Only show detail if this is still the latest request
               // (user hasn't moused over another item while we were waiting)
@@ -406,7 +409,7 @@ const handleMouseOver = async (event) => {
           clearTimeout(mouseoverDebounceTimer);
           mouseoverDebounceTimer = null;
         }
-        mouseoverDebounceAccession = null;
+        mouseoverDebounceLink = null;
         
         // Show tooltip to indicate click is required
         target.title = 'Click to open in Media Player';
@@ -438,19 +441,18 @@ const handleTableClick = async (event) => {
   const target = event.target;
   if (target.nodeName === 'DIV' && target.parentElement.nodeName === 'TD') {
     const row = target.closest('tr');
-    if (row && row.hasAttribute('accession')) {
+    const itemLink = getRowLink(row);
+    if (row && itemLink) {
       // Check if this is an audio or video item
       const isAudioOrVideo = row.classList.contains('audio') || row.classList.contains('video');
       
       if (isAudioOrVideo) {
-        const accession = row.getAttribute('accession');
-        
         // Increment counter and capture current value for this request
         mouseoverRequestCounter++;
         const thisRequestId = mouseoverRequestCounter;
         
         try {
-          const itemData = await window.electronAPI.getItemDetail(accession);
+          const itemData = await window.electronAPI.getItemDetail(itemLink);
           
           // Only show detail if this is still the latest request
           if (thisRequestId === mouseoverRequestCounter && itemData) {
@@ -964,7 +966,7 @@ const getVisibleRows = () => {
   if (!tableDiv) return [];
   
   const allRows = Array.from(tableDiv.getElementsByTagName('tr'));
-  return allRows.filter(row => !row.hidden && row.hasAttribute('accession'));
+  return allRows.filter(row => !row.hidden && getRowLink(row));
 };
 
 const highlightRow = (index) => {
@@ -989,8 +991,9 @@ const highlightRow = (index) => {
 const selectCurrentRow = async () => {
   const visibleRows = getVisibleRows();
   const row = visibleRows[selectedRowIndex.value];
+  const itemLink = getRowLink(row);
   
-  if (row && row.hasAttribute('accession')) {
+  if (row && itemLink) {
     // Check item type - only show preview for photos on keyboard navigation
     // Audio/video require Enter key to open
     const itemType = row.classList.contains('photo') ? 'photo' : 
@@ -998,14 +1001,12 @@ const selectCurrentRow = async () => {
                     row.classList.contains('video') ? 'video' : null;
     
     if (itemType === 'photo') {
-      const accession = row.getAttribute('accession');
-      
       // Increment counter and capture current value for this request
       mouseoverRequestCounter++;
       const thisRequestId = mouseoverRequestCounter;
       
       try {
-        const itemData = await window.electronAPI.getItemDetail(accession);
+        const itemData = await window.electronAPI.getItemDetail(itemLink);
         
         // Only show detail if this is still the latest request
         if (thisRequestId === mouseoverRequestCounter && itemData) {
@@ -1153,7 +1154,7 @@ const handleKeyDown = async (event) => {
         if (mouseoverDebounceTimer) {
           clearTimeout(mouseoverDebounceTimer);
           mouseoverDebounceTimer = null;
-          mouseoverDebounceAccession = null;
+          mouseoverDebounceLink = null;
         }
         highlightRow(selectedRowIndex.value + 1);
         await selectCurrentRow();
@@ -1173,7 +1174,7 @@ const handleKeyDown = async (event) => {
         if (mouseoverDebounceTimer) {
           clearTimeout(mouseoverDebounceTimer);
           mouseoverDebounceTimer = null;
-          mouseoverDebounceAccession = null;
+          mouseoverDebounceLink = null;
         }
         highlightRow(selectedRowIndex.value - 1);
         await selectCurrentRow();
@@ -1184,7 +1185,7 @@ const handleKeyDown = async (event) => {
         if (mouseoverDebounceTimer) {
           clearTimeout(mouseoverDebounceTimer);
           mouseoverDebounceTimer = null;
-          mouseoverDebounceAccession = null;
+          mouseoverDebounceLink = null;
         }
         highlightRow(0);
         await selectCurrentRow();
@@ -1199,7 +1200,7 @@ const handleKeyDown = async (event) => {
       if (mouseoverDebounceTimer) {
         clearTimeout(mouseoverDebounceTimer);
         mouseoverDebounceTimer = null;
-        mouseoverDebounceAccession = null;
+        mouseoverDebounceLink = null;
       }
       const nextIndex = Math.min(selectedRowIndex.value + 15, visibleRows.length - 1);
       highlightRow(nextIndex);
@@ -1214,7 +1215,7 @@ const handleKeyDown = async (event) => {
       if (mouseoverDebounceTimer) {
         clearTimeout(mouseoverDebounceTimer);
         mouseoverDebounceTimer = null;
-        mouseoverDebounceAccession = null;
+        mouseoverDebounceLink = null;
       }
       const prevIndex = Math.max(selectedRowIndex.value - 15, 0);
       highlightRow(prevIndex);
@@ -1229,7 +1230,7 @@ const handleKeyDown = async (event) => {
       if (mouseoverDebounceTimer) {
         clearTimeout(mouseoverDebounceTimer);
         mouseoverDebounceTimer = null;
-        mouseoverDebounceAccession = null;
+        mouseoverDebounceLink = null;
       }
       highlightRow(0);
       await selectCurrentRow();
@@ -1243,7 +1244,7 @@ const handleKeyDown = async (event) => {
       if (mouseoverDebounceTimer) {
         clearTimeout(mouseoverDebounceTimer);
         mouseoverDebounceTimer = null;
-        mouseoverDebounceAccession = null;
+        mouseoverDebounceLink = null;
       }
       highlightRow(visibleRows.length - 1);
       await selectCurrentRow();
@@ -1253,16 +1254,16 @@ const handleKeyDown = async (event) => {
       event.preventDefault();
       // Open audio/video items in MediaPlayer, or show photo details
       const currentRow = visibleRows[selectedRowIndex.value];
-      if (currentRow && currentRow.hasAttribute('accession')) {
+      const itemLink = getRowLink(currentRow);
+      if (currentRow && itemLink) {
         const itemType = currentRow.classList.contains('photo') ? 'photo' : 
                         currentRow.classList.contains('audio') ? 'audio' : 
                         currentRow.classList.contains('video') ? 'video' : null;
         
         if (itemType === 'audio' || itemType === 'video') {
           // Open audio/video in MediaPlayer
-          const accession = currentRow.getAttribute('accession');
           try {
-            await window.electronAPI.getItemDetail(accession);
+            await window.electronAPI.getItemDetail(itemLink);
           } catch (error) {
             console.error('Error opening item:', error);
           }

@@ -1,4 +1,10 @@
+---
+audience: general
+---
+
 # Archives vs Collections
+
+> Audience: General users
 
 Understanding the difference between Archives and Collections is key to organizing your media effectively in Shoebox.
 

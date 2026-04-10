@@ -1,5 +1,6 @@
 ---
 layout: home
+audience: general
 
 hero:
   name: Shoebox
@@ -47,6 +48,8 @@ features:
 ---
 
 ## Quick Start
+
+> Audience: General users
 
 ```bash
 # Download for your platform

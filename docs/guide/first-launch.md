@@ -1,4 +1,10 @@
+---
+audience: general
+---
+
 # First Launch
+
+> Audience: General users
 
 Welcome to your first time opening Shoebox!
 

@@ -4,31 +4,24 @@ import { CollectionClass } from './CollectionClass.js';
 import { generateTimestamp } from './helpers.js';
 
 /**
- * CollectionsClass - Manages all collections with proper encapsulation.
- * 
- * ARCHITECTURE PATTERN:
- * 
- * This class manages a set of CollectionClass instances, each following the
- * deferred-save pattern. Changes to individual collections set their
- * collectionChanged flags, and saveCollections() persists all modified collections.
+ * CollectionsClass - Manages all collections.
  * 
  * FRIEND RELATIONSHIP WITH AccessionClass:
  * 
- * CollectionsClass is designed to be owned and managed by AccessionClass.
- * AccessionClass acts as a "friend" that controls the collections lifecycle:
- * 
+ * This class is owned and controlled exclusively by AccessionClass:
  * - AccessionClass creates the CollectionsClass instance
  * - AccessionClass calls readCollections() during initialization
  * - AccessionClass calls saveCollections() from its saveAccessions() method
- * - This ensures collections are always persisted with their accessions
  * 
  * DO NOT create CollectionsClass instances outside of AccessionClass!
- * DO NOT call saveCollections() directly from IPC handlers or other external code!
+ * DO NOT call saveCollections() directly from IPC handlers!
  * 
- * IMPORTANT:
- * - Use collection mutation methods (addItem, removeItem) instead of direct access
- * - Use getLinks() method instead of accessing collection.itemKeys directly
- * - saveCollections() is called by parent AccessionClass, typically on app close
+ * Collection Management:
+ * - Use collection mutation methods (addItem, removeItem)
+ * - Use getLinks() instead of accessing itemKeys directly
+ * - saveCollections() persists all modified collections
+ * 
+ * See docs/guide/architecture.md for architectural rationale.
  * 
  * @class CollectionsClass
  */

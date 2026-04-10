@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Media Manager delete review for archive files and symlinks**: Media Manager now shows archive path, symlink information, file size, and file status before deletion. Symlinked items can be removed either as metadata plus symlink only, or metadata plus symlink plus target file.
+
+### Changed
+- **Internal item identifier cleanup**: Shoebox now uses `link` more consistently for internal item lookup and maintenance workflows, while preserving `accession` as a user-facing archival field.
+- **Safer item deletion rules in Media Manager**: Delete is now available directly from Media Manager for existing files, missing files, and symlinked archive entries, while still blocking deletion when photos have outbound playlist entries or audio/video items are referenced by playlists.
+- **Queue-aware delete workflow**: When deleting from a collection-backed Media Manager queue, Shoebox now advances to the next queued item instead of always closing the window.
+
+### Documentation
+- Updated Media Manager cleanup documentation to describe file-status display, system-trash behavior, and symlink delete options.
+
+### Security
+- Updated dependencies:
+  - `electron` from 40.2.3 to 40.8.5 (root and app)
+  - `vite` from 8.0.3 to 8.0.7
+  - `vue` from 3.5.31 to 3.5.32
+  - `minimatch` from 10.2.4 to 10.2.5 (root and app)
+  - `rollup` from 4.30.0 to 4.60.1
+
 ## [3.1.4] - 2026-03-29
 
 ### Fixed

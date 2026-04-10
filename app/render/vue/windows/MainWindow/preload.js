@@ -6,8 +6,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Get list of items with specified sort order
   getItemsList: (requestParams) => ipcRenderer.invoke('items:getList', requestParams),
   
-  // Get details for a specific item
-  getItemDetail: (accession) => ipcRenderer.invoke('item:getDetail', accession),
+  // Get details for a specific item by link
+  getItemDetail: (link) => ipcRenderer.invoke('item:getDetail', link),
   
   // Toggle item's membership in currently selected collection
   toggleItemInCollection: (link) => ipcRenderer.invoke('item:setCollection', link),
@@ -19,7 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   playItem: (entry) => ipcRenderer.invoke('item:Play', entry),
   
   // Edit item (opens MediaManager window)
-  editItem: (accession, collectionKey, includeQueue, sortBy) => ipcRenderer.invoke('item:Edit', accession, collectionKey, includeQueue, sortBy),
+  editItem: (link, collectionKey, includeQueue, sortBy) => ipcRenderer.invoke('item:Edit', link, collectionKey, includeQueue, sortBy),
 
   // Open media file in the system default external application
   openMediaExternal: (type, link) => ipcRenderer.invoke('media:openExternal', type, link),

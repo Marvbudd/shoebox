@@ -1,4 +1,10 @@
+---
+audience: development
+---
+
 # Archive Data Structure
+
+> Audience: Developers and advanced users
 
 Complete technical reference for the `accessions.json` file format used by Shoebox.
 
@@ -33,22 +39,21 @@ The `accessions.json` file is the core data file for the Shoebox application. It
 
 ### Primary Keys and Identifiers
 
-**Link as True Primary Key:**
-- The combination of `type` + `link` is the true primary key for items
-- Enforced by filesystem: each file has a unique name within its type subdirectory
-- `type` determines subdirectory (photo/, video/, audio/)
-- `link` is the filename within that subdirectory
-- This composite key is guaranteed unique and stable
+**Link as Operational Identifier:**
+- `link` is the identifier Shoebox currently uses for most internal references and lookups
+- Collections, playlist references, face descriptors, and delete operations all point to items by `link`
+- In the current archive layout, `link` is treated as stable and unique within the archive
+- `type` still describes the media subdirectory, but most runtime code does not use `type` + `link` as a separate composite key
 
 **Accession as Display Field:**
 - `accession` is a user-editable display/grouping field, not a true primary key
-- Originally hand-entered, no uniqueness enforcement in code
-- User can change accession values (should trigger warnings)
-- Primarily used for organization and human-readable references
+- Originally hand-entered, with no uniqueness enforcement in code
+- User can change accession values
+- Primarily used for lookup, sorting, editing, organization, and human-readable references
 
 **Reference Guidelines:**
-- **Internal system references** (playlists, faceBioData): Use `type` + `link`
-- **User-facing displays** (collections, UI lists): Use `accession`
+- **Internal system references** (collections, playlists, face data, item lookup): Use `link`
+- **User-facing displays** (sorts, labels, manual lookup, editing): Show and accept `accession`
 - **Person references**: Use `personID` (UUID), never store names
 
 **Portability:**
@@ -79,8 +84,8 @@ Each item in the `accessions.item[]` array represents a single media file.
 
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
-| `accession` | string | Yes | User-editable display field for organization |
-| `link` | string | Yes | Filename (true primary key with `type`) |
+| `accession` | string | Yes | User-editable display and lookup field for organization |
+| `link` | string | Yes | Filename used as the archive's operational item identifier |
 | `type` | string | Yes | Media type: `"photo"`, `"video"`, or `"audio"` |
 | `description` | string | No | Free-text description, context, transcription |
 | `date` | object | No | When the media was created |

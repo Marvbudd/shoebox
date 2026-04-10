@@ -1,4 +1,10 @@
+---
+audience: advanced
+---
+
 # Face Detection - Advanced Technical Details
+
+> Audience: Advanced users
 
 ## Understanding Face Detection Percentages
 

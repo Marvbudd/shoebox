@@ -1,4 +1,10 @@
+---
+audience: general
+---
+
 # Slideshow Mode
+
+> Audience: General users
 
 Turn Shoebox into a digital photo frame for displaying your family archive.
 

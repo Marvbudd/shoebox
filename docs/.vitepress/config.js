@@ -30,9 +30,15 @@ export default defineConfig({
           text: 'Core Concepts',
           items: [
             { text: 'Archives vs Collections', link: '/guide/archives-vs-collections' },
-            { text: 'Data Structure', link: '/guide/data-structure' },
-            { text: 'Managing Multiple Archives', link: '/guide/managing-multiple-archives' },
             { text: 'Keyboard Shortcuts', link: '/guide/keyboard-shortcuts' }
+          ]
+        },
+        {
+          text: 'Advanced & Development',
+          items: [
+            { text: 'Managing Multiple Archives', link: '/guide/managing-multiple-archives' },
+            { text: 'Data Structure Reference', link: '/guide/data-structure' },
+            { text: 'Architecture Reference', link: '/guide/architecture' }
           ]
         }
       ],
@@ -43,10 +49,15 @@ export default defineConfig({
             { text: 'Overview', link: '/features/overview' },
             { text: 'Slideshow Mode', link: '/features/slideshow' },
             { text: 'Face Detection', link: '/features/face-detection' },
-            { text: 'Advanced Face Detection', link: '/features/face-detection-advanced' },
             { text: 'Collections', link: '/features/collections' },
-            { text: 'Collection Set Operations', link: '/features/collection-set-operations' },
             { text: 'Metadata', link: '/features/metadata' }
+          ]
+        },
+        {
+          text: 'Advanced & Technical',
+          items: [
+            { text: 'Advanced Face Detection', link: '/features/face-detection-advanced' },
+            { text: 'Collection Set Operations Implementation', link: '/features/collection-set-operations' }
           ]
         }
       ]

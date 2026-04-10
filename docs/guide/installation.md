@@ -1,4 +1,10 @@
+---
+audience: general
+---
+
 # Installation
+
+> Audience: General users
 
 Download and install Shoebox for your operating system.
 

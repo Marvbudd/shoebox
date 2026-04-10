@@ -1,4 +1,10 @@
+---
+audience: general
+---
+
 # Metadata
+
+> Audience: General users
 
 ## Overview
 
@@ -167,7 +173,7 @@ The Media Manager uses a two-column layout:
 
 - **Left Column**: Metadata editing forms
   - People section with scrollable list (up to 5 people before scrolling)
-  - Basic info (accession, description, type)
+  - Basic info (accession, file, type, archive path, file status)
   - Date entry (year, month, day)
   - Location fields (city, state, GPS lookup)
   - Source information
@@ -235,28 +241,37 @@ The Media Manager uses a two-column layout:
 
 ## Metadata Cleanup
 
-### Deleting Items with Missing Media Files
+### Deleting Items and Cleaning Up Metadata
 
-When you've removed poor quality or duplicate media files from the filesystem, Shoebox provides safe metadata cleanup:
+When you need to remove duplicate, low-quality, or broken media references, Media Manager now handles both filesystem deletion and metadata cleanup in one place.
 
 **Using Media Manager** (Archive > Edit Media):
 
-1. Load an item whose media file has been deleted from the filesystem
-2. A **Delete Item** button appears (only when file is missing)
-3. Click to remove the metadata entry
+1. Load the item in **Media Manager**
+2. Review the file details shown in the left column:
+  - Archive path
+  - Symlink path (if the archive entry is a symlink)
+  - File size
+  - File status
+3. Click **Delete Item** to open the delete review dialog
+4. Choose the appropriate action:
+  - **Missing file**: delete metadata only
+  - **Regular file**: move the file to the system trash and delete metadata
+  - **Symlink**: either delete metadata plus symlink only, or delete metadata plus symlink plus target file
 
 **Safety Features:**
-- Delete button only appears when the physical media file is missing
-- Button is hidden (with warning) if the item is referenced in any playlists
-- Warning: "Cannot delete: Item is referenced in playlist(s)"
-- Prevents accidental deletion of referenced items
-- Requires confirmation before deleting
+- Delete review dialog shows exact archive and symlink paths before anything is removed
+- Physical files are moved to the system trash rather than deleted permanently
+- Photos cannot be deleted if they contain playlist entries
+- Audio and video items cannot be deleted if other items reference them in playlists
+- Missing files can still be cleaned up by deleting metadata only
+- File status is highlighted so broken archive entries are easy to spot
 
 **Recommended Workflow:**
 1. Review your media files and identify duplicates or poor quality items
-2. Delete unwanted media files from the photo/, video/, or audio/ directories
-3. Open items in Media Manager to clean up orphaned metadata entries
-4. The missing file indicator helps you identify items that need cleanup
+2. Open items in Media Manager to verify archive path, symlink status, and file size before deleting
+3. Use the delete review dialog to choose whether to remove metadata only, trash the file, or trash both symlink and target
+4. If you are working from a collection queue, Shoebox advances to the next item after a successful delete
 
 ### Deleting Unused Person Records
 

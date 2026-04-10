@@ -1,4 +1,10 @@
+---
+audience: general
+---
+
 # Keyboard Shortcuts Reference
+
+> Audience: General users
 
 Comprehensive guide to all keyboard shortcuts available in Shoebox.
 

@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "3.1.4",
+  "version": "3.2.0",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",
@@ -22,9 +22,9 @@
     "nconf": "^0.13.0"
   },
   "resolutions": {
-    "minimatch": "^10.2.4"
+    "minimatch": "^10.2.5"
   },
   "devDependencies": {
-    "electron": "^40.2.3"
+    "electron": "^40.8.5"
   }
 }

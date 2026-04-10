@@ -1,4 +1,10 @@
+---
+audience: development
+---
+
 # Collection Set Operations - Vue Window Implementation
+
+> Audience: Developers and advanced users
 
 ## Overview
 

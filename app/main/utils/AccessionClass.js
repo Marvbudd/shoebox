@@ -18,44 +18,33 @@ const subdirectories = {
 /**
  * AccessionClass - Manages accession data with proper encapsulation and persistence.
  * 
- * CRITICAL ARCHITECTURE PATTERN:
+ * DEFERRED-SAVE PATTERN:
  * 
- * This class uses a deferred-save pattern to improve performance and ensure data integrity:
- * 
- * 1. ALL data mutations MUST go through class methods (never modify accessionJSON directly)
- * 2. Mutation methods set `this.accessionsChanged = true` to flag pending changes
- * 3. saveAccessions() is called ONLY when:
- *    - Main window closes (automatic save on app exit)
- *    - Switching to a different accessions file
+ * 1. ALL mutations go through class methods (never modify accessionJSON directly)
+ * 2. Mutation methods set `this.accessionsChanged = true`
+ * 3. saveAccessions() called ONLY when:
+ *    - Main window closes
+ *    - Switching archives
  *    - Creating new accessions
  * 
- * DO NOT call saveAccessions() from IPC handlers or after individual changes!
- * This would cause:
- * - Poor performance (disk write on every change)
- * - Broken encapsulation (external code controlling persistence)
- * - Potential data loss (incomplete transactions)
+ * DO NOT call saveAccessions() from IPC handlers!
  * 
- * CORRECT PATTERN:
- *   // In IPC handler
- *   accessionClass.saveItem(itemData);  // Method sets accessionsChanged flag
- *   return { success: true };           // Return immediately, no save
+ * Example:
+ *   accessionClass.saveItem(itemData);  // Sets accessionsChanged flag
+ *   return { success: true };           // No save call
  * 
- * INCORRECT PATTERN:
- *   // In IPC handler - DON'T DO THIS!
- *   accessionClass.accessionJSON.accessions.item[index] = itemData;  // Direct mutation
- *   accessionClass.saveAccessions();                                 // Immediate save
- * 
- * Mutation Methods (all set accessionsChanged flag):
+ * Mutation Methods (set accessionsChanged flag):
  * - saveItem(itemData)
  * - deleteItem(link)
  * - bulkUpdateCollectionItems(collectionKey, updates, onlyIfEmpty)
- * - updateAccession(formJSON)
  * - createItem(file, directoryPath, type, formJSON)
  * - savePerson(person)
  * - updatePersonTMGID(personID, tmgid)
  * - toggleItemInCollection(collectionKey, link)
  * - importPersonsFromArchive(sourcePersons, options)
  * - importArchive(sourceData, sourceFilePath, options)
+ * 
+ * See docs/guide/architecture.md for architectural rationale.
  * 
  * @class AccessionClass
  */
@@ -621,16 +610,6 @@ export class AccessionClass {
   } // getReferencesForLink
 
   // updateCollection updates all items in a collection from a formJSON
-  updateCollection(formJSON) {
-    let collection = this.collections.getCollection(formJSON.updateFocus)
-    if (collection) {
-      collection.getLinks().forEach(link => {
-        // delegate as if only one was updated
-        formJSON.accession = key.accession
-        this.updateAccession(formJSON)
-      });
-    }
-  } // updateCollection
 
   /**
    * Bulk update items in a collection with metadata
@@ -726,21 +705,6 @@ export class AccessionClass {
     return updatedCount;
   }
 
-  // updateItem updates an item from a formJSON
-  updateAccession(formJSON) {
-    let itemView = this.getItemView(formJSON.accession)
-    if (itemView) {
-      itemView.updateItem(formJSON)
-      // replace the item in accessionJSON
-      let index = this.accessionJSON.accessions.item.findIndex(item => item.accession === formJSON.accession)
-      if (index >= 0) {
-        this.accessionJSON.accessions.item[index] = itemView.itemJSON
-        this.accessionsChanged = true
-      } else {
-        console.error('AccessionClass:updateItem - item not found: ' + formJSON.accession)
-      }
-    }
-  } // updateItem  
 
   // Create a new collection
   createCollection(collectionKey, title, text) {
@@ -756,20 +720,23 @@ export class AccessionClass {
 
   /**
    * Save an item by replacing it in the accessions array
-   * @param {object} itemData - Complete item object with accession property
+   * @param {object} itemData - Complete item object with link and accession properties
    * @returns {boolean} Success status
    */
   saveItem(itemData) {
     if (!itemData || typeof itemData !== 'object') {
       throw new Error('AccessionClass.saveItem: itemData is null or not an object');
     }
+    if (!itemData.link) {
+      throw new Error('AccessionClass.saveItem: Item must have link property');
+    }
     if (!itemData.accession) {
       throw new Error('AccessionClass.saveItem: Item must have accession property');
     }
     const items = this.accessionJSON.accessions?.item || [];
-    const index = items.findIndex(i => i.accession === itemData.accession);
+    const index = items.findIndex(i => i.link === itemData.link);
     if (index === -1) {
-      throw new Error(`AccessionClass.saveItem: Item not found: ${itemData.accession}`);
+      throw new Error(`AccessionClass.saveItem: Item not found: ${itemData.link}`);
     }
     items[index] = itemData;
     this.accessionsChanged = true;
@@ -793,6 +760,13 @@ export class AccessionClass {
     // Clean up all faceBioData for this link across all persons
     const persons = this.accessionJSON.persons || {};
     this.personService.removeAllDescriptorsForLink(persons, link);
+
+    // Remove the item from every collection that still references it.
+    for (const collection of this.collections.collections) {
+      if (collection.hasItem(link)) {
+        collection.removeItem(link);
+      }
+    }
     
     items.splice(index, 1);
     this.accessionsChanged = true;
@@ -1152,22 +1126,22 @@ export class AccessionClass {
     for (const item of items) {
       // Missing location
       if (!item.location || item.location.length === 0) {
-        missingData._nolocation.push(item.accession);
+        missingData._nolocation.push(item.link);
       }
       
       // Missing persons
       if (!item.person || item.person.length === 0) {
-        missingData._nopersons.push(item.accession);
+        missingData._nopersons.push(item.link);
       }
       
       // Missing source
       if (!item.source || item.source.length === 0) {
-        missingData._nosource.push(item.accession);
+        missingData._nosource.push(item.link);
       }
       
       // Missing description (empty, missing, or whitespace only)
       if (!item.description || item.description.trim() === '') {
-        missingData._nodescription.push(item.accession);
+        missingData._nodescription.push(item.link);
       }
       
       // Items with living people
@@ -1181,7 +1155,7 @@ export class AccessionClass {
         });
         
         if (hasLivingPerson) {
-          missingData._living.push(item.accession);
+          missingData._living.push(item.link);
         }
       }
     }
@@ -1203,11 +1177,8 @@ export class AccessionClass {
       );
       
       // Add all missing items to the collection
-      for (const accession of missingData[config.key]) {
-        const itemView = this.getItemView(accession);
-        if (itemView) {
-          collection.addItem(itemView.getLink());
-        }
+      for (const link of missingData[config.key]) {
+        collection.addItem(link);
       }
       
       created.push(`${config.text}: ${itemCount} items`);
