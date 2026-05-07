@@ -478,16 +478,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"electron@npm:^40.9.2":
-  version: 40.9.2
-  resolution: "electron@npm:40.9.2"
+"electron@npm:^40.9.3":
+  version: 40.9.3
+  resolution: "electron@npm:40.9.3"
   dependencies:
     "@electron/get": "npm:^2.0.0"
     "@types/node": "npm:^24.9.0"
     extract-zip: "npm:^2.0.1"
   bin:
     electron: cli.js
-  checksum: 10c0/d7ee02b0e59579d278331c2be144804a3748eb19c97c3b3279d56b86dcf806c5ab3ffb29bbe272f427fa6ba8a153e611b8ddc0b26d7dc009e2ede359c01ab323
+  checksum: 10c0/8fb551c2c06ab458080f739d4b3eb840511fde68f25c7d8f7c63c3d73e4bc65a17b1596e763d801f5f40a990fa92c01c9b5c2789beaccc946ded8f39577debc2
   languageName: node
   linkType: hard
 
@@ -1490,7 +1490,7 @@ __metadata:
   resolution: "shoebox@workspace:."
   dependencies:
     canvas: "npm:^3.2.3"
-    electron: "npm:^40.9.2"
+    electron: "npm:^40.9.3"
     electron-updater: "npm:^6.8.3"
     exifr: "npm:^7.1.3"
     face-api.js: "npm:^0.22.2"
