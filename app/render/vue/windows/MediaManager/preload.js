@@ -37,5 +37,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onItemLoad: (callback) => {
     ipcRenderer.on('item:load', (event, link, queueData) => callback(link, queueData));
+  },
+  onCollectionItemsUpdated: (callback) => {
+    ipcRenderer.on('collection:itemsUpdated', (event, data) => callback(data));
   }
 });

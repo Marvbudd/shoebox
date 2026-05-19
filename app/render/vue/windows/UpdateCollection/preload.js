@@ -7,5 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCollectionItems: (collectionKey) => ipcRenderer.invoke('collection:getItems', collectionKey),
   updateCollection: (updateData) => ipcRenderer.invoke('collection:update', updateData),
   getPersons: () => ipcRenderer.invoke('persons:getFromAccessions'),
+  openPersonManagerForSelection: (assignedPersonIDs) => ipcRenderer.invoke('window:openPersonManagerForSelection', assignedPersonIDs),
+  onPersonSelected: (callback) => ipcRenderer.on('personManager:personSelected', (event, personID) => callback(personID)),
   reverseGeocode: (latitude, longitude) => ipcRenderer.invoke('geocoding:reverse', latitude, longitude)
 });

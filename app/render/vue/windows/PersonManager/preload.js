@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onModeChange: (callback) => {
     ipcRenderer.on('personManager:modeChange', (event, modeData) => callback(modeData));
   },
+  onFocusSearch: (callback) => {
+    ipcRenderer.on('personManager:focusSearch', () => callback());
+  },
   
   // Send person selection back to Media Manager
   sendPersonSelection: (personID) => {

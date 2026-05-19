@@ -224,6 +224,13 @@ export function createPersonManagerWindow(windowRef, nconf) {
     if (isValidWindow(windowRef)) {
       windowRef.value.show();
       windowRef.value.focus();
+      if (windowRef.value.webContents && !windowRef.value.webContents.isLoading()) {
+        windowRef.value.webContents.send('personManager:focusSearch');
+      } else if (windowRef.value.webContents) {
+        windowRef.value.webContents.once('did-finish-load', () => {
+          windowRef.value.webContents.send('personManager:focusSearch');
+        });
+      }
     }
   }
 }

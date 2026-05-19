@@ -390,22 +390,35 @@ const createWindow = () => {
       // Open or focus the Person Manager window
       createPersonManagerWindow();
       
+      const sendFocusSearch = () => {
+        if (windowRefs.personManager.value && !windowRefs.personManager.value.isDestroyed()) {
+          windowRefs.personManager.value.webContents.send('personManager:focusSearch');
+        }
+      };
+
       // Send the personID to the Person Manager window after it's ready (if provided)
       if (personID && windowRefs.personManager.value && windowRefs.personManager.value.webContents) {
-        // Wait for the window to be fully loaded before sending selection
-        const sendSelection = () => {
+        const sendSelectionAndFocus = () => {
           if (windowRefs.personManager.value && !windowRefs.personManager.value.isDestroyed()) {
             windowRefs.personManager.value.webContents.send('person:select', personID);
+            sendFocusSearch();
           }
         };
         
-        // If window is already loaded, send immediately
         if (!windowRefs.personManager.value.webContents.isLoading()) {
-          setTimeout(sendSelection, 100);
+          setTimeout(sendSelectionAndFocus, 100);
         } else {
-          // Otherwise wait for the did-finish-load event
           windowRefs.personManager.value.webContents.once('did-finish-load', () => {
-            setTimeout(sendSelection, 100);
+            setTimeout(sendSelectionAndFocus, 100);
+          });
+        }
+      } else if (windowRefs.personManager.value && windowRefs.personManager.value.webContents) {
+        // If no specific selection is required, still focus the search input on open
+        if (!windowRefs.personManager.value.webContents.isLoading()) {
+          setTimeout(sendFocusSearch, 100);
+        } else {
+          windowRefs.personManager.value.webContents.once('did-finish-load', () => {
+            setTimeout(sendFocusSearch, 100);
           });
         }
       }
@@ -423,24 +436,22 @@ const createWindow = () => {
       // Open or focus the Person Manager window
       createPersonManagerWindow();
       
-      // Send mode change event to Person Manager window
-      if (windowRefs.personManager.value && windowRefs.personManager.value.webContents) {
-        const sendModeChange = () => {
-          if (windowRefs.personManager.value && !windowRefs.personManager.value.isDestroyed()) {
-            windowRefs.personManager.value.webContents.send('personManager:modeChange', {
-              mode: 'select',
-              assignedPersonIDs: assignedPersonIDs || []
-            });
-          }
-        };
+      const sendModeChangeAndFocus = () => {
+        if (windowRefs.personManager.value && !windowRefs.personManager.value.isDestroyed()) {
+          windowRefs.personManager.value.webContents.send('personManager:modeChange', {
+            mode: 'select',
+            assignedPersonIDs: assignedPersonIDs || []
+          });
+          windowRefs.personManager.value.webContents.send('personManager:focusSearch');
+        }
+      };
         
-        // If window is already loaded, send immediately
+      if (windowRefs.personManager.value && windowRefs.personManager.value.webContents) {
         if (!windowRefs.personManager.value.webContents.isLoading()) {
-          setTimeout(sendModeChange, 100);
+          setTimeout(sendModeChangeAndFocus, 100);
         } else {
-          // Otherwise wait for the did-finish-load event
           windowRefs.personManager.value.webContents.once('did-finish-load', () => {
-            setTimeout(sendModeChange, 100);
+            setTimeout(sendModeChangeAndFocus, 100);
           });
         }
       }
@@ -452,13 +463,14 @@ const createWindow = () => {
     }
   }); // window:openPersonManagerForSelection
 
-  // Receive person selection from Person Manager and forward to Media Manager
+  // Receive person selection from Person Manager and forward to any open renderer windows that care
   ipcMain.on('personManager:personSelected', (event, personID) => {
     try {
-      // Forward the selection to all Media Manager windows
-      if (windowRefs.mediaManager && windowRefs.mediaManager.value && !windowRefs.mediaManager.value.isDestroyed()) {
-        windowRefs.mediaManager.value.webContents.send('personManager:personSelected', personID);
-      }
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (win && !win.isDestroyed() && win.webContents) {
+          win.webContents.send('personManager:personSelected', personID);
+        }
+      });
     } catch (error) {
       console.error('Error forwarding person selection:', error);
     }

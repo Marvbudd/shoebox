@@ -80,6 +80,28 @@ export function formatPersonName(person, includePosition = false) {
 }
 
 /**
+ * Get a human-readable display name for a person record.
+ * Falls back to TMG ID or truncated person ID if required.
+ *
+ * @param {Object} person - Person object
+ * @returns {string} Display name for the person
+ */
+export function getPersonDisplayName(person) {
+  if (!person) return 'Unknown';
+
+  const baseName = formatPersonName(person, false);
+  if (baseName) {
+    return baseName;
+  }
+
+  if (person.TMGID || person.tmgID) {
+    return `TMG ID: ${person.TMGID || person.tmgID}`;
+  }
+
+  return `Person ${person.personID?.substring(0, 8) || 'Unknown'}`;
+}
+
+/**
  * Expand persons array so each person appears once per last name
  * This matches the behavior of the main window navigation column
  * 

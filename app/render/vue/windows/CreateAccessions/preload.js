@@ -6,5 +6,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectDirectory: () => ipcRenderer.invoke('directory:select'),
   createAccessions: (formData) => ipcRenderer.invoke('accessions:create', formData),
   getExistingPersons: (directoryPath) => ipcRenderer.invoke('persons:getExisting', directoryPath),
-  getCurrentArchiveInfo: () => ipcRenderer.invoke('accessions:getCurrentArchiveInfo')
+  getCurrentArchiveInfo: () => ipcRenderer.invoke('accessions:getCurrentArchiveInfo'),
+  openPersonManagerForSelection: (assignedPersonIDs) => ipcRenderer.invoke('window:openPersonManagerForSelection', assignedPersonIDs),
+  onPersonSelected: (callback) => {
+    ipcRenderer.on('personManager:personSelected', (event, personID) => callback(personID));
+  }
 });

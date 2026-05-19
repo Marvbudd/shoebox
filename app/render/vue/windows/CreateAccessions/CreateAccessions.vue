@@ -79,20 +79,14 @@
 
           <!-- Select existing person -->
           <div v-if="sourceMode === 'existing'" class="form-section">
-            <label for="sourcePerson">Select Person</label>
-            <select 
-              id="sourcePerson"
-              v-model="formData.sourcePersonID"
-            >
-              <option value="">-- Select --</option>
-              <option 
-                v-for="person in existingPersons" 
-                :key="person.personID" 
-                :value="person.personID"
-              >
-                {{ getPersonDisplayName(person) }}
-              </option>
-            </select>
+            <label>Select Person</label>
+            <div class="source-person-controls">
+              <PersonSelectButton
+                :text="selectedSourcePersonName"
+                :hasValue="!!formData.sourcePersonID"
+                @click="openPersonManagerForSourcePerson"
+              />
+            </div>
             <small>Person who provided this media</small>
           </div>
 
@@ -211,7 +205,8 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import DateInput from '../../components/DateInput.vue';
-import { formatPersonName } from '../../../../shared/personHelpers.js';
+import PersonSelectButton from '../../components/PersonSelectButton.vue';
+import { formatPersonName, getPersonDisplayName } from '../../../../shared/personHelpers.js';
 
 const formData = ref({
   directory: '',
@@ -234,6 +229,7 @@ const formData = ref({
 
 const sourceMode = ref('none');
 const existingPersons = ref([]);
+const awaitingPersonSelection = ref(false);
 const isCreating = ref(false);
 const statusMessage = ref(null);
 const isAutoFilled = ref({ directory: false, title: false });
@@ -242,22 +238,21 @@ const isValid = computed(() => {
   return formData.value.directory && formData.value.title;
 });
 
-const getPersonDisplayName = (person) => {
-  if (!person) return 'Unknown';
-  
-  // Use shared formatting helper
-  const baseName = formatPersonName(person, false);
-  
-  // Fallback for missing data
-  if (!baseName) {
-    if (person.TMGID || person.tmgID) {
-      return `TMG ID: ${person.TMGID || person.tmgID}`;
-    } else {
-      return `Person ${person.personID?.substring(0, 8) || 'Unknown'}`;
-    }
+const selectedSourcePersonName = computed(() => {
+  if (!formData.value.sourcePersonID) return '-- Select Person --';
+  const person = existingPersons.value.find((p) => p.personID === formData.value.sourcePersonID);
+  return person ? getPersonDisplayName(person) : `Person ${formData.value.sourcePersonID}`;
+});
+
+const openPersonManagerForSourcePerson = async () => {
+  try {
+    awaitingPersonSelection.value = true;
+    sourceMode.value = 'existing';
+    await window.electronAPI.openPersonManagerForSelection([]);
+  } catch (error) {
+    statusMessage.value = { type: 'error', text: 'Unable to open Person Manager: ' + error.message };
+    awaitingPersonSelection.value = false;
   }
-  
-  return baseName;
 };
 
 // Load current archive info on mount
@@ -270,6 +265,9 @@ onMounted(async () => {
       isAutoFilled.value.directory = true;
       isAutoFilled.value.title = true;
     }
+    // Load all persons for person selection lookup
+    const persons = await window.electronAPI.getExistingPersons();
+    existingPersons.value = persons || [];
   } catch (error) {
     console.error('Error loading current archive info:', error);
   }
@@ -279,7 +277,8 @@ onMounted(async () => {
 watch(() => formData.value.directory, async (newDir) => {
   if (newDir) {
     try {
-      const persons = await window.electronAPI.getExistingPersons(newDir);
+      // Load ALL persons (not directory-scoped) for person selection lookup
+      const persons = await window.electronAPI.getExistingPersons();
       existingPersons.value = persons || [];
       // Auto-select appropriate mode
       if (existingPersons.value.length > 0) {
@@ -290,6 +289,12 @@ watch(() => formData.value.directory, async (newDir) => {
       existingPersons.value = [];
     }
   }
+});
+
+window.electronAPI.onPersonSelected((personID) => {
+  formData.value.sourcePersonID = personID;
+  sourceMode.value = 'existing';
+  awaitingPersonSelection.value = false;
 });
 
 const selectDirectory = async () => {
@@ -526,6 +531,7 @@ header h1 {
   color: #666;
   font-size: 0.85rem;
 }
+
 
 .directory-input {
   display: flex;

@@ -10,7 +10,7 @@
  * - Validating collections
  */
 
-import { dialog, shell } from 'electron';
+import { dialog, shell, BrowserWindow } from 'electron';
 
 /**
  * Register all collection-related IPC handlers
@@ -118,6 +118,16 @@ export function registerCollectionHandlers(
       if (mainWindow) {
         resetAccessions();
       }
+      
+      // Notify all Media Manager windows to reload their current item if it was in the updated collection
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (win && !win.isDestroyed() && win.webContents) {
+          win.webContents.send('collection:itemsUpdated', {
+            collectionKey: updateData.collectionKey,
+            itemsUpdated: updatedCount
+          });
+        }
+      });
       
       return { success: true, itemsUpdated: updatedCount };
     } catch (error) {

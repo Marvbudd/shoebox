@@ -654,6 +654,9 @@ onMounted(async () => {
   // Load persons initially
   await loadPersons();
   
+  // Always focus the search input when the Person Manager opens
+  focusSearchInput();
+  
   // Check if window was opened with mode and context parameters (initial load)
   if (window.personManagerInitData) {
     const { openMode, assignedPersonIDs } = window.personManagerInitData;
@@ -683,6 +686,10 @@ onMounted(async () => {
         focusSearchInput();
       }
     }
+  });
+
+  window.electronAPI.onFocusSearch(() => {
+    focusSearchInput();
   });
   
   // Listen for person selection events from other windows

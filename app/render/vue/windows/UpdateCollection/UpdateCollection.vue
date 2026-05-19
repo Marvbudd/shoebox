@@ -137,18 +137,15 @@
               <input type="checkbox" v-model="updateFields.source" />
               Add Source Person & Received Date
             </label>
-            <div v-if="updateFields.source" class="field-input">
+            <div v-if="updateFields.source" class="field-input source-person-section">
               <label>Source Person</label>
-              <select v-model="sourcePersonId">
-                <option value="">-- Select a person --</option>
-                <option 
-                  v-for="person in persons" 
-                  :key="person.personID" 
-                  :value="person.personID"
-                >
-                  {{ getPersonDisplayName(person) }}
-                </option>
-              </select>
+              <div class="source-person-controls">
+                <PersonSelectButton
+                  :text="selectedSourcePersonName"
+                  :hasValue="!!sourcePersonId"
+                  @click="openPersonManagerForSourcePerson"
+                />
+              </div>
             </div>
             <div v-if="updateFields.source" class="field-input">
               <label>Date Received</label>
@@ -202,7 +199,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import DateInput from '../../components/DateInput.vue';
-import { expandPersonsByLastName, formatPersonName } from '../../../../shared/personHelpers.js';
+import PersonSelectButton from '../../components/PersonSelectButton.vue';
+import { expandPersonsByLastName, formatPersonName, getPersonDisplayName } from '../../../../shared/personHelpers.js';
 
 const collections = ref([]);
 const persons = ref([]);
@@ -236,6 +234,7 @@ const fieldValues = ref({
 });
 
 const sourcePersonId = ref('');
+const awaitingPersonSelection = ref(false);
 
 const onlyIfEmpty = ref(false);
 
@@ -315,8 +314,20 @@ const lookupLocation = async () => {
   }
 };
 
-const getPersonDisplayName = (person) => {
-  return formatPersonName(person, false);
+const selectedSourcePersonName = computed(() => {
+  if (!sourcePersonId.value) return '-- Select Person --';
+  const person = persons.value.find((p) => p.personID === sourcePersonId.value);
+  return person ? getPersonDisplayName(person) : `Person ${sourcePersonId.value}`;
+});
+
+const openPersonManagerForSourcePerson = async () => {
+  try {
+    awaitingPersonSelection.value = true;
+    await window.electronAPI.openPersonManagerForSelection([]);
+  } catch (error) {
+    statusMessage.value = { type: 'error', text: 'Unable to open Person Manager: ' + error.message };
+    awaitingPersonSelection.value = false;
+  }
 };
 
 const hasUpdates = computed(() => {
@@ -329,6 +340,11 @@ const hasUpdates = computed(() => {
          updateFields.value.date || 
          updateFields.value.location ||
          updateFields.value.source;
+});
+
+window.electronAPI.onPersonSelected((personID) => {
+  sourcePersonId.value = personID;
+  awaitingPersonSelection.value = false;
 });
 
 const onCollectionChange = async () => {
@@ -588,11 +604,7 @@ header h1 {
   font-size: 0.85rem;
 }
 
-.location-row {
-  display: grid;
-  grid-template-columns: 2fr 1fr 80px;
-  gap: 0.5rem;
-}
+
 
 .location-gps {
   grid-template-columns: 1fr 1fr auto 1fr;
