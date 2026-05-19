@@ -1,5 +1,5 @@
 <template>
-  <div class="media-manager">
+  <div id="media-manager" class="container">
     <!-- Confirmation Modal -->
     <div v-if="showConfirmModal" class="modal-overlay" @click="handleModalCancel">
       <div class="modal-dialog" @click.stop>
@@ -164,8 +164,8 @@
             <p v-if="item.type === 'photo'" class="hint">Click "+ Add Person" below, select who they are, then use the "Assign Face" dropdown to match detected faces. {{ detectedFaces.length > 0 ? 'Match confidence shown in %.': 'Click "Detect Faces" in the preview section to enable face matching.' }}</p>
             <p v-else class="hint">Click "+ Add Person" below to add people appearing or speaking in this {{ item.type }}. Use the position field to note their role or appearance.</p>
             
-            <!-- Scrollable people list -->
-            <div class="people-list-container" :class="{ 'scrollable': item.person.length > 4 }">
+            <!-- People list rendered without its own scrollbar -->
+            <div class="people-list-container">
               <div v-for="(person, index) in item.person" :key="`person-${index}-${person.personID || 'new'}`" class="person-face-row">
               <div class="person-reorder-controls">
                 <button 
@@ -188,20 +188,12 @@
                 </button>
               </div>
               <div class="person-info">
-                <div
-                  class="person-select-field"
-                  :class="{ 
-                    'disabled': getMatchForPerson(person.personID) !== undefined,
-                    'has-value': person.personID
-                  }"
-                  :title="getMatchForPerson(person.personID) ? 'Unassign face before changing person' : 'Click to select person'"
+                <PersonSelectButton
+                  :text="person.personID ? getPersonDisplayName(persons.find(p => p.personID === person.personID)) : '-- Select Person --'"
+                  :hasValue="!!person.personID"
+                  :disabled="getMatchForPerson(person.personID) !== undefined"
                   @click="getMatchForPerson(person.personID) === undefined ? openPersonManagerForSelection(index) : null"
-                >
-                  <span class="person-select-text">
-                    {{ person.personID ? getPersonDisplayName(persons.find(p => p.personID === person.personID)) : '-- Select Person --' }}
-                  </span>
-                  <span class="person-select-arrow">▼</span>
-                </div>
+                />
                 <button 
                   type="button"
                   @click="openPersonManager(person.personID)"
@@ -401,12 +393,13 @@
               <label>Sources (who provided this item)</label>
               <div v-for="(source, index) in item.source" :key="index" class="source-entry">
                 <div class="source-row">
-                  <select v-model="source.personID" class="source-select">
-                    <option value="">-- Select Person --</option>
-                    <option v-for="p in persons" :key="p.personID" :value="p.personID">
-                      {{ getPersonDisplayName(p) }}
-                    </option>
-                  </select>
+                  <div class="source-person-section">
+                    <PersonSelectButton
+                      :text="source.personID ? getSourcePersonName(source.personID) : '-- Select Person --'"
+                      :hasValue="!!source.personID"
+                      @click="openPersonManagerForSourcePerson(index)"
+                    />
+                  </div>
                   <div class="source-date">
                     <label class="inline-label">Received:</label>
                     <DateInput
@@ -840,8 +833,9 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
-import { formatPersonName, expandPersonsByLastName } from '../../../../shared/personHelpers.js';
+import { formatPersonName, expandPersonsByLastName, getPersonDisplayName } from '../../../../shared/personHelpers.js';
 import DateInput from '../../components/DateInput.vue';
+import PersonSelectButton from '../../components/PersonSelectButton.vue';
 import { hasUnsupportedCodec } from '../../shared/videoCodecDetection.js';
 
 const item = ref({
@@ -1040,31 +1034,6 @@ const deleteButtonTitle = computed(() => {
   return 'Move file to trash and delete item metadata';
 });
 
-// Format person display name for dropdowns/lists
-const getPersonDisplayName = (person) => {
-  if (!person) return 'Unknown';
-  
-  // Use shared formatting helper
-  const baseName = formatPersonName(person, false);
-  
-  // Add face number if this person has a matched face
-  const match = matchedFaces.value.find(m => m.personID === person.personID);
-  if (match) {
-    return `${match.faceIndex + 1} - ${baseName}`;
-  }
-  
-  // Fallback for missing data
-  if (!baseName) {
-    if (person.TMGID || person.tmgID) {
-      return `TMG ID: ${person.TMGID || person.tmgID}`;
-    } else {
-      return `Person ${person.personID?.substring(0, 8) || 'Unknown'}`;
-    }
-  }
-  
-  return baseName;
-};
-
 // Get available persons for face assignment (from item.person, excluding persons who already have faceTag assigned)
 const getAvailablePersonsForFaceAssignment = (faceIndex) => {
   personListKey.value; // Force reactivity
@@ -1254,6 +1223,7 @@ const openPersonManager = async (personID) => {
 
 // State for tracking which person entry is being selected
 const personSelectionIndex = ref(null);
+const sourceSelectionIndex = ref(null);
 
 // Open Person Manager in Select mode for choosing a person
 const openPersonManagerForSelection = async (personIndex) => {
@@ -1271,6 +1241,23 @@ const openPersonManagerForSelection = async (personIndex) => {
   } catch (err) {
     console.error('Error opening Person Manager for selection:', err);
   }
+};
+
+// Open Person Manager in Select mode for choosing a source person
+const openPersonManagerForSourcePerson = async (sourceIndex) => {
+  try {
+    sourceSelectionIndex.value = sourceIndex;
+    await window.electronAPI.openPersonManagerForSelection([]);
+  } catch (err) {
+    console.error('Error opening Person Manager for source selection:', err);
+  }
+};
+
+// Get display name for a source person
+const getSourcePersonName = (personID) => {
+  if (!personID) return '';
+  const person = persons.value.find((p) => p.personID === personID);
+  return person ? getPersonDisplayName(person) : `Person ${personID}`;
 };
 
 // Custom confirm dialog to avoid Electron focus bug
@@ -1503,6 +1490,15 @@ const onImageLoad = () => {
     }
   } catch (err) {
     console.error('Error in onImageLoad:', err);
+  }
+};
+
+const handleWindowResize = () => {
+  if (imageElement.value) {
+    onImageLoad();
+  }
+  if (showFaceOverlays.value && detectedFaces.value.length > 0) {
+    drawFaceOverlays();
   }
 };
 
@@ -2901,7 +2897,13 @@ onMounted(async () => {
     
     // Listen for person selection from Person Manager
     window.electronAPI.onPersonSelected((personID) => {
-      if (personSelectionIndex.value !== null && item.value.person[personSelectionIndex.value]) {
+      // Check if selecting for a source entry
+      if (sourceSelectionIndex.value !== null && item.value.source[sourceSelectionIndex.value]) {
+        item.value.source[sourceSelectionIndex.value].personID = personID;
+        sourceSelectionIndex.value = null; // Clear selection index
+      }
+      // Otherwise check if selecting for a person entry
+      else if (personSelectionIndex.value !== null && item.value.person[personSelectionIndex.value]) {
         // Set the selected person for the entry
         item.value.person[personSelectionIndex.value].personID = personID;
         personListKey.value++; // Force re-render
@@ -2932,7 +2934,39 @@ onMounted(async () => {
       window.location.search = searchParams;
     });
     
-    // Load the item
+    // Listen for collection updates and reload item if it's in that collection
+    window.electronAPI.onCollectionItemsUpdated((data) => {
+      // If the current item is in a collection that was just updated, reload it
+      if (queueData.value && queueData.value.collectionKey === data.collectionKey && item.value && item.value.link) {
+        // Reload the item from disk to get the latest changes
+        const reloadItem = async () => {
+          try {
+            const reloadedItem = await window.electronAPI.loadItem(item.value.link);
+            if (reloadedItem) {
+              // Replace the item data with the fresh version, preserving reactive properties
+              item.value = {
+                accession: reloadedItem.accession || '',
+                link: reloadedItem.link || '',
+                type: reloadedItem.type || '',
+                description: reloadedItem.description || '',
+                date: reloadedItem.date || { year: '', month: '', day: '' },
+                location: reloadedItem.location || [],
+                person: (reloadedItem.person || []).map(p => ({
+                  ...p,
+                  position: p.position || p.context || ''
+                })),
+                source: reloadedItem.source || [],
+                playlist: reloadedItem.playlist || { entry: [] }
+              };
+            }
+          } catch (error) {
+            console.error('Error reloading item after collection update:', error);
+          }
+        };
+        reloadItem();
+      }
+    });
+    
     const loadedItem = await window.electronAPI.loadItem(identifier);
     
     if (!loadedItem) {
@@ -3019,6 +3053,7 @@ onMounted(async () => {
     }
     
     loading.value = false;
+    window.addEventListener('resize', handleWindowResize);
   } catch (err) {
     error.value = err.message;
     loading.value = false;
@@ -3027,16 +3062,20 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   isMounted.value = false;
+  window.removeEventListener('resize', handleWindowResize);
 });
 </script>
 
 <style scoped>
-.media-manager {
-  height: 100vh;
+.container {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
   display: flex;
   flex-direction: column;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: #f5f5f5;
+  overflow: hidden;
 }
 
 header {
@@ -3113,10 +3152,11 @@ header h1 {
 
 .content {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 0;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .loading,
@@ -3139,34 +3179,36 @@ header h1 {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
+  height: 100%;
 }
 
 .two-column-layout {
   flex: 1;
   display: grid;
   grid-template-columns: minmax(400px, 0.75fr) minmax(400px, 1fr);
+  grid-template-rows: 1fr;
   gap: 1.5rem;
   padding: 0;
-  overflow-y: auto;
   background: #f5f5f5;
+  min-height: 0;
+  height: 100%;
+}
+
+.left-column,
+.right-column {
+  position: relative;
+  overflow: auto;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .left-column {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  height: fit-content;
+  width: auto;
 }
 
 .right-column {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  position: sticky;
-  top: 0;
-  align-self: start;
-  max-height: 100vh;
-  overflow-y: auto;
+  background: #eeeeff;
 }
 
 .action-bar {
@@ -3178,6 +3220,9 @@ header h1 {
   gap: 1rem;
   align-items: center;
   box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
 }
 
 .action-bar .warning-message {
@@ -3196,38 +3241,42 @@ header h1 {
 }
 
 .preview-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   margin-bottom: 0;
   text-align: center;
   background: white;
-  padding: 1rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  overflow: hidden;
 }
 
 .preview-and-controls {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  align-items: center;
+  height: 100%;
+  gap: 0;
+  align-items: stretch;
 }
 
 .preview-container {
+  position: sticky;
+  top: 0;
   flex-shrink: 0;
   width: 100%;
-  min-height: 350px;
-  position: relative;
+  height: 70%;
   display: flex;
   justify-content: center;
   align-items: center;
+  padding: 1rem;
+  background: white;
 }
 
 .media-preview {
   max-width: 100%;
-  max-height: calc(100vh - 200px);
+  max-height: 100%;
   width: auto;
   height: auto;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  border-radius: 4px;
   object-fit: contain;
 }
 
@@ -3723,10 +3772,11 @@ header h1 {
   gap: 0.75rem;
   align-items: stretch;
   width: 100%;
+  height: 30%;
   background: white;
   padding: 1rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  overflow-y: auto;
+  border-top: 1px solid #dee2e6;
 }
 
 .face-detection-controls .btn-secondary {
@@ -3901,9 +3951,9 @@ header h1 {
   font-size: 0.85rem;
 }
 
-/* Scrollable people list when more than 3 people */
+/* Scrollable people list when more than 5 people */
 .people-list-container.scrollable {
-  max-height: 280px;
+  max-height: 360px;
   overflow-y: auto;
   margin-bottom: 0.75rem;
   padding-right: 0.5rem;
@@ -3986,51 +4036,7 @@ header h1 {
   border-radius: 4px;
 }
 
-/* Person dropdown replacement - clickable field styled like dropdown */
-.person-select-field {
-  min-width: 0;
-  max-width: 100%;
-  padding: 0.375rem 0.5rem;
-  font-size: 14px;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
-  background: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  transition: all 0.2s;
-}
 
-.person-select-field:hover:not(.disabled) {
-  border-color: #2196F3;
-  background: #f8f9fa;
-}
-
-.person-select-field.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: #f5f5f5;
-}
-
-.person-select-field .person-select-text {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.person-select-field .person-select-arrow {
-  flex-shrink: 0;
-  opacity: 0.5;
-  font-size: 0.8em;
-}
-
-.person-select-field.has-value {
-  font-weight: 500;
-  color: #333;
-}
 
 .btn-open-person {
   padding: 0.375rem 0.5rem;

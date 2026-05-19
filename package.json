@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "3.2.0",
+  "version": "3.1.5",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",
@@ -124,7 +124,7 @@
     "vitepress": "^1.6.4",
     "vue": "^3.5.34"
   },
-  "packageManager": "yarn@4.12.0",
+  "packageManager": "yarn@4.14.1",
   "resolutions": {
     "minimatch": "^10.2.5",
     "rollup": "^4.60.1"

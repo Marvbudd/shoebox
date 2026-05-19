@@ -7,13 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.5] - 2026-05-19
+
 ### Added
 - **Media Manager delete review for archive files and symlinks**: Media Manager now shows archive path, symlink information, file size, and file status before deletion. Symlinked items can be removed either as metadata plus symlink only, or metadata plus symlink plus target file.
+- **Collection bulk-update synchronization**: When performing bulk collection updates (metadata, locations, sources), Media Manager now automatically re-renders the current item if it belongs to the updated collection, providing real-time feedback.
 
 ### Changed
 - **Internal item identifier cleanup**: Shoebox now uses `link` more consistently for internal item lookup and maintenance workflows, while preserving `accession` as a user-facing archival field.
 - **Safer item deletion rules in Media Manager**: Delete is now available directly from Media Manager for existing files, missing files, and symlinked archive entries, while still blocking deletion when photos have outbound playlist entries or audio/video items are referenced by playlists.
 - **Queue-aware delete workflow**: When deleting from a collection-backed Media Manager queue, Shoebox now advances to the next queued item instead of always closing the window.
+- **Unified source-person selection**: All source-person selection across CreateAccessions, UpdateCollection, and MediaManager windows now uses the Person Manager button interface instead of separate dropdown menus.
+- **Universal Person Manager search focus**: Person Manager search field now receives focus whenever the window opens (not just from Media Manager), allowing immediate keyboard search in all contexts.
+- **Media Manager scrolling improvements**: The Media Manager two-column layout now keeps the people list fully expanded and removes the inner scrollbar, relying on the left-hand column to handle overall scrolling. Face overlay rendering also now redraws correctly when the window is resized.
 
 ### Documentation
 - Updated Media Manager cleanup documentation to describe file-status display, system-trash behavior, and symlink delete options.
