@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.1.5] - 2026-05-19
+## [3.2.1] - 2026-05-19
 
 ### Added
 - **Media Manager delete review for archive files and symlinks**: Media Manager now shows archive path, symlink information, file size, and file status before deletion. Symlinked items can be removed either as metadata plus symlink only, or metadata plus symlink plus target file.
