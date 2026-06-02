@@ -37,6 +37,9 @@ export function createMainMenu(options) {
   const {
     showCollection,
     chooseAccessionsPath,
+    openRecentAccessions,
+    clearRecentAccessions,
+    recentAccessions = [],
     buildCollection,
     createCreateAccessionsWindow,
     createUpdateCollectionWindow,
@@ -60,10 +63,27 @@ export function createMainMenu(options) {
     importArchive
   } = options;
 
+  const escapeMenuLabel = (label) => String(label).replace(/&/g, '&&');
+
   const template = [
     {
       label: '&File',
       submenu: [
+        {
+          label: 'Open &Recent',
+          submenu: recentAccessions.length > 0 ? recentAccessions.map((recentPath) => ({
+            label: escapeMenuLabel(recentPath),
+            click: () => openRecentAccessions(recentPath)
+          })) : [
+            { label: 'No Recent Files', enabled: false }
+          ]
+        },
+        {
+          label: 'Clear Recent Files',
+          enabled: recentAccessions.length > 0,
+          click: clearRecentAccessions
+        },
+        { type: 'separator' },
         {
           label: 'Choose &Accessions.json file',
           click: chooseAccessionsPath

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **File > Open Recent** menu: Shoebox now remembers the last 15 opened `accessions.json` files in `nconf` and shows the most recent first.
+- **Clear Recent Files** option under File > Open Recent so the recent list can be reset without needing to open a new file.
+- **Native OS integration**: When supported on Windows/macOS, recent accessions are also registered with the system using Electron `app.addRecentDocument()` and cleared with `app.clearRecentDocuments()`.
+
+### Fixed
+- **Phase-2 face matching effectiveness distance**: Fixed face similarity search to use `effectiveDistance` (which includes model-mismatch penalty) for threshold checks, best-match selection, and result sorting. This prevents cross-model matches from being incorrectly rejected or ordered below worse same-model matches.
+- **Phase-1 face model preservation**: Added `model` field to the phase-1 match payload so backend face re-matching correctly uses the detector model when computing adjusted distances, enabling proper cross-model fallback behavior.
+- **Face overlay region mismatch**: Fixed type coercion on `faceIndex` values throughout face-selection handlers to prevent string/number type mismatches that could cause overlays to display wrong regions or assignments to target incorrect faces.
+
 ## [3.2.1] - 2026-05-19
 
 ### Added

@@ -300,12 +300,19 @@ export class AccessionClass {
 
   // Get the website URL for a specific person by TMGID
   getPersonWebsiteUrl(tmgID) {
-    if (!tmgID) return null;
-    // Append .htm if not already present (supports both "123" and "123.htm" formats)
-    const filename = tmgID.endsWith('.htm') ? tmgID : `${tmgID}.htm`;
-    // Prepend 'p' to the filename (Second Site person page naming convention)
-    const personPage = `p${filename}`;
-    return url.pathToFileURL(path.resolve(path.dirname(this.accessionFilename), 'website', personPage)).href
+    try {
+      if (tmgID === undefined || tmgID === null) return null;
+      // Ensure we have a string (numbers or other types may be passed)
+      const tmgStr = String(tmgID);
+      // Append .htm if not already present (supports both "123" and "123.htm" formats)
+      const filename = tmgStr.endsWith('.htm') ? tmgStr : `${tmgStr}.htm`;
+      // Prepend 'p' to the filename (Second Site person page naming convention)
+      const personPage = `p${filename}`;
+      return url.pathToFileURL(path.resolve(path.dirname(this.accessionFilename), 'website', personPage)).href;
+    } catch (err) {
+      console.error('Error generating person website URL for TMGID:', tmgID, err);
+      return null;
+    }
   } // getPersonWebsiteUrl
 
   // getMediaDirectory returns the path to the provided type and link

@@ -300,17 +300,26 @@ const createWindow = () => {
   }); // open:Website (async)
 
   ipcMain.handle('open:PersonLink', async (event, tmgid) => {
-    if (!tmgid || !accessionClass) {
+    if ((tmgid === undefined || tmgid === null || tmgid === '') || !accessionClass) {
       console.error('Missing TMGID or accession class');
       return { success: false, error: 'Missing TMGID or accession class' };
     }
-    const personUrl = accessionClass.getPersonWebsiteUrl(tmgid);
-    console.log('Generated person URL:', personUrl);
-    if (personUrl) {
-      shell.openExternal(personUrl);
-      return { success: true };
+    try {
+      const personUrl = accessionClass.getPersonWebsiteUrl(tmgid);
+      if (personUrl) {
+        const opened = shell.openExternal(personUrl);
+        if (opened && typeof opened.then === 'function') {
+          await opened;
+        }
+        return { success: true, url: personUrl };
+      } else {
+        console.error('Could not generate person URL for TMGID:', tmgid);
+        return { success: false, error: 'Could not generate person URL', url: null };
+      }
+    } catch (err) {
+      console.error('Error opening person link for TMGID:', tmgid, err);
+      return { success: false, error: String(err) };
     }
-    return { success: false, error: 'Could not generate person URL' };
   }); // open:PersonLink (async)
 
   ipcMain.handle('open:Documentation', async (event) => {
@@ -532,7 +541,8 @@ const createWindow = () => {
         faces: faces.map(face => ({
           descriptor: Array.from(face.descriptor), // Convert Float32Array to regular array for IPC
           region: face.region,
-          confidence: face.confidence
+          confidence: face.confidence,
+          model: face.model || 'ssd'
         }))
       };
     } catch (error) {
@@ -641,28 +651,32 @@ const createWindow = () => {
           const person = accessionClass.getPerson(personRef.personID);
           if (!person || !person.faceBioData) continue;
           
-          // Find descriptor for current link with matching model
+          // Find descriptors for this link and compare them all
           const faceModel = face.model || 'ssd';
-          const descriptor = person.faceBioData.find(d => 
-            d.link === item.link && d.model === faceModel
-          );
-          if (!descriptor || !descriptor.descriptor) continue;
-          
-          const storedDescriptor = new Float32Array(descriptor.descriptor);
-          const distance = faceDetectionService.euclideanDistance(
-            faceDescriptor,
-            storedDescriptor
-          );
-          
-          // Use consistent confidence formula: (1 - distance) matching frontend display
-          if (distance < bestDistance && distance < MATCH_THRESHOLD) {
-            bestDistance = distance;
-            bestMatch = {
-              personIndex,
-              personID: personRef.personID,
-              distance,
-              confidence: 1 - distance  // Consistent with frontend: (1 - distance)
-            };
+          const descriptors = person.faceBioData.filter(d => d.link === item.link);
+          if (!descriptors || descriptors.length === 0) continue;
+
+          for (const descriptor of descriptors) {
+            if (!descriptor || !descriptor.descriptor) continue;
+            const storedDescriptor = new Float32Array(descriptor.descriptor);
+            const distance = faceDetectionService.euclideanDistance(
+              faceDescriptor,
+              storedDescriptor
+            );
+
+            // Prefer same-model descriptors, but allow cross-model matches too
+            const modelMatches = descriptor.model === faceModel;
+            const adjustedDistance = modelMatches ? distance : distance + 0.01;
+
+            if (adjustedDistance < bestDistance && adjustedDistance < MATCH_THRESHOLD) {
+              bestDistance = adjustedDistance;
+              bestMatch = {
+                personIndex,
+                personID: personRef.personID,
+                distance: distance,
+                confidence: 1 - distance  // Consistent with frontend: (1 - distance)
+              };
+            }
           }
         }
 
@@ -1930,10 +1944,54 @@ function addAllItemsToCollection() {
   );
 }
 
+function getRecentAccessions() {
+  const recent = nconf.get('db:recentAccessions');
+  return Array.isArray(recent) ? recent : [];
+}
+
+function saveRecentAccessions(recentPaths) {
+  nconf.set('db:recentAccessions', recentPaths);
+  nconf.save('user');
+}
+
+function refreshApplicationMenu() {
+  Menu.setApplicationMenu(createMenu());
+}
+
+function addRecentAccessions(accessionsPath) {
+  if (!accessionsPath) return;
+  const normalizedPath = path.resolve(accessionsPath);
+  const existing = getRecentAccessions().filter((item) => item !== normalizedPath);
+  const recent = [normalizedPath, ...existing].slice(0, 15);
+  saveRecentAccessions(recent);
+
+  if (typeof app.addRecentDocument === 'function') {
+    app.addRecentDocument(normalizedPath);
+  }
+
+  refreshApplicationMenu();
+}
+
+function clearRecentAccessions() {
+  saveRecentAccessions([]);
+  if (typeof app.clearRecentDocuments === 'function') {
+    app.clearRecentDocuments();
+  }
+  refreshApplicationMenu();
+}
+
+function openRecentAccessions(accessionsPath) {
+  resetAccessions(accessionsPath);
+  addRecentAccessions(accessionsPath);
+}
+
 function createMenu() {
   return createMainMenu({
     showCollection: showCollectionRef.value,
     chooseAccessionsPath,
+    openRecentAccessions,
+    clearRecentAccessions,
+    recentAccessions: getRecentAccessions(),
     buildCollection,
     createCreateAccessionsWindow,
     createUpdateCollectionWindow,
@@ -1967,7 +2025,7 @@ function createMinMenu() {
 // ===== File Selection =====
 
 function chooseAccessionsPath() {
-  windowManager.chooseAccessionsPath(dialog, mainWindow, resetAccessions, nconf);
+  windowManager.chooseAccessionsPath(dialog, mainWindow, resetAccessions, nconf, addRecentAccessions);
 }
 
 // ===== Menu Triggered Actions =====

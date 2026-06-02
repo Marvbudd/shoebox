@@ -685,7 +685,7 @@ export function createTreeWindow(accessionClass) {
 /**
  * Show accessions file picker dialog
  */
-export function chooseAccessionsPath(dialog, mainWindow, resetAccessions, nconf) {
+export function chooseAccessionsPath(dialog, mainWindow, resetAccessions, nconf, onPathChosen = null) {
   dialog.showOpenDialog(mainWindow, {
     filters: [{ name: 'json', extensions: 'json' }],
     title: 'Select accessions.json file with "audio", "video", "photo" folders in the same folder.',
@@ -693,7 +693,11 @@ export function chooseAccessionsPath(dialog, mainWindow, resetAccessions, nconf)
     properties: ['openFile']
   }).then(mediaDirectory => {
     if (!mediaDirectory.canceled) {
-      resetAccessions(mediaDirectory.filePaths[0]);
+      const selectedPath = mediaDirectory.filePaths[0];
+      resetAccessions(selectedPath);
+      if (typeof onPathChosen === 'function') {
+        onPathChosen(selectedPath);
+      }
     }
   }).catch((e) => {
     console.error('error in showOpenDialog: ', e);

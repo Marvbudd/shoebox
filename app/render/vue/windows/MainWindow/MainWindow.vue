@@ -566,9 +566,14 @@ const setupDetailEventListeners = () => {
       const tmgid = e.currentTarget.getAttribute('data-tmgid');
       if (tmgid && window.electronAPI.openPersonLink) {
         try {
-          await window.electronAPI.openPersonLink(tmgid);
+          const res = await window.electronAPI.openPersonLink(tmgid);
+          if (!res || !res.success) {
+            console.error('openPersonLink failed', res);
+            try { alert('Failed to open person link: ' + (res && res.error ? res.error : 'unknown error')); } catch (err) { /* ignore */ }
+          }
         } catch (error) {
           console.error('Error opening person link:', error);
+          try { alert('Error opening person link: ' + error); } catch (err) { /* ignore */ }
         }
       } else {
         console.error('openPersonLink not available or no TMGID');

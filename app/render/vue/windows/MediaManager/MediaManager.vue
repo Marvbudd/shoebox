@@ -1721,7 +1721,8 @@ const handleDetectFaces = async () => {
           faceIndex: index,
           descriptor: [...face.descriptor], // Ensure it's a plain array
           region: { ...face.region }, // Clone object
-          confidence: face.confidence
+          confidence: face.confidence,
+          model: face.model || 'ssd'
         }));
         
         const matchResult = await window.electronAPI.matchFaces(
@@ -1873,7 +1874,8 @@ const unmatchPersonFace = (personID) => {
 
 // Assign face to person by personID (for inline assign)
 const assignFaceToPersonByID = async (personID) => {
-  const faceIndex = faceAssignments.value[personID];
+  // Ensure numeric index (faceAssignments may come from select v-model)
+  const faceIndex = Number(faceAssignments.value[personID]);
   
   if (faceIndex === undefined || faceIndex === null || faceIndex === '') {
     alert('Please select a face first');
@@ -2026,7 +2028,8 @@ const handleFaceBadgeHover = (faceIndex) => {
     clearTimeout(hoverClearTimeout);
     hoverClearTimeout = null;
   }
-  hoveredFaceIndex.value = faceIndex;
+  // Coerce to number to avoid string/number mismatches from v-model or event sources
+  hoveredFaceIndex.value = Number(faceIndex);
   drawFaceOverlays();
 };
 
@@ -2057,13 +2060,14 @@ const handleFaceBadgeClick = async (faceIndex) => {
     return;
   }
   
-  // If we have face descriptors, perform similarity search
-  await performFaceSimilaritySearch(faceIndex);
+  // If we have face descriptors, perform similarity search (ensure numeric index)
+  await performFaceSimilaritySearch(Number(faceIndex));
 };
 
 // Perform the actual similarity search for a specific face
 const performFaceSimilaritySearch = async (faceIndex) => {
-  currentSearchFaceIndex.value = faceIndex;
+  // Ensure consistent numeric type for face indexes
+  currentSearchFaceIndex.value = Number(faceIndex);
   searchingFaces.value = true;
   selectedMatches.value = new Set();
   showFaceSelector.value = false;
@@ -2078,9 +2082,9 @@ const performFaceSimilaritySearch = async (faceIndex) => {
       return;
     }
     
-    // Search for selected face
-    currentSearchFaceIndex.value = faceIndex;
-    const matches = await searchPersonLibrary(faceIndex, personsWithDescriptors);
+    // Search for selected face (ensure numeric index)
+    currentSearchFaceIndex.value = Number(faceIndex);
+    const matches = await searchPersonLibrary(Number(faceIndex), personsWithDescriptors);
     
     similarityMatches.value = matches;
     showSimilaritySearch.value = true;
@@ -2107,7 +2111,8 @@ const closeFaceSelector = () => {
 
 // Search person library for matches to a specific face
 const searchPersonLibrary = async (faceIndex, personsWithDescriptors, distanceThreshold = 0.6) => {
-  const face = detectedFaces.value[faceIndex];
+  const fi = Number(faceIndex);
+  const face = detectedFaces.value[fi];
   if (!face || !face.descriptor) {
     return [];
   }
@@ -2123,37 +2128,35 @@ const searchPersonLibrary = async (faceIndex, personsWithDescriptors, distanceTh
     
     // Get all descriptors for this person (from different photos)
     for (const descriptorEntry of person.descriptors) {
-      // Only compare descriptors from the same model
-      if (descriptorEntry.model !== faceModel) {
-        continue; // Skip descriptors from different models
-      }
-      
       const storedDescriptor = new Float32Array(descriptorEntry.descriptor);
       const distance = euclideanDistance(faceDescriptor, storedDescriptor);
-      
-      if (distance < threshold) {
-        // Keep only the best match for this person
-        if (!personBestMatches[person.personID] || distance < personBestMatches[person.personID].distance) {
-          // Check if person already in item.person list
-          const alreadyInPhoto = item.value.person.some(p => p.personID === person.personID);
-          
-          personBestMatches[person.personID] = {
-            personID: person.personID,
-            first: person.first,
-            last: person.last,
-            distance: distance,
-            confidence: Math.round((1 - distance) * 100), // Convert distance to confidence %
-            referenceLink: descriptorEntry.link,
-            alreadyInPhoto: alreadyInPhoto
-          };
-        }
+      const modelMatches = descriptorEntry.model === faceModel;
+      const effectiveDistance = modelMatches ? distance : distance + 0.01;
+
+      if (effectiveDistance >= threshold) {
+        continue;
+      }
+
+      // Keep only the best match for this person, using effective distance for comparison
+      if (!personBestMatches[person.personID] || effectiveDistance < personBestMatches[person.personID].effectiveDistance) {
+        const alreadyInPhoto = item.value.person.some(p => p.personID === person.personID);
+        personBestMatches[person.personID] = {
+          personID: person.personID,
+          first: person.first,
+          last: person.last,
+          distance,
+          effectiveDistance,
+          confidence: Math.round((1 - distance) * 100), // Convert distance to confidence %
+          referenceLink: descriptorEntry.link,
+          alreadyInPhoto: alreadyInPhoto
+        };
       }
     }
   }
   
-  // Convert to array and sort by distance (best matches first)
+  // Convert to array and sort by effective distance (best matches first)
   const matches = Object.values(personBestMatches);
-  matches.sort((a, b) => a.distance - b.distance);
+  matches.sort((a, b) => a.effectiveDistance - b.effectiveDistance);
   return matches.slice(0, 20);
 };
 
@@ -2213,7 +2216,7 @@ const autoAssignUnmatchedFaces = async () => {
     
     // Search for best match in person library (gets multiple matches, sorted by distance)
     // Use the user's autoAssignThreshold for filtering
-    const matches = await searchPersonLibrary(faceIndex, personsWithDescriptors, distanceThreshold);
+    const matches = await searchPersonLibrary(Number(faceIndex), personsWithDescriptors, distanceThreshold);
     
     if (matches.length === 0) continue;
     
@@ -2328,7 +2331,7 @@ const addSelectedMatches = async () => {
   
   // Get the single selected person and current search face
   const personID = Array.from(selectedMatches.value)[0];
-  const faceIndex = currentSearchFaceIndex.value;
+  const faceIndex = Number(currentSearchFaceIndex.value);
   
   if (faceIndex === null || faceIndex === undefined) {
     alert('No face index found');
