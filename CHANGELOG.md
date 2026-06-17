@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.2] - 2026-06-02
+
 ### Added
 - **File > Open Recent** menu: Shoebox now remembers the last 15 opened `accessions.json` files in `nconf` and shows the most recent first.
 - **Clear Recent Files** option under File > Open Recent so the recent list can be reset without needing to open a new file.
