@@ -3,7 +3,9 @@ name: releaseBuild.yml
 on:
   push:
     branches:
-     - main
+      - main
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -53,6 +55,6 @@ jobs:
           YARN_ENABLE_SCRIPTS: "false"
 
       - name: Build/release Electron app
-        run: yarn run dist
+        run: yarn run dist ${{ startsWith(github.ref, 'refs/tags/v') && '' || '--dir --publish never' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
