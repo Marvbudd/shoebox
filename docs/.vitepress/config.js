@@ -4,6 +4,14 @@ export default defineConfig({
   title: 'Shoebox',
   description: 'Personal Family History Archive Manager',
   base: '/shoebox/',
+  vite: {
+    build: {
+      target: 'esnext'
+    },
+    ssr: {
+      target: 'esnext'
+    }
+  },
   
   themeConfig: {
     logo: '/logo.png',
