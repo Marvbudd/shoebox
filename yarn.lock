@@ -2463,16 +2463,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"electron@npm:^40.10.3":
-  version: 40.10.3
-  resolution: "electron@npm:40.10.3"
+"electron@npm:^40.10.4":
+  version: 40.10.4
+  resolution: "electron@npm:40.10.4"
   dependencies:
     "@electron-internal/extract-zip": "npm:^1.0.1"
     "@electron/get": "npm:^5.0.0"
     "@types/node": "npm:^24.9.0"
   bin:
     electron: cli.js
-  checksum: 10c0/3e16eb0f14676c049a5cc6ac6ba1ced3010f82cbbaf5ad9c31d439b52e0cf459d6d275583684dfadd2de8169d8326eebf96644dd0130316d43772f8fca670d45
+  checksum: 10c0/1f03c24c220fd777fa0bda3676bee94eb7030e04893f09bfae79cfa8bb7a4e218ee2fa3a3d86d860d3db11690d708eafc0c9b5e5f31eb633194f8d23ec9311bc
   languageName: node
   linkType: hard
 
@@ -4673,7 +4673,7 @@ __metadata:
   dependencies:
     "@vitejs/plugin-vue": "npm:^6.0.7"
     canvas: "npm:^3.2.3"
-    electron: "npm:^40.10.3"
+    electron: "npm:^40.10.4"
     electron-builder: "npm:^26.15.3"
     electron-updater: "npm:^6.8.9"
     exifr: "npm:^7.1.3"
