@@ -12,7 +12,7 @@
 import { BrowserWindow, Menu, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
-import { PersonService } from '../utils/PersonService.js';
+import { applyPendingFaceAssignments } from '../utils/faceAssignment.js';
 
 function getDeleteBlockReason(item, accessionClass) {
   const hasPlaylistEntries = item.playlist
@@ -132,6 +132,7 @@ async function trashForDelete(deleteInfo, deleteMode) {
  * @param {Function} hmsToSeconds - Function to convert HMS to seconds
  * @param {Object} nconf - Configuration object
  * @param {Object} showCollectionRef - Reference object for showCollection flag
+ * @param {Function} getMediaWindow - Function that returns media player window reference
  */
 export function registerItemHandlers(
   ipcMain, 
@@ -145,8 +146,48 @@ export function registerItemHandlers(
   hmsToSeconds,
   nconf,
   showCollectionRef,
-  getPersonManagerWindow
+  getPersonManagerWindow,
+  getMediaWindow
 ) {
+  const notifyItemSaved = (link) => {
+    if (!link) {
+      return;
+    }
+
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (win && !win.isDestroyed() && win.webContents) {
+        win.webContents.send('item:saved', { link });
+      }
+    });
+  };
+
+  const notifyItemDeleted = (link) => {
+    if (!link) {
+      return;
+    }
+
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (win && !win.isDestroyed() && win.webContents) {
+        win.webContents.send('item:deleted', { link });
+      }
+    });
+  };
+
+  const notifyCollectionItemsUpdated = (collectionKey, changedLink = null) => {
+    if (!collectionKey) {
+      return;
+    }
+
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (win && !win.isDestroyed() && win.webContents) {
+        win.webContents.send('collection:itemsUpdated', {
+          collectionKey,
+          changedLink,
+          itemsUpdated: 1
+        });
+      }
+    });
+  };
   
   // Get list of items with filtering and sorting
   ipcMain.handle('items:getList', async (event, requestParams) => {
@@ -181,7 +222,8 @@ export function registerItemHandlers(
     listObject.audioChecked = nconf.get('controls:audioChecked') ?? true
     listObject.videoChecked = nconf.get('controls:videoChecked') ?? true
     listObject.limitChecked = nconf.get('controls:limitChecked') ?? false
-    listObject.showFaceTags = nconf.get('controls:showFaceTags') || false
+    listObject.faceTagsMode = nconf.get('controls:faceTagsMode') || ((nconf.get('controls:showFaceTags') || false) ? 'regions' : 'off')
+    listObject.showFaceTags = listObject.faceTagsMode !== 'off'
     listObject.sortBy = sortBy
     Menu.setApplicationMenu(createMenu());
     return listObject;
@@ -216,7 +258,9 @@ export function registerItemHandlers(
     nconf.set('controls:videoChecked', controls.videoChecked ?? nconf.get('controls:videoChecked') ?? true)
     nconf.set('controls:limitChecked', controls.limitChecked ?? nconf.get('controls:limitChecked') ?? false)
     nconf.set('controls:selectedCollection', controls.selectedCollection ?? nconf.get('controls:selectedCollection') ?? '')
-    nconf.set('controls:showFaceTags', controls.showFaceTags ?? nconf.get('controls:showFaceTags') ?? false)
+    const nextFaceTagsMode = controls.faceTagsMode ?? nconf.get('controls:faceTagsMode') ?? ((controls.showFaceTags ?? nconf.get('controls:showFaceTags') ?? false) ? 'regions' : 'off')
+    nconf.set('controls:faceTagsMode', nextFaceTagsMode)
+    nconf.set('controls:showFaceTags', nextFaceTagsMode !== 'off')
     if (controls.sortBy) {
       nconf.set('controls:sortBy', controls.sortBy)
     }
@@ -228,7 +272,9 @@ export function registerItemHandlers(
   ipcMain.handle('item:setCollection', async (_, link) => {
     verifyAccessions();
     const accessionClass = getAccessionClass();
-    accessionClass.toggleItemInCollection(nconf.get('controls:selectedCollection'), link)
+    const collectionKey = nconf.get('controls:selectedCollection');
+    accessionClass.toggleItemInCollection(collectionKey, link)
+    notifyCollectionItemsUpdated(collectionKey, link);
     return { success: true };
   }); // item:setCollection
 
@@ -338,33 +384,15 @@ export function registerItemHandlers(
       }
       
       // Process pending face assignments and add to person library
-      if (itemData.person && Array.isArray(itemData.person)) {
-        const personService = new PersonService(accessionClass.accessionJSON);
-        
-        for (const person of itemData.person) {
-          if (person.faceTag && person.faceTag.pending) {
-            // Determine media type from link
-            const link = itemData.link;
-            const type = link.toLowerCase().endsWith('.mp4') || link.toLowerCase().endsWith('.avi') ? 'video' :
-                         link.toLowerCase().endsWith('.mp3') || link.toLowerCase().endsWith('.wav') ? 'audio' :
-                         'photo';
-            
-            // Add face descriptor to person library
-            personService.addDescriptor(
-              accessionClass.accessionJSON.persons,
-              person.personID,
-              type,
-              link,
-              person.faceTag.model,
-              person.faceTag.region,
-              person.faceTag.descriptor,
-              person.faceTag.confidence
-            );
-            
-            // Remove faceTag from person object (not part of item schema)
-            delete person.faceTag;
-          }
-        }
+      applyPendingFaceAssignments(accessionClass, itemData);
+
+      if (Array.isArray(itemData.candidatefaces) && itemData.link) {
+        const normalizedCandidates = itemData.candidatefaces.map(candidate => ({
+          ...candidate,
+          link: itemData.link
+        }));
+        accessionClass.replaceCandidateFacesForLink(itemData.link, normalizedCandidates);
+        delete itemData.candidatefaces;
       }
       
       // Use encapsulated method to save item
@@ -384,6 +412,8 @@ export function registerItemHandlers(
       if (personManagerWindow && personManagerWindow.webContents) {
         personManagerWindow.webContents.send('persons:refresh');
       }
+
+      notifyItemSaved(itemData.link);
       
       return { success: true };
     } catch (error) {
@@ -448,6 +478,8 @@ export function registerItemHandlers(
       if (personManagerWindow && personManagerWindow.webContents) {
         personManagerWindow.webContents.send('persons:refresh');
       }
+
+      notifyItemDeleted(request.link);
       
       return { success: true };
     } catch (error) {
@@ -492,7 +524,8 @@ export function registerItemHandlers(
     listObject.audioChecked = audioValue ?? true
     listObject.videoChecked = videoValue ?? true
     listObject.limitChecked = nconf.get('controls:limitChecked') ?? false
-    listObject.showFaceTags = nconf.get('controls:showFaceTags') || false
+    listObject.faceTagsMode = nconf.get('controls:faceTagsMode') || ((nconf.get('controls:showFaceTags') || false) ? 'regions' : 'off')
+    listObject.showFaceTags = listObject.faceTagsMode !== 'off'
     listObject.sortBy = nconf.get('controls:sortBy') || '1'
     
     event.sender.send('items:render', JSON.stringify(listObject))
@@ -526,13 +559,18 @@ export function registerItemHandlers(
     nconf.set('controls:videoChecked', itemsObject.videoChecked ?? nconf.get('controls:videoChecked') ?? true)
     nconf.set('controls:limitChecked', itemsObject.limitChecked ?? nconf.get('controls:limitChecked') ?? false)
     nconf.set('controls:selectedCollection', itemsObject.selectedCollection ?? nconf.get('controls:selectedCollection') ?? '')
+    const nextFaceTagsMode = itemsObject.faceTagsMode ?? nconf.get('controls:faceTagsMode') ?? ((itemsObject.showFaceTags ?? nconf.get('controls:showFaceTags') ?? false) ? 'regions' : 'off')
+    nconf.set('controls:faceTagsMode', nextFaceTagsMode)
+    nconf.set('controls:showFaceTags', nextFaceTagsMode !== 'off')
     nconf.save('user')
   }); // items:collection
 
   ipcMain.on('item:setCollection', (_, link) => {
     verifyAccessions();
     const accessionClass = getAccessionClass();
-    accessionClass.toggleItemInCollection(nconf.get('controls:selectedCollection'), link)
+    const collectionKey = nconf.get('controls:selectedCollection');
+    accessionClass.toggleItemInCollection(collectionKey, link)
+    notifyCollectionItemsUpdated(collectionKey, link);
   }); // item:setCollection
 
   ipcMain.on('item:Play', (_, playString) => {
@@ -573,14 +611,9 @@ export function registerItemHandlers(
   // Get current playback time from Media Player window
   ipcMain.handle('mediaPlayer:getCurrentTime', async () => {
     try {
-      // Find the media player window
-      const allWindows = BrowserWindow.getAllWindows();
-      const mediaPlayerWindow = allWindows.find(win => 
-        win.getTitle().includes('Shoebox Media') || 
-        win.webContents.getURL().includes('mediaPlayer')
-      );
+      const mediaPlayerWindow = getMediaWindow?.();
       
-      if (mediaPlayerWindow) {
+      if (mediaPlayerWindow && !mediaPlayerWindow.isDestroyed() && mediaPlayerWindow.webContents) {
         // Execute JavaScript in the media player window to get playback info
         const playbackInfo = await mediaPlayerWindow.webContents.executeJavaScript(
           'window.getCurrentPlaybackTime ? window.getCurrentPlaybackTime() : { time: "00:00:00.0", link: "", currentSeconds: 0 }'

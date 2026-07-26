@@ -42,8 +42,12 @@ AI-powered face recognition to identify people in your photos.
 - **Manual Tagging**: Associate faces with people in your archive
 - **Visual Overlays**: See tagged faces directly on photos
 - **Multiple Models**: Choose from SSD, MTCNN, or TinyFace detectors
+- **Batch Face Detection**: Run phase 1 processing across collection queues
+- **Batch Face Assignment**: Review unresolved candidates descriptor-by-descriptor in Person Manager
 
 [Face Detection Guide](./face-detection.md) | [Advanced Technical Details](./face-detection-advanced.md)
+
+For large collection workflows, see [Batch Face Processing (Phase 1)](./face-detection.md#batch-face-processing-phase-1) and then use Person Manager **Match Unassigned** for descriptor-by-descriptor person-centric review.
 
 ### 🗂️ Collections
 

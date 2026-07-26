@@ -39,9 +39,11 @@ export class ValidationService {
     await this.validateOrphanedFiles();
     await this.validatePlaylistReferences();
     this.validateAccessionNumbers();
+    this.validateDuplicateTMGIDs();
     this.validatePersonLastNames();
     this.validateUnreferencedPersons();
     this.validateOrphanedFaceDescriptors();
+    this.validateCandidateFaceReferences();
 
     return {
       errorCount: this.errors.length,
@@ -324,6 +326,46 @@ export class ValidationService {
   }
 
   /**
+   * Check for duplicate TMGIDs across different persons
+   */
+  validateDuplicateTMGIDs() {
+    const persons = this.accessionClass.accessionJSON.persons || {};
+    const tmgidMap = new Map();
+
+    const normalizeTMGID = (value) => {
+      if (value === undefined || value === null) {
+        return '';
+      }
+      return String(value).trim();
+    };
+
+    Object.entries(persons).forEach(([personID, person]) => {
+      const normalizedTMGID = normalizeTMGID(person.TMGID);
+      if (!normalizedTMGID) {
+        return;
+      }
+
+      const fullName = formatPersonName(person) || personID;
+
+      if (tmgidMap.has(normalizedTMGID)) {
+        const firstMatch = tmgidMap.get(normalizedTMGID);
+
+        this.errors.push({
+          type: 'DUPLICATE_TMGID',
+          TMGID: normalizedTMGID,
+          personID,
+          personName: fullName,
+          duplicatePersonID: firstMatch.personID,
+          duplicatePersonName: firstMatch.personName,
+          message: `Duplicate TMGID: ${normalizedTMGID} is assigned to ${fullName} (${personID}) and ${firstMatch.personName} (${firstMatch.personID})`
+        });
+      } else {
+        tmgidMap.set(normalizedTMGID, { personID, personName: fullName });
+      }
+    });
+  }
+
+  /**
    * Check for people with multiple maiden names
    * A person should only have one maiden name but can have multiple married names
    */
@@ -417,6 +459,94 @@ export class ValidationService {
           }
         }
       });
+    });
+  }
+
+  /**
+   * Check candidatefaces integrity.
+   * Candidate faces are unresolved face regions shown in Face Manager/Media Manager.
+   * Invalid or orphaned entries can produce rows that cannot open preview/edit workflows.
+   */
+  validateCandidateFaceReferences() {
+    const candidates = Array.isArray(this.accessionClass.accessionJSON?.candidatefaces)
+      ? this.accessionClass.accessionJSON.candidatefaces
+      : [];
+    const items = this.accessionClass.accessionJSON.accessions?.item || [];
+
+    const itemsByLink = new Map();
+    items.forEach(item => {
+      if (item?.link) {
+        itemsByLink.set(item.link, item);
+      }
+    });
+
+    const isFiniteNumber = (value) => Number.isFinite(Number(value));
+
+    candidates.forEach((candidate, index) => {
+      if (!candidate || typeof candidate !== 'object') {
+        this.warnings.push({
+          type: 'CANDIDATE_FACE_INVALID_ENTRY',
+          message: `candidatefaces[${index}] is not a valid object`,
+          location: `candidatefaces[${index}]`
+        });
+        return;
+      }
+
+      const candidateID = typeof candidate.candidateID === 'string' ? candidate.candidateID : null;
+      const link = typeof candidate.link === 'string' ? candidate.link : '';
+
+      if (!link) {
+        this.warnings.push({
+          type: 'CANDIDATE_FACE_NO_LINK',
+          candidateID,
+          message: `Candidate face entry missing link at candidatefaces[${index}]`,
+          location: `candidatefaces[${index}]`
+        });
+        return;
+      }
+
+      const item = itemsByLink.get(link);
+      if (!item) {
+        this.warnings.push({
+          type: 'ORPHANED_CANDIDATE_FACE_NO_ITEM',
+          candidateID,
+          link,
+          message: `Candidate face references non-existent item: ${link}`,
+          location: `candidatefaces[${index}]`
+        });
+        return;
+      }
+
+      const region = candidate.region;
+      const validRegion = region
+        && isFiniteNumber(region.x)
+        && isFiniteNumber(region.y)
+        && isFiniteNumber(region.w)
+        && isFiniteNumber(region.h)
+        && Number(region.w) > 0
+        && Number(region.h) > 0;
+
+      if (!validRegion) {
+        this.warnings.push({
+          type: 'CANDIDATE_FACE_INVALID_REGION',
+          candidateID,
+          link,
+          accession: item.accession,
+          message: `Candidate face has invalid region data for item ${link}`,
+          location: `candidatefaces[${index}].region`
+        });
+      }
+
+      if (!Array.isArray(candidate.descriptor) || candidate.descriptor.length !== 128) {
+        this.warnings.push({
+          type: 'CANDIDATE_FACE_INVALID_DESCRIPTOR',
+          candidateID,
+          link,
+          accession: item.accession,
+          message: `Candidate face has invalid descriptor data for item ${link}`,
+          location: `candidatefaces[${index}].descriptor`
+        });
+      }
     });
   }
   
@@ -525,19 +655,24 @@ export class ValidationService {
       const orphanedFaceWarnings = this.warnings.filter(w => 
         w.type === 'ORPHANED_FACE_DESCRIPTOR' || 
         w.type === 'ORPHANED_FACE_DESCRIPTOR_NO_ITEM' ||
-        w.type === 'FACE_DESCRIPTOR_NO_LINK'
+        w.type === 'FACE_DESCRIPTOR_NO_LINK' ||
+        w.type === 'ORPHANED_CANDIDATE_FACE_NO_ITEM' ||
+        w.type === 'CANDIDATE_FACE_NO_LINK' ||
+        w.type === 'CANDIDATE_FACE_INVALID_REGION' ||
+        w.type === 'CANDIDATE_FACE_INVALID_DESCRIPTOR' ||
+        w.type === 'CANDIDATE_FACE_INVALID_ENTRY'
       );
       
       if (orphanedFaceWarnings.length > 0) {
         lines.push('');
-        lines.push('HOW TO FIX ORPHANED FACE DESCRIPTORS:');
-        lines.push('--------------------------------------');
-        lines.push('Option 1: Open the Validation window in Shoebox and click "Cleanup Orphaned');
-        lines.push('          Face Descriptors" button to automatically remove all orphaned data.');
+        lines.push('HOW TO FIX ORPHANED FACE DESCRIPTORS/CANDIDATES:');
+        lines.push('-----------------------------------------------');
+        lines.push('Option 1 (recommended): Open the Validation window in Shoebox and use cleanup');
+        lines.push('                       buttons to remove orphaned/invalid face descriptor and');
+        lines.push('                       candidate data.');
         lines.push('');
-        lines.push('Option 2: For each orphaned descriptor, either:');
-        lines.push('          - Add the person back to the item if they should be there, OR');
-        lines.push('          - Delete the orphaned descriptor manually in the person record');
+        lines.push('Option 2 (when item still exists): Open the item in Media Manager and');
+        lines.push('                                    reassign/unassign faces, then save.');
         lines.push('');
       }
     }

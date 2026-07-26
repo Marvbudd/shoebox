@@ -50,6 +50,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, powerSaveBlocker, protocol } from 'electron';
 import fs from 'fs';
 import electron from 'electron';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -72,6 +73,61 @@ autoUpdater.checkForUpdatesAndNotify();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const getSnapshotCacheDirectory = () => {
+  const cacheRoot = process.env.XDG_CACHE_HOME
+    ? path.resolve(process.env.XDG_CACHE_HOME)
+    : path.join(os.homedir(), '.cache');
+
+  return path.join(cacheRoot, 'shoebox', 'snapshots');
+};
+
+const clearSnapshotCacheOnStartup = async () => {
+  const snapshotDir = getSnapshotCacheDirectory();
+
+  try {
+    const entries = await fs.promises.readdir(snapshotDir, { withFileTypes: true });
+
+    await Promise.all(entries.map(async (entry) => {
+      // Keep cleanup scoped to Shoebox-generated snapshot artifacts.
+      if (!entry.name.startsWith('shoebox-snapshot-')) {
+        return;
+      }
+
+      const fullPath = path.join(snapshotDir, entry.name);
+
+      try {
+        if (entry.isDirectory()) {
+          await fs.promises.rm(fullPath, { recursive: true, force: true });
+        } else {
+          await fs.promises.unlink(fullPath);
+        }
+      } catch (error) {
+        console.warn(`Unable to remove cached snapshot ${fullPath}:`, error.message || error);
+      }
+    }));
+  } catch (error) {
+    if (error && error.code !== 'ENOENT') {
+      console.warn(`Unable to inspect snapshot cache directory ${snapshotDir}:`, error.message || error);
+    }
+  }
+};
+
+// Face-api may emit an unhandled rejection for some decode/crop edge cases.
+// We log this specific known error without triggering warning storms.
+process.on('unhandledRejection', (reason) => {
+  const message = reason?.message || String(reason || '');
+  const stack = reason?.stack || '';
+  const isKnownFaceApiCanvasError = message.includes('Not an image canvas')
+    && stack.includes('face-api.js');
+
+  if (isKnownFaceApiCanvasError) {
+    console.warn('Skipped face-api canvas edge-case error during batch detection:', message);
+    return;
+  }
+
+  console.error('Unhandled promise rejection:', reason);
+});
 
 // Register custom protocol as privileged (must be before app.ready)
 protocol.registerSchemesAsPrivileged([
@@ -173,7 +229,12 @@ nconf.argv()
     },
     "faceDetection": {
       "confidenceThreshold": 0.20,
-      "autoAssignThreshold": 0.60
+      "autoAssignThreshold": 0.60,
+      "phaseOneMatchThreshold": 0.085,
+      "phaseOneRegionRestoreIoUThreshold": 0.72
+    },
+    "debug": {
+      "faceMatching": false
     },
     "ui": {
       "main": {
@@ -193,13 +254,14 @@ if (nconf.get('db:accessionsPath').includes('.xml')) {
   console.log('Changed accessionsPath to default');
 }
 process.on('warning', e => console.warn(e.stack));
-process.on('uncaughtException - ', e => console.log('***** uncaughtException with error=', e))
+process.on('uncaughtException', e => console.log('***** uncaughtException with error=', e))
 
 // ===== Application State =====
 
 // Application state
 let accessionClass = undefined;
 let mainWindow = null;
+let ipcHandlersRegistered = false;
 
 // Face detection service (initialized on first use)
 let faceDetectionService = null;
@@ -208,6 +270,7 @@ let faceDetectionService = null;
 const windowRefs = {
   media: { value: null },
   personManager: { value: null },
+  faceMatching: { value: null },
   createAccessions: { value: null },
   mediaManager: { value: null },
   updateCollection: { value: null },
@@ -247,6 +310,9 @@ const createWindow = () => {
     if (windowRefs.personManager.value && typeof windowRefs.personManager.value.close === 'function') {
       windowRefs.personManager.value.close();
     }
+    if (windowRefs.faceMatching.value && typeof windowRefs.faceMatching.value.close === 'function') {
+      windowRefs.faceMatching.value.close();
+    }
     if (windowRefs.createAccessions.value && typeof windowRefs.createAccessions.value.close === 'function') {
       windowRefs.createAccessions.value.close();
     }
@@ -266,135 +332,138 @@ const createWindow = () => {
   }) // destroyed
 
   // ===== IPC Handlers Registration =====
-  
-  // Fire-and-forget handlers for plain renderer (index.html)
-  ipcMain.on('open:Website', () => {
-    if (!accessionClass) {
-      console.error('AccessionClass not initialized');
-      return;
-    }
-    createTreeWindow(accessionClass);
-  }); // open:Website
+  if (!ipcHandlersRegistered) {
+    ipcHandlersRegistered = true;
 
-  ipcMain.on('open:PersonLink', (event, tmgid) => {
-    if (!tmgid || !accessionClass) {
-      console.error('Missing TMGID or accession class');
-      return;
-    }
-    const personUrl = accessionClass.getPersonWebsiteUrl(tmgid);
-    if (personUrl) {
-      shell.openExternal(personUrl);
-    } else {
-      console.error('Could not generate person URL for TMGID:', tmgid);
-    }
-  }); // open:PersonLink
-  
-  // Async handlers for Vue windows (MainWindow, etc.)
-  ipcMain.handle('open:Website', async () => {
-    if (!accessionClass) {
-      console.error('AccessionClass not initialized');
-      return { success: false, error: 'AccessionClass not initialized' };
-    }
-    createTreeWindow(accessionClass);
-    return { success: true };
-  }); // open:Website (async)
+    // Fire-and-forget handlers for plain renderer (index.html)
+    ipcMain.on('open:Website', () => {
+      if (!accessionClass) {
+        console.error('AccessionClass not initialized');
+        return;
+      }
+      createTreeWindow(accessionClass);
+    }); // open:Website
 
-  ipcMain.handle('open:PersonLink', async (event, tmgid) => {
-    if ((tmgid === undefined || tmgid === null || tmgid === '') || !accessionClass) {
-      console.error('Missing TMGID or accession class');
-      return { success: false, error: 'Missing TMGID or accession class' };
-    }
-    try {
+    ipcMain.on('open:PersonLink', (event, tmgid) => {
+      if (!tmgid || !accessionClass) {
+        console.error('Missing TMGID or accession class');
+        return;
+      }
       const personUrl = accessionClass.getPersonWebsiteUrl(tmgid);
       if (personUrl) {
-        const opened = shell.openExternal(personUrl);
-        if (opened && typeof opened.then === 'function') {
-          await opened;
-        }
-        return { success: true, url: personUrl };
+        shell.openExternal(personUrl);
       } else {
         console.error('Could not generate person URL for TMGID:', tmgid);
-        return { success: false, error: 'Could not generate person URL', url: null };
       }
-    } catch (err) {
-      console.error('Error opening person link for TMGID:', tmgid, err);
-      return { success: false, error: String(err) };
-    }
-  }); // open:PersonLink (async)
+    }); // open:PersonLink
+    
+    // Async handlers for Vue windows (MainWindow, etc.)
+    ipcMain.handle('open:Website', async () => {
+      if (!accessionClass) {
+        console.error('AccessionClass not initialized');
+        return { success: false, error: 'AccessionClass not initialized' };
+      }
+      createTreeWindow(accessionClass);
+      return { success: true };
+    }); // open:Website (async)
 
-  ipcMain.handle('open:Documentation', async (event) => {
-    shell.openExternal('https://marvbudd.github.io/shoebox/');
-    return { success: true };
-  }); // open:Documentation
+    ipcMain.handle('open:PersonLink', async (event, tmgid) => {
+      if ((tmgid === undefined || tmgid === null || tmgid === '') || !accessionClass) {
+        console.error('Missing TMGID or accession class');
+        return { success: false, error: 'Missing TMGID or accession class' };
+      }
+      try {
+        const personUrl = accessionClass.getPersonWebsiteUrl(tmgid);
+        if (personUrl) {
+          const opened = shell.openExternal(personUrl);
+          if (opened && typeof opened.then === 'function') {
+            await opened;
+          }
+          return { success: true, url: personUrl };
+        } else {
+          console.error('Could not generate person URL for TMGID:', tmgid);
+          return { success: false, error: 'Could not generate person URL', url: null };
+        }
+      } catch (err) {
+        console.error('Error opening person link for TMGID:', tmgid, err);
+        return { success: false, error: String(err) };
+      }
+    }); // open:PersonLink (async)
 
-  // ===== Config (nconf) IPC Handlers =====
-  ipcMain.handle('config:get', async (event, key) => {
-    return nconf.get(key);
-  });
+    ipcMain.handle('open:Documentation', async (event) => {
+      shell.openExternal('https://marvbudd.github.io/shoebox/');
+      return { success: true };
+    }); // open:Documentation
 
-  ipcMain.handle('config:set', async (event, key, value) => {
-    nconf.set(key, value);
-    nconf.save('user');
-    return { success: true };
-  });
+    // ===== Config (nconf) IPC Handlers =====
+    ipcMain.handle('config:get', async (event, key) => {
+      return nconf.get(key);
+    });
 
-  // ===== Person Library IPC Handlers =====
-  registerPersonHandlers(ipcMain, () => accessionClass, verifyAccessions);
+    ipcMain.handle('config:set', async (event, key, value) => {
+      nconf.set(key, value);
+      nconf.save('user');
+      return { success: true };
+    });
 
-  // ===== Item IPC Handlers =====
-  registerItemHandlers(
-    ipcMain,
-    () => accessionClass,
-    verifyAccessions,
-    () => mainWindow,
-    createMediaWindow,
-    createMediaManagerWindow,
-    createMenu,
-    resetAccessions,
-    hmsToSeconds,
-    nconf,
-    showCollectionRef,
-    () => windowRefs.personManager.value
-  );
+    // ===== Person Library IPC Handlers =====
+    registerPersonHandlers(ipcMain, () => accessionClass, verifyAccessions);
 
-  // ===== Collection IPC Handlers =====
-  registerCollectionHandlers(
-    ipcMain,
-    () => accessionClass,
-    verifyAccessions,
-    () => mainWindow,
-    resetAccessions,
-    () => collectionManagerModeRef.value,
-    nconf
-  );
+    // ===== Item IPC Handlers =====
+    registerItemHandlers(
+      ipcMain,
+      () => accessionClass,
+      verifyAccessions,
+      () => mainWindow,
+      createMediaWindow,
+      createMediaManagerWindow,
+      createMenu,
+      resetAccessions,
+      hmsToSeconds,
+      nconf,
+      showCollectionRef,
+      () => windowRefs.personManager.value,
+      () => windowRefs.media.value
+    );
 
-  // ===== Accessions and Media IPC Handlers =====
-  registerAccessionsHandlers(
-    ipcMain,
-    dialog,
-    () => accessionClass,
-    (value) => { accessionClass = value; },
-    verifyAccessions,
-    resetAccessions,
-    () => windowRefs.createAccessions.value,
-    nconf,
-    shell
-  );
+    // ===== Collection IPC Handlers =====
+    registerCollectionHandlers(
+      ipcMain,
+      () => accessionClass,
+      verifyAccessions,
+      () => mainWindow,
+      resetAccessions,
+      () => collectionManagerModeRef.value,
+      nconf
+    );
 
-  // ===== Window Management IPC Handlers =====
+    // ===== Accessions and Media IPC Handlers =====
+    registerAccessionsHandlers(
+      ipcMain,
+      dialog,
+      () => accessionClass,
+      (value) => { accessionClass = value; },
+      verifyAccessions,
+      resetAccessions,
+      () => windowRefs.createAccessions.value,
+      nconf,
+      shell
+    );
 
-  // Slideshow display sleep blocker (prevent screensaver during slideshow)
-  ipcMain.handle('slideshow:setDisplaySleepBlock', async (_event, shouldBlock) => {
-    if (shouldBlock) {
-      const id = startSlideshowBlocker();
-      return { active: true, id };
-    }
-    stopSlideshowBlocker();
-    return { active: false };
-  });
+    // ===== Window Management IPC Handlers =====
+
+    // Slideshow display sleep blocker (prevent screensaver during slideshow)
+    ipcMain.handle('slideshow:setDisplaySleepBlock', async (_event, shouldBlock) => {
+      if (shouldBlock) {
+        const id = startSlideshowBlocker();
+        return { active: true, id };
+      }
+      stopSlideshowBlocker();
+      return { active: false };
+    });
   
   // Open Person Manager with a specific person selected
-  ipcMain.handle('window:openPersonManager', async (event, personID) => {
+    ipcMain.handle('window:openPersonManager', async (event, personID) => {
     try {
       // Open or focus the Person Manager window
       createPersonManagerWindow();
@@ -437,10 +506,10 @@ const createWindow = () => {
       console.error('Error opening Person Manager:', error);
       return { success: false, error: error.message };
     }
-  }); // window:openPersonManager
+    }); // window:openPersonManager
 
   // Open Person Manager in Select mode for choosing a person (from Media Manager)
-  ipcMain.handle('window:openPersonManagerForSelection', async (event, assignedPersonIDs) => {
+    ipcMain.handle('window:openPersonManagerForSelection', async (event, assignedPersonIDs) => {
     try {
       // Open or focus the Person Manager window
       createPersonManagerWindow();
@@ -470,10 +539,55 @@ const createWindow = () => {
       console.error('Error opening Person Manager for selection:', error);
       return { success: false, error: error.message };
     }
-  }); // window:openPersonManagerForSelection
+    }); // window:openPersonManagerForSelection
+
+    ipcMain.handle('window:openMediaManagerQueue', async (_event, payload = {}) => {
+    try {
+      verifyAccessions();
+
+      const queue = Array.isArray(payload.queue)
+        ? payload.queue.map(link => String(link)).filter(Boolean)
+        : [];
+
+      if (queue.length === 0) {
+        return { success: false, error: 'Queue is empty' };
+      }
+
+      const identifier = typeof payload.startLink === 'string' && payload.startLink
+        ? payload.startLink
+        : queue[0];
+
+      const queueData = {
+        collectionKey: null,
+        collectionText: payload.collectionText || 'Match Unassigned',
+        queue
+      };
+
+      windowManager.createMediaManagerWindow(identifier, queueData, windowRefs.mediaManager, nconf);
+      return { success: true, queueSize: queue.length };
+    } catch (error) {
+      console.error('Error opening Media Manager queue:', error);
+      return { success: false, error: error.message || String(error) };
+    }
+    }); // window:openMediaManagerQueue
+
+    ipcMain.handle('window:openFaceMatching', async (_event, payload = {}) => {
+    try {
+      verifyAccessions();
+
+      windowManager.createFaceMatchingWindow({
+        ...payload
+      }, windowRefs.faceMatching, nconf);
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error opening Face Matching window:', error);
+      return { success: false, error: error.message || String(error) };
+    }
+    }); // window:openFaceMatching
 
   // Receive person selection from Person Manager and forward to any open renderer windows that care
-  ipcMain.on('personManager:personSelected', (event, personID) => {
+    ipcMain.on('personManager:personSelected', (event, personID) => {
     try {
       BrowserWindow.getAllWindows().forEach((win) => {
         if (win && !win.isDestroyed() && win.webContents) {
@@ -483,10 +597,23 @@ const createWindow = () => {
     } catch (error) {
       console.error('Error forwarding person selection:', error);
     }
-  }); // personManager:personSelected
+    }); // personManager:personSelected
+
+  // Receive Person Manager cancellation and forward to renderer windows that are awaiting a selection
+    ipcMain.on('personManager:selectionCanceled', () => {
+    try {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (win && !win.isDestroyed() && win.webContents) {
+          win.webContents.send('personManager:selectionCanceled');
+        }
+      });
+    } catch (error) {
+      console.error('Error forwarding person selection cancellation:', error);
+    }
+    }); // personManager:selectionCanceled
 
   // Save Media Manager window geometry before closing
-  ipcMain.handle('window:saveMediaManagerGeometry', async (event) => {
+    ipcMain.handle('window:saveMediaManagerGeometry', async (event) => {
     try {
       if (windowRefs.mediaManager && windowRefs.mediaManager.value && !windowRefs.mediaManager.value.isDestroyed()) {
         windowManager.saveWindowState(windowRefs.mediaManager.value, 'mediaManager', nconf);
@@ -497,9 +624,37 @@ const createWindow = () => {
       console.error('Error saving Media Manager geometry:', error);
       return { success: false, error: error.message };
     }
-  }); // window:saveMediaManagerGeometry
+    }); // window:saveMediaManagerGeometry
+
+  // Create maintenance collections from renderer workflows (e.g. Media Manager batch prompts)
+    ipcMain.handle('maintenance:create', async () => {
+    try {
+      verifyAccessions();
+      const result = accessionClass.createMaintenanceCollections();
+
+      if (result.created.length > 0 && mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('items:render', JSON.stringify({ reload: true, preserveSort: true }));
+      }
+
+      return {
+        success: true,
+        created: result.created,
+        existingCollections: result.existingCollections
+      };
+    } catch (error) {
+      console.error('Failed to create maintenance collections from renderer:', error);
+      return {
+        success: false,
+        error: error.message || String(error)
+      };
+    }
+    });
 
   // ===== Face Detection IPC Handlers =====
+
+  // Track cancellation requests by renderer webContents ID for long-running batch detection.
+  const batchFaceCancelState = new Map();
+  let activeBatchSenderId = null;
   
   // Initialize face detection service on first use
   const initFaceDetection = async () => {
@@ -510,8 +665,26 @@ const createWindow = () => {
     return faceDetectionService;
   };
 
+  const isFaceMatchDebugEnabled = () => process.env.SHOEBOX_FACE_DEBUG === '1' || nconf.get('debug:faceMatching') === true;
+
+  const getPhaseOneMatchThreshold = () => {
+    const configuredValue = Number(nconf.get('faceDetection:phaseOneMatchThreshold'));
+    if (Number.isFinite(configuredValue) && configuredValue > 0 && configuredValue < 1) {
+      return configuredValue;
+    }
+    return 0.085;
+  };
+
+  const getPhaseOneRegionRestoreIoUThreshold = () => {
+    const configuredValue = Number(nconf.get('faceDetection:phaseOneRegionRestoreIoUThreshold'));
+    if (Number.isFinite(configuredValue) && configuredValue > 0 && configuredValue < 1) {
+      return configuredValue;
+    }
+    return 0.72;
+  };
+
   // Detect faces in a photo
-  ipcMain.handle('face-detection:detect', async (event, link, options = {}) => {
+    ipcMain.handle('face-detection:detect', async (event, link, options = {}) => {
     try {
       verifyAccessions();
       const service = await initFaceDetection();
@@ -552,10 +725,10 @@ const createWindow = () => {
         error: error.message
       };
     }
-  });
+    });
 
   // Get face detection status
-  ipcMain.handle('face-detection:status', async () => {
+    ipcMain.handle('face-detection:status', async () => {
     if (!faceDetectionService) {
       return {
         initialized: false,
@@ -566,10 +739,10 @@ const createWindow = () => {
       initialized: true,
       ...faceDetectionService.getStatus()
     };
-  });
+    });
 
   // Get available detection models
-  ipcMain.handle('face-detection:get-models', async () => {
+    ipcMain.handle('face-detection:get-models', async () => {
     try {
       const service = await initFaceDetection();
       return {
@@ -584,117 +757,308 @@ const createWindow = () => {
         models: []
       };
     }
-  });
+    });
 
-  // Match detected faces to persons already listed in this photo
-  ipcMain.handle('face-detection:match', async (event, link, detectedFaces) => {
+    ipcMain.handle('face-detection:getCandidates', async (_event, link) => {
     try {
       verifyAccessions();
-      
-      if (!detectedFaces || detectedFaces.length === 0) {
-        return { success: true, matches: [], unmatchedFaces: [] };
+      const candidates = accessionClass.getCandidateFaces().filter(candidate => (
+        candidate
+        && candidate.link === link
+        && candidate.resolved !== true
+      ));
+      return {
+        success: true,
+        candidates
+      };
+    } catch (error) {
+      console.error('Error getting face candidates:', error);
+      return {
+        success: false,
+        error: error.message || String(error),
+        candidates: []
+      };
+    }
+    });
+
+    ipcMain.handle('face-detection:discardCandidate', async (_event, candidateID) => {
+    try {
+      verifyAccessions();
+      const removed = accessionClass.removeCandidateFace(candidateID);
+      return {
+        success: removed,
+        error: removed ? null : 'Candidate not found'
+      };
+    } catch (error) {
+      console.error('Error discarding face candidate:', error);
+      return {
+        success: false,
+        error: error.message || String(error)
+      };
+    }
+    });
+
+  const matchDetectedFacesToItemPersons = (link, detectedFaces) => {
+    if (!detectedFaces || detectedFaces.length === 0) {
+      return { matches: [], unmatchedFaces: [], item: null };
+    }
+
+    const itemView = accessionClass.getItemView(null, link);
+    if (!itemView) {
+      throw new Error(`Item not found: ${link}`);
+    }
+
+    const item = itemView.itemJSON;
+    const itemPersons = item.person || [];
+
+    const debugEnabled = isFaceMatchDebugEnabled();
+    if (debugEnabled) {
+      const personSummary = itemPersons.map((personRef, index) => ({
+        index,
+        personID: personRef?.personID || null,
+        hasPerson: Boolean(personRef?.personID),
+        descriptorCount: personRef?.personID
+          ? (accessionClass.getPerson(personRef.personID)?.faceBioData?.filter(d => d.link === item.link)?.length || 0)
+          : 0
+      }));
+
+      console.log('[FACE REMATCH DEBUG] start', {
+        link,
+        detectedFaces: detectedFaces.length,
+        itemPersons: itemPersons.length,
+        personSummary
+      });
+    }
+
+    if (itemPersons.length === 0) {
+      return {
+        item,
+        matches: [],
+        unmatchedFaces: detectedFaces.map((face, index) => ({
+          faceIndex: index,
+          region: face.region,
+          confidence: face.confidence
+        }))
+      };
+    }
+
+    const calculateRegionIoU = (regionA, regionB) => {
+      if (!regionA || !regionB) {
+        return 0;
       }
-      
-      const itemView = accessionClass.getItemView(null, link);
-      if (!itemView) {
-        throw new Error(`Item not found: ${link}`);
+
+      const ax = Number(regionA.x);
+      const ay = Number(regionA.y);
+      const aw = Number(regionA.w);
+      const ah = Number(regionA.h);
+      const bx = Number(regionB.x);
+      const by = Number(regionB.y);
+      const bw = Number(regionB.w);
+      const bh = Number(regionB.h);
+
+      if (![ax, ay, aw, ah, bx, by, bw, bh].every(Number.isFinite) || aw <= 0 || ah <= 0 || bw <= 0 || bh <= 0) {
+        return 0;
       }
-      
-      const item = itemView.itemJSON;
-      const itemPersons = item.person || [];
-      
-      if (itemPersons.length === 0) {
-        // No persons in item, all faces are unmatched
-        return { 
-          success: true, 
-          matches: [], 
-          unmatchedFaces: detectedFaces.map((face, index) => ({
-            faceIndex: index,
-            region: face.region,
-            confidence: face.confidence
-          }))
-        };
+
+      const aLeft = ax - (aw / 2);
+      const aRight = ax + (aw / 2);
+      const aTop = ay - (ah / 2);
+      const aBottom = ay + (ah / 2);
+
+      const bLeft = bx - (bw / 2);
+      const bRight = bx + (bw / 2);
+      const bTop = by - (bh / 2);
+      const bBottom = by + (bh / 2);
+
+      const interLeft = Math.max(aLeft, bLeft);
+      const interRight = Math.min(aRight, bRight);
+      const interTop = Math.max(aTop, bTop);
+      const interBottom = Math.min(aBottom, bBottom);
+
+      const interW = Math.max(0, interRight - interLeft);
+      const interH = Math.max(0, interBottom - interTop);
+      const intersection = interW * interH;
+
+      if (intersection <= 0) {
+        return 0;
       }
-      
-      // MATCH_THRESHOLD explanation:
-      // - Phase 1 (backend re-matching): Strict 0.05 threshold for re-detecting SAME IMAGE with SAME MODEL
-      // - Expects distance ≈ 0.0 (perfect match) since it's the exact same face descriptor
-      // - Only auto-assigns if distance < 0.05 (~95% confidence)
-      // - Confidence display uses simple formula: (1 - distance) * 100 for consistency with UI
-      const SAME_IMAGE_THRESHOLD = 0.05;  // For re-detecting same image (expect ~0.0)
-      
-      // Use strict threshold for Phase 1 auto-matching
-      const MATCH_THRESHOLD = SAME_IMAGE_THRESHOLD;
-      
-      const matches = [];
-      const unmatchedFaces = [];
-      
-      // Try to match each detected face to persons in THIS item only
-      for (let faceIndex = 0; faceIndex < detectedFaces.length; faceIndex++) {
-        const face = detectedFaces[faceIndex];
-        let bestMatch = null;
-        let bestDistance = Infinity;
-        // Convert descriptor array back to Float32Array for comparison
-        const faceDescriptor = new Float32Array(face.descriptor);
 
-        // Track which persons have already been matched
-        const alreadyMatchedPersonIndices = matches.map(m => m.personIndex);
+      const areaA = aw * ah;
+      const areaB = bw * bh;
+      const union = areaA + areaB - intersection;
+      if (union <= 0) {
+        return 0;
+      }
 
-        // Check each person in the item for stored face descriptors in faceBioData
-        for (let personIndex = 0; personIndex < itemPersons.length; personIndex++) {
-          // Skip if this person has already been matched to a face
-          if (alreadyMatchedPersonIndices.includes(personIndex)) continue;
-          const personRef = itemPersons[personIndex];
-          
-          // Get person from library to check faceBioData
-          if (!personRef.personID) continue;
-          const person = accessionClass.getPerson(personRef.personID);
-          if (!person || !person.faceBioData) continue;
-          
-          // Find descriptors for this link and compare them all
-          const faceModel = face.model || 'ssd';
-          const descriptors = person.faceBioData.filter(d => d.link === item.link);
-          if (!descriptors || descriptors.length === 0) continue;
+      return intersection / union;
+    };
 
-          for (const descriptor of descriptors) {
-            if (!descriptor || !descriptor.descriptor) continue;
-            const storedDescriptor = new Float32Array(descriptor.descriptor);
-            const distance = faceDetectionService.euclideanDistance(
-              faceDescriptor,
-              storedDescriptor
-            );
+    // Same-image re-match threshold. Configurable because descriptor drift
+    // can slightly exceed very strict values in real archives.
+    const MATCH_THRESHOLD = getPhaseOneMatchThreshold();
+    const REGION_IOU_THRESHOLD = 0.45;
+    const REGION_RESTORE_IOU_THRESHOLD = getPhaseOneRegionRestoreIoUThreshold();
+    const matches = [];
+    const unmatchedFaces = [];
 
-            // Prefer same-model descriptors, but allow cross-model matches too
-            const modelMatches = descriptor.model === faceModel;
-            const adjustedDistance = modelMatches ? distance : distance + 0.01;
+    for (let faceIndex = 0; faceIndex < detectedFaces.length; faceIndex++) {
+      const face = detectedFaces[faceIndex];
+      let bestMatch = null;
+      let bestDistance = Infinity;
+      const faceDescriptor = new Float32Array(face.descriptor);
+      let descriptorsConsidered = 0;
+      let bestCandidate = null;
+      let bestObservedCandidate = null;
+      let bestObservedAdjustedDistance = Infinity;
+      let bestRegionMatch = null;
+      let bestRegionIoU = 0;
+      let bestRegionRestoreMatch = null;
+      let bestRegionRestoreIoU = 0;
 
-            if (adjustedDistance < bestDistance && adjustedDistance < MATCH_THRESHOLD) {
-              bestDistance = adjustedDistance;
-              bestMatch = {
-                personIndex,
-                personID: personRef.personID,
-                distance: distance,
-                confidence: 1 - distance  // Consistent with frontend: (1 - distance)
-              };
-            }
+      const alreadyMatchedPersonIndices = matches.map(m => m.personIndex);
+
+      for (let personIndex = 0; personIndex < itemPersons.length; personIndex++) {
+        if (alreadyMatchedPersonIndices.includes(personIndex)) continue;
+
+        const personRef = itemPersons[personIndex];
+        if (!personRef.personID) continue;
+
+        const person = accessionClass.getPerson(personRef.personID);
+        if (!person || !person.faceBioData) continue;
+
+        const faceModel = face.model || 'ssd';
+        const descriptors = person.faceBioData.filter(d => d.link === item.link && d?.ExcludeFromMatching !== true);
+        const excludedDescriptors = person.faceBioData.filter(d => d.link === item.link && d?.ExcludeFromMatching === true);
+        if ((!descriptors || descriptors.length === 0) && (!excludedDescriptors || excludedDescriptors.length === 0)) continue;
+
+        for (const descriptor of descriptors) {
+          if (!descriptor || !descriptor.descriptor) continue;
+
+          descriptorsConsidered += 1;
+
+          const storedDescriptor = new Float32Array(descriptor.descriptor);
+          const distance = faceDetectionService.euclideanDistance(faceDescriptor, storedDescriptor);
+          const modelMatches = descriptor.model === faceModel;
+          const adjustedDistance = modelMatches ? distance : distance + 0.01;
+
+          if (adjustedDistance < bestObservedAdjustedDistance) {
+            bestObservedAdjustedDistance = adjustedDistance;
+            bestObservedCandidate = {
+              personIndex,
+              personID: personRef.personID,
+              rawDistance: distance,
+              adjustedDistance,
+              modelMatches,
+              descriptorModel: descriptor.model || 'ssd'
+            };
+          }
+
+          if (adjustedDistance < bestDistance && adjustedDistance < MATCH_THRESHOLD) {
+            bestDistance = adjustedDistance;
+            bestMatch = {
+              personIndex,
+              personID: personRef.personID,
+              distance,
+              confidence: 1 - distance
+            };
+            bestCandidate = {
+              personIndex,
+              personID: personRef.personID,
+              rawDistance: distance,
+              adjustedDistance,
+              modelMatches,
+              descriptorModel: descriptor.model || 'ssd'
+            };
+          }
+
+          // Same-photo region restore fallback: descriptor distance can drift above strict threshold
+          // after re-detection, but face box overlap should still be very high for the same person.
+          const descriptorRegionIoU = calculateRegionIoU(face.region, descriptor?.region);
+          if (descriptorRegionIoU > bestRegionRestoreIoU && descriptorRegionIoU >= REGION_RESTORE_IOU_THRESHOLD) {
+            bestRegionRestoreIoU = descriptorRegionIoU;
+            bestRegionRestoreMatch = {
+              personIndex,
+              personID: personRef.personID,
+              iou: descriptorRegionIoU,
+              method: 'region-restore'
+            };
           }
         }
 
-        if (bestMatch) {
-          matches.push({
-            faceIndex,
-            ...bestMatch,
-            region: face.region
-          });
-        } else {
-          unmatchedFaces.push({
-            faceIndex,
-            region: face.region,
-            confidence: face.confidence
-            // Don't include descriptor - renderer already has it in detectedFaces
-          });
+        for (const descriptor of excludedDescriptors) {
+          const iou = calculateRegionIoU(face.region, descriptor?.region);
+          if (iou > bestRegionIoU && iou >= REGION_IOU_THRESHOLD) {
+            bestRegionIoU = iou;
+            bestRegionMatch = {
+              personIndex,
+              personID: personRef.personID,
+              iou,
+              method: 'region'
+            };
+          }
         }
       }
+
+      if (!bestMatch && bestRegionRestoreMatch) {
+        bestMatch = {
+          personIndex: bestRegionRestoreMatch.personIndex,
+          personID: bestRegionRestoreMatch.personID,
+          distance: 1 - bestRegionRestoreMatch.iou,
+          confidence: bestRegionRestoreMatch.iou,
+          matchMethod: 'region-restore'
+        };
+      }
+
+      if (!bestMatch && bestRegionMatch) {
+        bestMatch = {
+          personIndex: bestRegionMatch.personIndex,
+          personID: bestRegionMatch.personID,
+          distance: 1 - bestRegionMatch.iou,
+          confidence: bestRegionMatch.iou,
+          matchMethod: 'region'
+        };
+      }
+
+      if (debugEnabled) {
+        console.log('[FACE REMATCH DEBUG] face summary', {
+          link,
+          faceIndex,
+          faceModel: face.model || 'ssd',
+          matchThreshold: MATCH_THRESHOLD,
+          descriptorsConsidered,
+          bestObservedCandidate,
+          bestCandidate,
+          bestRegionRestoreMatch,
+          bestRegionMatch,
+          matched: Boolean(bestMatch),
+          unmatchedReason: bestMatch ? null : (descriptorsConsidered === 0 ? 'no descriptors found for current item' : 'no descriptor met threshold')
+        });
+      }
+
+      if (bestMatch) {
+        matches.push({
+          faceIndex,
+          ...bestMatch,
+          region: face.region
+        });
+      } else {
+        unmatchedFaces.push({
+          faceIndex,
+          region: face.region,
+          confidence: face.confidence
+        });
+      }
+    }
+
+    return { item, matches, unmatchedFaces };
+  };
+
+  // Match detected faces to persons already listed in this photo
+    ipcMain.handle('face-detection:match', async (event, link, detectedFaces) => {
+    try {
+      verifyAccessions();
+      await initFaceDetection();
+      const { matches, unmatchedFaces } = matchDetectedFacesToItemPersons(link, detectedFaces);
       
       return {
         success: true,
@@ -708,7 +1072,286 @@ const createWindow = () => {
         error: error.message
       };
     }
-  });
+    });
+
+  // Batch phase 1: detect faces for queue items, preserve existing matches, persist unresolved to candidatefaces.
+    ipcMain.handle('face-detection:batchPhaseOne', async (event, payload = {}) => {
+    try {
+      verifyAccessions();
+      const service = await initFaceDetection();
+
+      const links = Array.isArray(payload.links) ? payload.links : [];
+      const models = Array.isArray(payload.models) && payload.models.length > 0 ? payload.models : ['ssd'];
+      const minConfidence = Number.isFinite(payload.minConfidence) ? payload.minConfidence : 0.2;
+
+      const uniqueLinks = Array.from(new Set(links.filter(Boolean)));
+      const senderId = event.sender.id;
+      activeBatchSenderId = senderId;
+      batchFaceCancelState.set(senderId, false);
+
+      const itemResults = [];
+      let processed = 0;
+      let photosProcessed = 0;
+      let totalCandidatesAdded = 0;
+      let totalFacesDetected = 0;
+      let skippedMissingFiles = 0;
+      let skippedUnreadableFiles = 0;
+      let skippedOther = 0;
+      let canceled = false;
+
+      for (const link of uniqueLinks) {
+        // Yield to the event loop so cancel requests can be processed before next item starts.
+        await new Promise(resolve => setImmediate(resolve));
+
+        if (batchFaceCancelState.get(senderId) === true) {
+          canceled = true;
+          break;
+        }
+
+        processed += 1;
+
+        const itemView = accessionClass.getItemView(null, link);
+        if (!itemView) {
+          skippedOther += 1;
+          itemResults.push({ link, skipped: true, reason: 'Item not found' });
+          event.sender.send('face-detection:batchProgress', {
+            processed,
+            total: uniqueLinks.length,
+            link,
+            skipped: true,
+            reason: 'Item not found'
+          });
+          continue;
+        }
+
+        if (itemView.getType() !== 'photo') {
+          skippedOther += 1;
+          itemResults.push({ link, skipped: true, reason: 'Not a photo' });
+          event.sender.send('face-detection:batchProgress', {
+            processed,
+            total: uniqueLinks.length,
+            link,
+            skipped: true,
+            reason: 'Not a photo'
+          });
+          continue;
+        }
+
+        photosProcessed += 1;
+
+        try {
+          const imagePath = accessionClass.getMediaPath(itemView.getType(), itemView.getLink());
+
+          if (!imagePath || !fs.existsSync(imagePath)) {
+            skippedMissingFiles += 1;
+            itemResults.push({
+              link,
+              skipped: true,
+              reason: 'Media file missing on disk'
+            });
+
+            event.sender.send('face-detection:batchProgress', {
+              processed,
+              total: uniqueLinks.length,
+              link,
+              skipped: true,
+              reason: 'Media file missing on disk'
+            });
+            continue;
+          }
+
+          const imageStats = fs.statSync(imagePath);
+          if (!imageStats.isFile() || imageStats.size <= 0) {
+            skippedUnreadableFiles += 1;
+            itemResults.push({
+              link,
+              skipped: true,
+              reason: 'Media file is unreadable'
+            });
+
+            event.sender.send('face-detection:batchProgress', {
+              processed,
+              total: uniqueLinks.length,
+              link,
+              skipped: true,
+              reason: 'Media file is unreadable'
+            });
+            continue;
+          }
+
+          const faces = await service.detectFaces(imagePath, models, minConfidence);
+
+          if (batchFaceCancelState.get(senderId) === true) {
+            canceled = true;
+            break;
+          }
+
+          const detectedFaces = faces.map(face => ({
+            descriptor: Array.from(face.descriptor),
+            region: face.region,
+            confidence: face.confidence,
+            model: face.model || 'ssd'
+          }));
+
+          totalFacesDetected += detectedFaces.length;
+
+          const { item, unmatchedFaces } = matchDetectedFacesToItemPersons(link, detectedFaces);
+          const unmatchedFaceIndexSet = new Set(unmatchedFaces.map(face => face.faceIndex));
+
+          const candidatesForLink = detectedFaces
+            .map((face, faceIndex) => ({ face, faceIndex }))
+            .filter(({ faceIndex }) => unmatchedFaceIndexSet.has(faceIndex))
+            .map(({ face }) => ({
+              link,
+              accession: item?.accession || null,
+              type: 'photo',
+              region: face.region,
+              descriptor: face.descriptor,
+              model: face.model || 'ssd',
+              confidence: typeof face.confidence === 'number' ? face.confidence : null,
+              quality: null,
+              detectedAt: new Date().toISOString()
+            }));
+
+          const saved = accessionClass.replaceCandidateFacesForLink(link, candidatesForLink);
+          totalCandidatesAdded += saved.added;
+
+          itemResults.push({
+            link,
+            skipped: false,
+            facesDetected: detectedFaces.length,
+            unresolvedCandidates: saved.added,
+            removedExistingCandidates: saved.removed
+          });
+
+          event.sender.send('face-detection:batchProgress', {
+            processed,
+            total: uniqueLinks.length,
+            link,
+            skipped: false,
+            facesDetected: detectedFaces.length,
+            unresolvedCandidates: saved.added
+          });
+        } catch (itemError) {
+          skippedOther += 1;
+          itemResults.push({
+            link,
+            skipped: true,
+            reason: itemError.message || String(itemError)
+          });
+
+          event.sender.send('face-detection:batchProgress', {
+            processed,
+            total: uniqueLinks.length,
+            link,
+            skipped: true,
+            reason: itemError.message || String(itemError)
+          });
+        }
+      }
+
+      batchFaceCancelState.delete(senderId);
+      if (activeBatchSenderId === senderId) {
+        activeBatchSenderId = null;
+      }
+
+      const totalSkipped = skippedMissingFiles + skippedUnreadableFiles + skippedOther;
+      let logInfo = null;
+      try {
+        const timestamp = generateTimestamp();
+        const filename = `batch-face-detection-${timestamp}.log`;
+        const baseDir = path.dirname(accessionClass.accessionFilename);
+        const logPath = path.join(baseDir, filename);
+
+        const lines = [];
+        lines.push('================================================================================');
+        lines.push('SHOEBOX BATCH FACE DETECTION REPORT (PHASE 1)');
+        lines.push(`Generated: ${new Date().toLocaleString()}`);
+        lines.push(`Archive: ${accessionClass.accessionFilename}`);
+        lines.push('================================================================================');
+        lines.push('');
+        lines.push('SUMMARY');
+        lines.push('--------');
+        lines.push(`Canceled: ${canceled ? 'Yes' : 'No'}`);
+        lines.push(`Processed: ${processed} / ${uniqueLinks.length}`);
+        lines.push(`Photos Processed: ${photosProcessed}`);
+        lines.push(`Faces Detected: ${totalFacesDetected}`);
+        lines.push(`Unresolved Candidates Added: ${totalCandidatesAdded}`);
+        lines.push(`Skipped Total: ${totalSkipped}`);
+        lines.push(`  Missing Files: ${skippedMissingFiles}`);
+        lines.push(`  Unreadable Files: ${skippedUnreadableFiles}`);
+        lines.push(`  Other Skips: ${skippedOther}`);
+        lines.push('');
+        lines.push('ITEM RESULTS');
+        lines.push('------------');
+
+        itemResults.forEach((result, index) => {
+          if (result.skipped) {
+            lines.push(`[${index + 1}] SKIPPED ${result.link} :: ${result.reason || 'Unknown reason'}`);
+          } else {
+            lines.push(
+              `[${index + 1}] OK ${result.link} :: faces=${result.facesDetected || 0}, unresolved=${result.unresolvedCandidates || 0}, removedExisting=${result.removedExistingCandidates || 0}`
+            );
+          }
+        });
+
+        lines.push('');
+        lines.push('================================================================================');
+        lines.push('END OF REPORT');
+        lines.push('================================================================================');
+
+        await fs.promises.writeFile(logPath, lines.join('\n'), 'utf8');
+        logInfo = {
+          filename,
+          path: logPath
+        };
+      } catch (logError) {
+        console.warn('Unable to write batch face detection report:', logError.message || logError);
+      }
+
+      return {
+        success: true,
+        canceled,
+        processed,
+        total: uniqueLinks.length,
+        photosProcessed,
+        totalFacesDetected,
+        totalCandidatesAdded,
+        skipped: {
+          total: totalSkipped,
+          missingFiles: skippedMissingFiles,
+          unreadableFiles: skippedUnreadableFiles,
+          other: skippedOther
+        },
+        log: logInfo,
+        itemResults
+      };
+    } catch (error) {
+      console.error('Batch face phase 1 error:', error);
+      if (activeBatchSenderId === event.sender.id) {
+        activeBatchSenderId = null;
+      }
+      return {
+        success: false,
+        error: error.message || String(error)
+      };
+    }
+    });
+
+    ipcMain.handle('face-detection:cancelBatchPhaseOne', async (event) => {
+    const requesterId = event.sender.id;
+    batchFaceCancelState.set(requesterId, true);
+
+    if (activeBatchSenderId !== null) {
+      batchFaceCancelState.set(activeBatchSenderId, true);
+    }
+
+    return {
+      success: true,
+      targetSenderId: activeBatchSenderId
+    };
+    });
+  }
 
 
 
@@ -718,7 +1361,9 @@ const createWindow = () => {
 
 // Register custom protocol for secure media file access
 // This allows renderer to load media:// URLs while maintaining security
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await clearSnapshotCacheOnStartup();
+
   protocol.handle('media', async (request) => {
     try {
       // Parse URL: media://type/filename
@@ -786,17 +1431,23 @@ async function validateDatabase() {
       `Errors: ${logInfo.errorCount}\n` +
       `Warnings: ${logInfo.warningCount}\n` +
       (logInfo.orphanedDescriptorCount > 0 ? `Orphaned Face Descriptors: ${logInfo.orphanedDescriptorCount}\n` : '') +
+      (logInfo.orphanedCandidateFaceCount > 0 ? `Orphaned/Invalid Face Candidates: ${logInfo.orphanedCandidateFaceCount}\n` : '') +
       (logInfo.unreferencedPersonCount > 0 ? `Unreferenced Persons: ${logInfo.unreferencedPersonCount}\n` : '') +
       `\nLog file saved to:\n${logInfo.filename}`;
     
     // Build buttons array - include cleanup buttons only if needed
     const buttons = ['OK', 'Open Log File'];
     let orphanedDescButtonIndex = -1;
+    let orphanedCandidateFacesButtonIndex = -1;
     let unreferencedPersonsButtonIndex = -1;
     
     if (logInfo.orphanedDescriptorCount > 0) {
       orphanedDescButtonIndex = buttons.length;
       buttons.push('Cleanup Orphaned Descriptors');
+    }
+    if (logInfo.orphanedCandidateFaceCount > 0) {
+      orphanedCandidateFacesButtonIndex = buttons.length;
+      buttons.push('Cleanup Orphaned Face Candidates');
     }
     if (logInfo.unreferencedPersonCount > 0) {
       unreferencedPersonsButtonIndex = buttons.length;
@@ -816,6 +1467,9 @@ async function validateDatabase() {
     } else if (response.response === orphanedDescButtonIndex && orphanedDescButtonIndex !== -1) {
       // Cleanup Orphaned Descriptors
       await cleanupOrphanedDescriptors();
+    } else if (response.response === orphanedCandidateFacesButtonIndex && orphanedCandidateFacesButtonIndex !== -1) {
+      // Cleanup Orphaned Face Candidates
+      await cleanupOrphanedFaceCandidates();
     } else if (response.response === unreferencedPersonsButtonIndex && unreferencedPersonsButtonIndex !== -1) {
       // Cleanup Unreferenced Persons
       await cleanupUnreferencedPersons();
@@ -881,6 +1535,66 @@ async function cleanupOrphanedDescriptors() {
   }
 } // cleanupOrphanedDescriptors
 
+async function cleanupOrphanedFaceCandidates() {
+  try {
+    verifyAccessions();
+
+    // Backup archive before cleanup
+    const backupResult = accessionClass.backupAccessions();
+    if (!backupResult.success) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Backup Failed',
+        message: 'Cannot proceed with cleanup',
+        detail: `Failed to backup archive: ${backupResult.error}\n\nOperation aborted to protect data integrity.`,
+        buttons: ['OK']
+      });
+      return;
+    }
+
+    const result = accessionClass.cleanupOrphanedCandidateFaces();
+    const message = result.totalRemoved > 0
+      ? `Successfully removed ${result.totalRemoved} orphaned/invalid face candidate entry(s).`
+      : 'No orphaned/invalid face candidate entries found to cleanup.';
+
+    const reason = result.removedByReason || {};
+    const detail = result.totalRemoved > 0
+      ? `Removed entries by reason:\n` +
+        `- Invalid entry: ${reason.invalidEntry || 0}\n` +
+        `- Missing link: ${reason.missingLink || 0}\n` +
+        `- Missing item: ${reason.missingItem || 0}\n` +
+        `- Invalid region: ${reason.invalidRegion || 0}\n` +
+        `- Invalid descriptor: ${reason.invalidDescriptor || 0}`
+      : undefined;
+
+    await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Cleanup Complete',
+      message,
+      detail,
+      buttons: ['OK']
+    });
+
+    // Optionally re-run validation to confirm cleanup
+    if (result.totalRemoved > 0) {
+      const revalidate = await dialog.showMessageBox(mainWindow, {
+        type: 'question',
+        title: 'Re-run Validation?',
+        message: 'Would you like to re-run validation to confirm orphaned face candidates were removed?',
+        buttons: ['Yes', 'No'],
+        defaultId: 0
+      });
+
+      if (revalidate.response === 0) {
+        await validateDatabase();
+      }
+    }
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    dialog.showErrorBox('Cleanup Error', `Failed to cleanup orphaned face candidates: ${error.message}`);
+  }
+} // cleanupOrphanedFaceCandidates
+
 async function cleanupUnreferencedPersons() {
   try {
     verifyAccessions();
@@ -904,14 +1618,9 @@ async function cleanupUnreferencedPersons() {
       ? `Successfully removed ${result.totalRemoved} unreferenced person(s).`
       : `No unreferenced persons found to cleanup.`;
     
-    let detail = result.totalRemoved > 0
-      ? `The following persons were not referenced in any items and have been removed:\n\n`
+    const detail = result.totalRemoved > 0
+      ? `Removed persons were not referenced in any items. Summary: ${result.totalRemoved} person(s) removed.`
       : undefined;
-    
-    if (detail && result.removedPersons) {
-      const names = result.removedPersons.map(p => `  • ${p.name}`).join('\n');
-      detail += names;
-    }
     
     await dialog.showMessageBox(mainWindow, {
       type: 'info',
@@ -1630,6 +2339,127 @@ async function createMaintenanceCollections() {
 } // createMaintenanceCollections
 
 /**
+ * Create collections from symlink source directories (mklinks workflow)
+ */
+async function createSymlinkNamedCollections() {
+  try {
+    verifyAccessions();
+
+    const result = accessionClass.createSymlinkNamedCollections();
+
+    if (!result.success) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: 'Symlink Collections Not Created',
+        message: 'Unable to create symlink-named collections.',
+        detail: result.warning || 'No additional details available.',
+        buttons: ['OK']
+      });
+      return;
+    }
+
+    const createdCount = result.created?.length || 0;
+    const updatedCount = result.updated?.length || 0;
+    const skippedCount = result.skipped?.length || 0;
+    const changesMade = createdCount > 0 || updatedCount > 0;
+
+    if (changesMade && mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('items:render', JSON.stringify({ reload: true, preserveSort: true }));
+    }
+
+    const timestamp = generateTimestamp();
+    const logFileName = `symlink-collections-log-${timestamp}.txt`;
+    const logFilePath = path.join(path.dirname(accessionClass.accessionFilename), logFileName);
+    const logLines = [
+      `Symlink Named Collections Log`,
+      `Timestamp: ${new Date().toISOString()}`,
+      `Archive: ${accessionClass.accessionFilename}`,
+      ``,
+      `Summary`,
+      `Created collections: ${createdCount}`,
+      `Updated collections: ${updatedCount}`,
+      `Notes: ${skippedCount}`,
+      ``
+    ];
+
+    if (createdCount > 0) {
+      logLines.push('Created:');
+      logLines.push(...result.created.map(line => `- ${line}`));
+      logLines.push('');
+    }
+    if (updatedCount > 0) {
+      logLines.push('Updated:');
+      logLines.push(...result.updated.map(line => `- ${line}`));
+      logLines.push('');
+    }
+    if (skippedCount > 0) {
+      logLines.push('Notes:');
+      logLines.push(...result.skipped.map(line => `- ${line}`));
+      logLines.push('');
+    }
+
+    let logSaved = false;
+    try {
+      await fs.promises.writeFile(logFilePath, logLines.join('\n'), 'utf8');
+      logSaved = true;
+    } catch (logError) {
+      console.error('Failed to write symlink collections log file:', logError);
+    }
+
+    const compactDetailParts = [
+      `Created: ${createdCount}`,
+      `Updated: ${updatedCount}`,
+      `Notes: ${skippedCount}`
+    ];
+    if (logSaved) {
+      compactDetailParts.push('');
+      compactDetailParts.push('Full details saved to:');
+      compactDetailParts.push(logFilePath);
+    }
+    const compactDetail = compactDetailParts.join('\n');
+
+    const buttons = ['OK'];
+    if (logSaved) {
+      buttons.push('Open Log File');
+    }
+
+    if (changesMade) {
+      const response = await dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Symlink Collections Created',
+        message: `Created or updated ${createdCount + updatedCount} collection(s) from symlink directories.`,
+        detail: compactDetail,
+        buttons
+      });
+
+      if (logSaved && response.response === 1) {
+        shell.openPath(logFilePath);
+      }
+    } else {
+      const response = await dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'No Symlink Collections Created',
+        message: 'No symlink directory groups were found to create collections.',
+        detail: compactDetail || 'No matching symlink-backed items were found.',
+        buttons
+      });
+
+      if (logSaved && response.response === 1) {
+        shell.openPath(logFilePath);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to create symlink-named collections:', error);
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Error Creating Symlink Collections',
+      message: `Failed to create symlink-named collections: ${error.message}`,
+      buttons: ['OK']
+    });
+  }
+} // createSymlinkNamedCollections
+
+/**
  * Update collection metadata (text and title only)
  * Opens dialog to edit collection display name and full title
  */
@@ -2004,6 +2834,7 @@ function createMenu() {
     backupArchive,
     backupAllCollections,
     createMaintenanceCollections,
+    createSymlinkNamedCollections,
     updateCollectionMetadata,
     addItemsFromCollection,
     removeItemsFromCollection,
@@ -2051,6 +2882,13 @@ function createCreateAccessionsWindow() {
   windowManager.createCreateAccessionsWindow(windowRefs.createAccessions, nconf);
 }
 
+function buildCollectionQueueLinks(sortedItems) {
+  // Queue entries are positional rows from the active sort view.
+  // Some sorts (Person/Source) intentionally produce repeated links.
+  // Do NOT de-duplicate here unless product requirements explicitly change.
+  return sortedItems.map(item => item.link);
+}
+
 function createMediaManagerWindow(identifier, collectionKey = null, sortBy = '1') {
   // Build queue from collection if provided
   let queueData = null;
@@ -2092,7 +2930,7 @@ function createMediaManagerWindow(identifier, collectionKey = null, sortBy = '1'
       queueData = {
         collectionKey: collectionKey,
         collectionText: collection.text,
-        queue: sortedItems.map(item => item.link)
+        queue: buildCollectionQueueLinks(sortedItems)
       };
     }
   }

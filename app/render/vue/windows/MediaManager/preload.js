@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteItem: (payload) => ipcRenderer.invoke('item:delete', payload),
   openFile: (filePath) => ipcRenderer.invoke('file:open', filePath),
   openMediaExternal: (type, link) => ipcRenderer.invoke('media:openExternal', type, link),
+  openMediaSnapshotExternal: (payload) => ipcRenderer.invoke('media:openSnapshotExternal', payload),
+  openMediaSnapshotImageExternal: (payload) => ipcRenderer.invoke('media:openSnapshotImageExternal', payload),
   getExistingPersons: () => ipcRenderer.invoke('persons:getFromAccessions'),
   getPersonsWithDescriptors: () => ipcRenderer.invoke('persons:getWithDescriptors'),
   getDescriptorsForLink: (link) => ipcRenderer.invoke('persons:getDescriptorsForLink', link),
@@ -20,6 +22,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFaceDetectionStatus: () => ipcRenderer.invoke('face-detection:status'),
   getFaceDetectionModels: () => ipcRenderer.invoke('face-detection:get-models'),
   matchFaces: (link, detectedFaces) => ipcRenderer.invoke('face-detection:match', link, detectedFaces),
+  getFaceCandidates: (link) => ipcRenderer.invoke('face-detection:getCandidates', link),
+  discardFaceCandidate: (candidateID) => ipcRenderer.invoke('face-detection:discardCandidate', candidateID),
+  runBatchFacePhaseOne: (payload) => ipcRenderer.invoke('face-detection:batchPhaseOne', payload),
+  cancelBatchFacePhaseOne: () => ipcRenderer.invoke('face-detection:cancelBatchPhaseOne'),
+  createMaintenanceCollections: () => ipcRenderer.invoke('maintenance:create'),
   reverseGeocode: (latitude, longitude) => ipcRenderer.invoke('geocoding:reverse', latitude, longitude),
   getCurrentPlaybackTime: () => ipcRenderer.invoke('mediaPlayer:getCurrentTime'),
   openPersonManager: (personID) => ipcRenderer.invoke('window:openPersonManager', personID),
@@ -35,10 +42,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPersonSelected: (callback) => {
     ipcRenderer.on('personManager:personSelected', (event, personID) => callback(personID));
   },
+  onPersonSelectionCanceled: (callback) => {
+    ipcRenderer.on('personManager:selectionCanceled', () => callback());
+  },
   onItemLoad: (callback) => {
     ipcRenderer.on('item:load', (event, link, queueData) => callback(link, queueData));
   },
   onCollectionItemsUpdated: (callback) => {
     ipcRenderer.on('collection:itemsUpdated', (event, data) => callback(data));
+  },
+  onBatchFaceProgress: (callback) => {
+    ipcRenderer.on('face-detection:batchProgress', (_event, data) => callback(data));
   }
 });

@@ -47,10 +47,15 @@
             Limit?
           </label>
 
-          <label class="faceTagsLabel" id="faceTagsLabel">
-            <input type="checkbox" v-model="showFaceTags" id="showFaceTags" @change="handleFaceRegionsChange" />
-            Show Face Tags
-          </label>
+          <button
+            type="button"
+            class="faceTagsCycleBtn"
+            id="faceTagsLabel"
+            @click="cycleFaceTagsMode"
+            :title="'Face labels mode: ' + faceTagsModeLabel"
+          >
+            Face Labels: {{ faceTagsModeLabel }}
+          </button>
         </form>
       </div>
     </div>
@@ -86,8 +91,8 @@
         <div><kbd>Space</kbd> = Pause/Resume</div>
         <div><kbd>←</kbd> / <kbd>→</kbd> = Adjust Speed</div>
         <div><kbd>Backspace</kbd> = Reverse Direction</div>
-        <div><kbd>R</kbd> = Random/Sequential</div>
-        <div><kbd>↑</kbd> / <kbd>↓</kbd> = Stop &amp; Navigate</div>
+        <div><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> = Random/Sequential</div>
+        <div><kbd>↑</kbd> / <kbd>↓</kbd> = Previous / Next Slide</div>
         <div><kbd>Esc</kbd> = Exit Photo Frame</div>
       </div>
     </div>
@@ -95,7 +100,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import {
+  computeFaceOverlayLayout,
+  FACE_OVERLAY_MODE,
+  FACE_OVERLAY_STYLE,
+  getNextFaceOverlayMode,
+  normalizeFaceOverlayMode
+} from '../../shared/faceOverlayEngine.js';
+import { renderPreviewSnapshotDataUrl } from '../../shared/previewSnapshotRenderer.js';
+import { buildSnapshotFacesFromFaceTags } from '../../shared/snapshotFaceBuilders.js';
 
 // Reactive state
 const sortBy = ref('1'); // By Date
@@ -105,13 +119,27 @@ const videoChecked = ref(true);
 const limitChecked = ref(false);
 const selectedCollection = ref('');
 const collections = ref([]);
-const showFaceTags = ref(false);
+const faceTagsMode = ref(FACE_OVERLAY_MODE.OFF);
+const faceTagsModeLabel = computed(() => {
+  switch (faceTagsMode.value) {
+    case FACE_OVERLAY_MODE.ALL:
+      return 'All';
+    case FACE_OVERLAY_MODE.REGIONS:
+      return 'Regions';
+    case FACE_OVERLAY_MODE.ON:
+      return 'On';
+    default:
+      return 'Off';
+  }
+});
+const showFaceTags = computed(() => faceTagsMode.value !== FACE_OVERLAY_MODE.OFF);
 
 const navHeader = ref('<div id="column1" class="Date">Col1</div><div id="column2">Col2</div>');
 const tableBody = ref('');
 const previewContent = ref('Move mouse over the left column to select something to display.');
 const detailContent = ref('');
 const currentFaceTags = ref(null);
+const hoveredFaceTagIndex = ref(null);
 
 const detailsExpanded = ref(false);
 
@@ -134,6 +162,58 @@ const MOUSE_MOVEMENT_THRESHOLD = 10; // Pixels - require significant movement to
 let mouseoverRequestCounter = 0; // Track latest mouseover request to prevent race conditions
 let mouseoverDebounceTimer = null; // Debounce timer to avoid excessive requests during rapid movement
 let mouseoverDebounceLink = null; // Track which item the current timer is for
+const overlayMeasureCanvas = document.createElement('canvas');
+const overlayMeasureContext = overlayMeasureCanvas.getContext('2d');
+
+const openSnapshotForPreview = async (type, link) => {
+  if (type !== 'photo') {
+    const fallbackResult = await window.electronAPI.openMediaExternal(type, link);
+    if (!fallbackResult?.success) {
+      alert(`Failed to open media: ${fallbackResult?.error || 'unknown error'}`);
+    }
+    return;
+  }
+
+  const previewImg = document.getElementById('previewImg');
+  const faces = buildSnapshotFacesFromFaceTags(currentFaceTags.value || []);
+
+  const snapshotResult = renderPreviewSnapshotDataUrl({
+    imageElement: previewImg,
+    faces,
+    mode: faceTagsMode.value,
+    hoveredFaceIndex: hoveredFaceTagIndex.value
+  });
+
+  if (!snapshotResult.success) {
+    alert(snapshotResult.error || 'Failed to create snapshot.');
+    return;
+  }
+
+  const result = await window.electronAPI.openMediaSnapshotImageExternal({
+    dataUrl: snapshotResult.dataUrl,
+    link
+  });
+
+  if (!result?.success) {
+    alert(`Failed to open snapshot: ${result?.error || 'unknown error'}`);
+  }
+};
+
+const handlePreviewInteraction = async ({ type, link, shiftKey = false, event = null }) => {
+  if (!type || !link) {
+    return;
+  }
+
+  if (shiftKey) {
+    await openSnapshotForPreview(type, link);
+  } else {
+    await window.electronAPI.openMediaExternal(type, link);
+  }
+
+  if (event) {
+    event.preventDefault();
+  }
+};
 
 // Slideshow state
 const isAutoCycling = ref(false);
@@ -147,6 +227,18 @@ const slideshowTooltipTimeout = ref(null);
 const cycleDirection = ref(1); // 1 = forward, -1 = backward
 const isRandomMode = ref(false);
 const visitedIndices = ref(new Set()); // Track visited photos in random mode
+const randomHistory = ref([]); // Ordered random slideshow history for prior/next navigation
+const randomHistoryCursor = ref(-1);
+const RANDOM_HISTORY_LIMIT = 1000;
+const SWIPE_MIN_DISTANCE_PX = 60;
+const SWIPE_MAX_VERTICAL_DRIFT_PX = 40;
+const SWIPE_MAX_DURATION_MS = 800;
+const WHEEL_SWIPE_MIN_DELTA = 45;
+const WHEEL_SWIPE_COOLDOWN_MS = 300;
+let swipeStart = null;
+let lastWheelSwipeTs = 0;
+let resizeTimeout = null;
+let wasAutoCyclingBeforeBlur = false;
 
 // Load items from main process
 const loadItems = async (preserveSort = false) => {
@@ -163,6 +255,7 @@ const loadItems = async (preserveSort = false) => {
       videoChecked: videoChecked.value,
       limitChecked: collections.value.length > 0 ? limitChecked.value : false,
       selectedCollection: collections.value.length > 0 ? selectedCollection.value : '',
+      faceTagsMode: faceTagsMode.value,
       showFaceTags: showFaceTags.value,
       sortBy: sortBy.value
     };
@@ -196,7 +289,11 @@ const renderItems = (listObject, preserveSort = false) => {
   audioChecked.value = listObject.audioChecked ?? true;
   videoChecked.value = listObject.videoChecked ?? true;
   limitChecked.value = listObject.limitChecked ?? false;
-  showFaceTags.value = listObject.showFaceTags ?? false;
+  const savedMode = listObject.faceTagsMode;
+  const normalizedMode = normalizeFaceOverlayMode(savedMode);
+  faceTagsMode.value = normalizedMode !== FACE_OVERLAY_MODE.OFF
+    ? normalizedMode
+    : ((listObject.showFaceTags ?? false) ? FACE_OVERLAY_MODE.REGIONS : FACE_OVERLAY_MODE.OFF);
   
   // Always update sortBy from server (server is source of truth)
   sortBy.value = listObject.sortBy || '1';
@@ -230,6 +327,7 @@ const handleControlsChanged = async () => {
     videoChecked: videoChecked.value,
     limitChecked: collections.value.length > 0 ? limitChecked.value : false,
     selectedCollection: collections.value.length > 0 ? selectedCollection.value : '',
+    faceTagsMode: faceTagsMode.value,
     showFaceTags: showFaceTags.value
   };
   
@@ -472,8 +570,8 @@ const handleDoubleClick = async (event) => {
   if (target.nodeName === 'DIV' && target.parentElement.nodeName === 'TD') {
     const row = target.closest('tr');
     if (row && row.hasAttribute('link')) {
-      const link = row.getAttribute('link');
       try {
+        const link = row.getAttribute('link');
         await window.electronAPI.toggleItemInCollection(link);
         // Reload items to update collection status
         await loadItems();
@@ -489,6 +587,7 @@ const showItemDetail = (itemObject) => {
   detailContent.value = itemObject.descDetail;
   previewContent.value = itemObject.mediaTag;
   currentFaceTags.value = itemObject.faceTags || null;
+  hoveredFaceTagIndex.value = null;
   // Don't reset detailsExpanded - preserve user's choice
   
   // Clear banner if this photo is NOT from a MediaPlayer reference
@@ -509,7 +608,7 @@ const showItemDetail = (itemObject) => {
       detailElements[i].hidden = detailsExpanded.value;
     }
     
-    if (showFaceTags.value && currentFaceTags.value) {
+    if (currentFaceTags.value) {
       renderFaceRegions();
     }
   });
@@ -517,13 +616,20 @@ const showItemDetail = (itemObject) => {
 
 // Handle edit media action (from button or menu)
 const handleEditMedia = async () => {
+  const tableDiv = document.querySelector('#tableDiv');
+  const visibleRows = tableDiv ? Array.from(tableDiv.querySelectorAll('tr:not([hidden])')) : [];
+  const selectedRow = selectedRowIndex.value >= 0 ? visibleRows[selectedRowIndex.value] : null;
+  const selectedRowLink = getRowLink(selectedRow);
+
   const linkEl = document.getElementById('link');
-  if (!linkEl) {
+  const detailLink = linkEl?.innerText?.trim();
+  const link = selectedRowLink || detailLink;
+
+  if (!link) {
     alert('Please select an item to edit first.');
     return;
   }
-  
-  const link = linkEl.innerText;
+
   const includeQueue = limitChecked.value; // Use Limit checkbox to determine queue
   const collectionKey = (includeQueue && selectedCollection.value) ? selectedCollection.value : null;
   const sortByValue = includeQueue ? sortBy.value : null; // Pass sort order when including queue
@@ -542,12 +648,15 @@ const setupDetailEventListeners = () => {
   // Open photo in system default external viewer (uses IPC, not <a target="_blank">)
   const previewImg = document.getElementById('previewImg');
   if (previewImg) {
-    previewImg.addEventListener('click', async () => {
+    previewImg.addEventListener('click', async (event) => {
       const type = previewImg.getAttribute('data-type');
       const link = previewImg.getAttribute('data-link');
-      if (type && link) {
-        await window.electronAPI.openMediaExternal(type, link);
-      }
+      await handlePreviewInteraction({
+        type,
+        link,
+        shiftKey: Boolean(event.shiftKey),
+        event
+      });
     });
   }
   
@@ -643,11 +752,6 @@ const renderFaceRegions = () => {
     existingContainer.remove();
   }
   
-  // Don't render if face tags are disabled
-  if (!showFaceTags.value) {
-    return;
-  }
-  
   if (!currentFaceTags.value || currentFaceTags.value.length === 0) {
     return;
   }
@@ -687,47 +791,108 @@ const renderFaceRegions = () => {
   const offsetLeft = imgRect.left - previewRect.left + (imgRect.width - displayedWidth) / 2;
   const offsetTop = imgRect.top - previewRect.top + (imgRect.height - displayedHeight) / 2;
   
-  // Render each face tag
-  currentFaceTags.value.forEach(tag => {
-    const { index, name, region } = tag;
-    
-    // MWG region format: center point (x, y) + width/height, all normalized 0-1
-    // Convert from center to top-left for CSS positioning
-    const centerX = region.x * naturalWidth;
-    const centerY = region.y * naturalHeight;
-    const boxWidth = region.w * naturalWidth;
-    const boxHeight = region.h * naturalHeight;
-    
-    // Calculate top-left corner from center point
-    const leftNatural = centerX - (boxWidth / 2);
-    const topNatural = centerY - (boxHeight / 2);
-    
-    // Scale to displayed size and add offset
-    const left = offsetLeft + (leftNatural * scale);
-    const top = offsetTop + (topNatural * scale);
-    const width = boxWidth * scale;
-    const height = boxHeight * scale;
-    
+  const faces = currentFaceTags.value.map(tag => ({
+    faceIndex: Number(tag.index) - 1,
+    numberText: String(tag.index),
+    label: tag.name || null,
+    state: 'matched',
+    region: tag.region
+  }));
+
+  const hasHoverValue = hoveredFaceTagIndex.value !== null
+    && hoveredFaceTagIndex.value !== undefined
+    && hoveredFaceTagIndex.value !== '';
+  const hoveredIndex = hasHoverValue ? Number(hoveredFaceTagIndex.value) : null;
+  const hasValidHoveredFace = Number.isFinite(hoveredIndex)
+    && faces.some(face => Number(face.faceIndex) === hoveredIndex);
+
+  const layout = computeFaceOverlayLayout({
+    faces,
+    renderWidth: displayedWidth,
+    renderHeight: displayedHeight,
+    offsetX: offsetLeft,
+    offsetY: offsetTop,
+    mode: faceTagsMode.value,
+    hoveredFaceIndex: hasValidHoveredFace ? hoveredIndex : null,
+    measureText: (text) => {
+      if (!overlayMeasureContext) {
+        return String(text || '').length * 8;
+      }
+      overlayMeasureContext.font = FACE_OVERLAY_STYLE.labelFont;
+      return overlayMeasureContext.measureText(String(text || '')).width;
+    }
+  });
+
+  layout.forEach(entry => {
     // Create box element
     const box = document.createElement('div');
-    box.className = 'face-tag-box';
-    box.style.left = `${left}px`;
-    box.style.top = `${top}px`;
-    box.style.width = `${width}px`;
-    box.style.height = `${height}px`;
-    
+    box.className = entry.regionVisible ? 'face-tag-box' : 'face-tag-box face-tag-box-hidden';
+    box.style.left = `${entry.rect.x}px`;
+    box.style.top = `${entry.rect.y}px`;
+    box.style.width = `${entry.rect.w}px`;
+    box.style.height = `${entry.rect.h}px`;
+    box.style.borderWidth = `${FACE_OVERLAY_STYLE.borderWidth}px`;
+
     // Create number badge
     const number = document.createElement('div');
     number.className = 'face-tag-number';
-    number.textContent = index;
+    number.textContent = entry.numberText;
+    number.style.fontSize = `${FACE_OVERLAY_STYLE.numberFontSize}px`;
+    number.style.top = `-${FACE_OVERLAY_STYLE.numberBoxHeight}px`;
     box.appendChild(number);
-    
-    // Create tooltip
-    const tooltip = document.createElement('div');
-    tooltip.className = 'face-tag-tooltip';
-    tooltip.textContent = name;
-    box.appendChild(tooltip);
-    
+
+    box.addEventListener('mouseenter', () => {
+      if (hoveredFaceTagIndex.value === entry.faceIndex) {
+        return;
+      }
+      hoveredFaceTagIndex.value = entry.faceIndex;
+      renderFaceRegions();
+    });
+
+    box.addEventListener('mouseleave', () => {
+      if (hoveredFaceTagIndex.value === null) {
+        return;
+      }
+      hoveredFaceTagIndex.value = null;
+      renderFaceRegions();
+    });
+
+    box.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const previewImg = document.getElementById('previewImg');
+      const type = previewImg?.getAttribute('data-type');
+      const link = previewImg?.getAttribute('data-link');
+      await handlePreviewInteraction({
+        type,
+        link,
+        shiftKey: Boolean(event.shiftKey),
+        event
+      });
+    });
+
+    if (entry.labelVisible && entry.labelText && entry.labelRect) {
+      const label = document.createElement('div');
+      label.className = 'face-tag-label';
+      label.textContent = entry.labelText;
+      label.style.left = `${entry.labelRect.x}px`;
+      label.style.top = `${entry.labelRect.y}px`;
+      label.style.width = `${entry.labelRect.w}px`;
+      label.style.fontSize = `${FACE_OVERLAY_STYLE.labelFontSize}px`;
+      label.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const previewImg = document.getElementById('previewImg');
+        const type = previewImg?.getAttribute('data-type');
+        const link = previewImg?.getAttribute('data-link');
+        await handlePreviewInteraction({
+          type,
+          link,
+          shiftKey: Boolean(event.shiftKey),
+          event
+        });
+      });
+      container.appendChild(label);
+    }
+
     container.appendChild(box);
   });
   
@@ -737,8 +902,28 @@ const renderFaceRegions = () => {
 };
 
 // Handle face tags checkbox change
+const persistFaceTagControls = async () => {
+  const controls = {
+    photoChecked: photoChecked.value,
+    audioChecked: audioChecked.value,
+    videoChecked: videoChecked.value,
+    limitChecked: collections.value.length > 0 ? limitChecked.value : false,
+    selectedCollection: collections.value.length > 0 ? selectedCollection.value : '',
+    faceTagsMode: faceTagsMode.value,
+    showFaceTags: showFaceTags.value
+  };
+
+  try {
+    await window.electronAPI.updateControls(controls);
+  } catch (error) {
+    console.error('Error saving face tags state:', error);
+  }
+};
+
 const handleFaceRegionsChange = async () => {
-  if (showFaceTags.value && currentFaceTags.value) {
+  hoveredFaceTagIndex.value = null;
+
+  if (currentFaceTags.value) {
     nextTick(() => renderFaceRegions());
   } else {
     const container = document.getElementById('faceRegionsContainer');
@@ -748,20 +933,7 @@ const handleFaceRegionsChange = async () => {
   }
   
   // Save the state
-  const controls = {
-    photoChecked: photoChecked.value,
-    audioChecked: audioChecked.value,
-    videoChecked: videoChecked.value,
-    limitChecked: collections.value.length > 0 ? limitChecked.value : false,
-    selectedCollection: collections.value.length > 0 ? selectedCollection.value : '',
-    showFaceTags: showFaceTags.value
-  };
-  
-  try {
-    await window.electronAPI.updateControls(controls);
-  } catch (error) {
-    console.error('Error saving face tags state:', error);
-  }
+  await persistFaceTagControls();
   
   // Restore focus to main container
   nextTick(() => {
@@ -770,6 +942,66 @@ const handleFaceRegionsChange = async () => {
       mainContainer.focus();
     }
   });
+};
+
+const handleWindowResize = () => {
+  // Debounce resize events
+  if (resizeTimeout) {
+    clearTimeout(resizeTimeout);
+  }
+
+  resizeTimeout = setTimeout(() => {
+    if (currentFaceTags.value) {
+      renderFaceRegions();
+    }
+  }, 100);
+};
+
+const handleWindowBlur = () => {
+  if (isAutoCycling.value) {
+    wasAutoCyclingBeforeBlur = true;
+    // Pause cycling but keep photo frame mode active
+    if (cycleTimer.value) {
+      clearInterval(cycleTimer.value);
+      cycleTimer.value = null;
+    }
+    isAutoCycling.value = false;
+    showSlideshowIndicator.value = true;
+
+    if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
+      window.electronAPI.setSlideshowDisplaySleepBlock(false).catch(() => {});
+    }
+
+    // Auto-hide indicator
+    clearTimeout(slideshowIndicatorTimeout.value);
+    slideshowIndicatorTimeout.value = setTimeout(() => {
+      showSlideshowIndicator.value = false;
+    }, 2000);
+  }
+};
+
+const handleWindowFocus = () => {
+  if (wasAutoCyclingBeforeBlur && isPhotoFrameMode.value) {
+    wasAutoCyclingBeforeBlur = false;
+    isAutoCycling.value = true;
+    showSlideshowIndicator.value = true;
+    cycleTimer.value = setInterval(cycleToNextPhoto, cycleInterval.value * 1000);
+
+    if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
+      window.electronAPI.setSlideshowDisplaySleepBlock(true).catch(() => {});
+    }
+
+    // Auto-hide indicator
+    clearTimeout(slideshowIndicatorTimeout.value);
+    slideshowIndicatorTimeout.value = setTimeout(() => {
+      showSlideshowIndicator.value = false;
+    }, 2000);
+  }
+};
+
+const cycleFaceTagsMode = async () => {
+  faceTagsMode.value = getNextFaceOverlayMode(faceTagsMode.value);
+  await handleFaceRegionsChange();
 };
 
 // Slideshow functions
@@ -786,61 +1018,271 @@ const getPhotoIndices = () => {
   return photoIndices;
 };
 
-const getNextPhotoIndex = () => {
-  const photoIndices = getPhotoIndices();
-  if (photoIndices.length === 0) return -1;
-  
-  // Random mode
-  if (isRandomMode.value) {
-    // If we've seen all photos, reset
-    if (visitedIndices.value.size >= photoIndices.length) {
-      visitedIndices.value.clear();
-    }
-    
-    // Find unvisited photos
-    const unvisited = photoIndices.filter(idx => !visitedIndices.value.has(idx));
-    
-    if (unvisited.length === 0) {
-      // All visited, pick random
-      const randomIdx = Math.floor(Math.random() * photoIndices.length);
-      visitedIndices.value.add(photoIndices[randomIdx]);
-      return photoIndices[randomIdx];
-    }
-    
-    // Pick random from unvisited
-    const randomIdx = Math.floor(Math.random() * unvisited.length);
-    const selectedIndex = unvisited[randomIdx];
-    visitedIndices.value.add(selectedIndex);
-    return selectedIndex;
+const trimRandomHistoryToLimit = () => {
+  while (randomHistory.value.length > RANDOM_HISTORY_LIMIT) {
+    randomHistory.value.shift();
+    randomHistoryCursor.value -= 1;
   }
-  
-  // Sequential mode
+
+  if (randomHistoryCursor.value < -1) {
+    randomHistoryCursor.value = -1;
+  }
+};
+
+const seedRandomHistoryFromCurrentSelection = (photoIndices) => {
+  const current = selectedRowIndex.value;
+  if (!photoIndices.includes(current)) {
+    return;
+  }
+
+  if (randomHistoryCursor.value >= 0 && randomHistory.value[randomHistoryCursor.value] === current) {
+    visitedIndices.value.add(current);
+    return;
+  }
+
+  // If we navigated backward in history, treat this as a new branch point.
+  if (randomHistoryCursor.value < randomHistory.value.length - 1) {
+    randomHistory.value = randomHistory.value.slice(0, randomHistoryCursor.value + 1);
+  }
+
+  randomHistory.value.push(current);
+  randomHistoryCursor.value = randomHistory.value.length - 1;
+  visitedIndices.value.add(current);
+  trimRandomHistoryToLimit();
+};
+
+const appendRandomHistory = (index) => {
+  if (randomHistoryCursor.value < randomHistory.value.length - 1) {
+    randomHistory.value = randomHistory.value.slice(0, randomHistoryCursor.value + 1);
+  }
+
+  randomHistory.value.push(index);
+  randomHistoryCursor.value = randomHistory.value.length - 1;
+  trimRandomHistoryToLimit();
+};
+
+const getRandomNextPhotoIndex = (photoIndices) => {
+  seedRandomHistoryFromCurrentSelection(photoIndices);
+
+  // If user moved backward, replay forward history before creating a new random pick.
+  if (randomHistoryCursor.value < randomHistory.value.length - 1) {
+    randomHistoryCursor.value += 1;
+    return randomHistory.value[randomHistoryCursor.value];
+  }
+
+  // If we've seen all photos, reset random pool.
+  if (visitedIndices.value.size >= photoIndices.length) {
+    visitedIndices.value.clear();
+    const current = randomHistoryCursor.value >= 0 ? randomHistory.value[randomHistoryCursor.value] : null;
+    if (current !== null && current !== undefined) {
+      visitedIndices.value.add(current);
+    }
+  }
+
+  const unvisited = photoIndices.filter(idx => !visitedIndices.value.has(idx));
+  const pool = unvisited.length > 0 ? unvisited : photoIndices;
+  const selectedIndex = pool[Math.floor(Math.random() * pool.length)];
+  visitedIndices.value.add(selectedIndex);
+  appendRandomHistory(selectedIndex);
+  return selectedIndex;
+};
+
+const getRandomPreviousPhotoIndex = (photoIndices) => {
+  seedRandomHistoryFromCurrentSelection(photoIndices);
+
+  if (randomHistoryCursor.value > 0) {
+    randomHistoryCursor.value -= 1;
+    return randomHistory.value[randomHistoryCursor.value];
+  }
+
+  if (randomHistoryCursor.value === 0) {
+    return randomHistory.value[0];
+  }
+
+  return -1;
+};
+
+const getSequentialAdjacentPhotoIndex = (photoIndices, step) => {
+  if (photoIndices.length === 0) {
+    return -1;
+  }
+
   const currentPhotoIdx = photoIndices.indexOf(selectedRowIndex.value);
-  
   if (currentPhotoIdx === -1) {
-    // Current row is not a photo, start from beginning or end based on direction
-    return cycleDirection.value === 1 ? photoIndices[0] : photoIndices[photoIndices.length - 1];
+    return step >= 0 ? photoIndices[0] : photoIndices[photoIndices.length - 1];
   }
-  
-  // Forward direction
-  if (cycleDirection.value === 1) {
+
+  if (step >= 0) {
     const nextIdx = currentPhotoIdx + 1;
     return nextIdx >= photoIndices.length ? photoIndices[0] : photoIndices[nextIdx];
   }
-  
-  // Backward direction
+
   const prevIdx = currentPhotoIdx - 1;
   return prevIdx < 0 ? photoIndices[photoIndices.length - 1] : photoIndices[prevIdx];
 };
 
+const getAdjacentPhotoIndex = (step = 1) => {
+  const photoIndices = getPhotoIndices();
+  if (photoIndices.length === 0) {
+    return -1;
+  }
+
+  if (isRandomMode.value) {
+    return step >= 0
+      ? getRandomNextPhotoIndex(photoIndices)
+      : getRandomPreviousPhotoIndex(photoIndices);
+  }
+
+  return getSequentialAdjacentPhotoIndex(photoIndices, step);
+};
+
+const getNextPhotoIndex = () => {
+  return getAdjacentPhotoIndex(cycleDirection.value >= 0 ? 1 : -1);
+};
+
+const cycleToPhotoStep = async (step = 1) => {
+  const targetIndex = getAdjacentPhotoIndex(step);
+  if (targetIndex === -1) {
+    return false;
+  }
+
+  highlightRow(targetIndex);
+  await selectCurrentRow();
+  return true;
+};
+
 const cycleToNextPhoto = async () => {
-  const nextIndex = getNextPhotoIndex();
-  if (nextIndex !== -1) {
-    highlightRow(nextIndex);
-    await selectCurrentRow();
-  } else {
+  const moved = await cycleToPhotoStep(cycleDirection.value >= 0 ? 1 : -1);
+  if (!moved) {
     // No photos to cycle through, stop slideshow
     stopAutoCycle();
+  }
+};
+
+const cycleToPreviousPhoto = async () => {
+  await cycleToPhotoStep(-1);
+};
+
+const resetSlideshowTimer = () => {
+  if (!isAutoCycling.value) {
+    return;
+  }
+
+  if (cycleTimer.value) {
+    clearInterval(cycleTimer.value);
+  }
+  cycleTimer.value = setInterval(cycleToNextPhoto, cycleInterval.value * 1000);
+};
+
+const showSlideshowControlsTooltip = (durationMs = 4000) => {
+  showSlideshowTooltip.value = true;
+  clearTimeout(slideshowTooltipTimeout.value);
+  slideshowTooltipTimeout.value = setTimeout(() => {
+    showSlideshowTooltip.value = false;
+  }, durationMs);
+};
+
+const navigateSlideStep = async (step = 1, { resetTimer = false } = {}) => {
+  const moved = await cycleToPhotoStep(step);
+  if (moved && resetTimer) {
+    resetSlideshowTimer();
+  }
+  return moved;
+};
+
+const handlePointerDown = (event) => {
+  if (!event || (event.pointerType !== 'touch' && event.pointerType !== 'pen')) {
+    swipeStart = null;
+    return;
+  }
+
+  if (!isPhotoFrameMode.value && !isAutoCycling.value) {
+    swipeStart = null;
+    return;
+  }
+
+  swipeStart = {
+    x: event.clientX,
+    y: event.clientY,
+    ts: Date.now(),
+    pointerId: event.pointerId
+  };
+};
+
+const handlePointerUp = async (event) => {
+  if (!swipeStart || !event) {
+    return;
+  }
+
+  if (event.pointerId !== swipeStart.pointerId) {
+    return;
+  }
+
+  const elapsedMs = Date.now() - swipeStart.ts;
+  const dx = event.clientX - swipeStart.x;
+  const dy = event.clientY - swipeStart.y;
+  swipeStart = null;
+
+  if (elapsedMs > SWIPE_MAX_DURATION_MS) {
+    return;
+  }
+  if (Math.abs(dx) < SWIPE_MIN_DISTANCE_PX) {
+    return;
+  }
+  if (Math.abs(dy) > SWIPE_MAX_VERTICAL_DRIFT_PX) {
+    return;
+  }
+  if (Math.abs(dx) <= Math.abs(dy)) {
+    return;
+  }
+
+  if (dx < 0) {
+    await navigateSlideStep(1, { resetTimer: isAutoCycling.value });
+  } else {
+    await navigateSlideStep(-1, { resetTimer: isAutoCycling.value });
+  }
+};
+
+const handlePointerCancel = () => {
+  swipeStart = null;
+};
+
+const handleWheelGesture = async (event) => {
+  if (!event) {
+    return;
+  }
+
+  // Only treat horizontal wheel gestures as slideshow navigation
+  // while in photo-frame/slideshow context.
+  if (!isPhotoFrameMode.value && !isAutoCycling.value) {
+    return;
+  }
+
+  const deltaX = Number(event.deltaX) || 0;
+  const deltaY = Number(event.deltaY) || 0;
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+
+  if (absX < WHEEL_SWIPE_MIN_DELTA) {
+    return;
+  }
+
+  if (absX <= absY) {
+    return;
+  }
+
+  const now = Date.now();
+  if (now - lastWheelSwipeTs < WHEEL_SWIPE_COOLDOWN_MS) {
+    return;
+  }
+  lastWheelSwipeTs = now;
+
+  event.preventDefault();
+
+  if (deltaX > 0) {
+    await navigateSlideStep(1, { resetTimer: isAutoCycling.value });
+  } else {
+    await navigateSlideStep(-1, { resetTimer: isAutoCycling.value });
   }
 };
 
@@ -869,18 +1311,8 @@ const startAutoCycle = () => {
     window.electronAPI.setSlideshowDisplaySleepBlock(true).catch(() => {});
   }
   
-  // Hide face tags during slideshow
-  if (showFaceTags.value) {
-    showFaceTags.value = false;
-    handleFaceRegionsChange();
-  }
-  
   // Show tooltip with keyboard shortcuts
-  showSlideshowTooltip.value = true;
-  clearTimeout(slideshowTooltipTimeout.value);
-  slideshowTooltipTimeout.value = setTimeout(() => {
-    showSlideshowTooltip.value = false;
-  }, 4000); // Show for 4 seconds
+  showSlideshowControlsTooltip(4000);
   
   cycleTimer.value = setInterval(cycleToNextPhoto, cycleInterval.value * 1000);
   
@@ -930,10 +1362,16 @@ const reverseDirection = () => {
 const toggleRandomMode = () => {
   isRandomMode.value = !isRandomMode.value;
   
-  // Clear visited indices when toggling mode
+  // Reset random state when toggling mode.
+  randomHistory.value = [];
+  randomHistoryCursor.value = -1;
+
   if (isRandomMode.value) {
     visitedIndices.value.clear();
-    visitedIndices.value.add(selectedRowIndex.value); // Mark current as visited
+    const photoIndices = getPhotoIndices();
+    seedRandomHistoryFromCurrentSelection(photoIndices);
+  } else {
+    visitedIndices.value.clear();
   }
   
   showSlideshowIndicator.value = true;
@@ -1061,6 +1499,15 @@ const handleKeyDown = async (event) => {
       return;
     }
   }
+
+  // H key - redisplay slideshow shortcut tooltip when in photo frame/slideshow context
+  if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'h') {
+    if (isPhotoFrameMode.value || isAutoCycling.value) {
+      event.preventDefault();
+      showSlideshowControlsTooltip(4000);
+      return;
+    }
+  }
   
   // Backspace - reverse direction (only when slideshow is active)
   if (event.key === 'Backspace') {
@@ -1120,8 +1567,8 @@ const handleKeyDown = async (event) => {
   
   if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'f') {
     event.preventDefault();
-    showFaceTags.value = !showFaceTags.value;
-    handleFaceRegionsChange();
+    faceTagsMode.value = getNextFaceOverlayMode(faceTagsMode.value);
+    await handleFaceRegionsChange();
     return;
   }
   
@@ -1148,9 +1595,9 @@ const handleKeyDown = async (event) => {
       
     case 'ArrowDown':
       event.preventDefault();
-      // Stop slideshow if active, then navigate
       if (isAutoCycling.value) {
-        stopAutoCycle();
+        await navigateSlideStep(1, { resetTimer: true });
+        break;
       }
       if (selectedRowIndex.value < visibleRows.length - 1) {
         isKeyboardNavigating = true;
@@ -1168,9 +1615,9 @@ const handleKeyDown = async (event) => {
       
     case 'ArrowUp':
       event.preventDefault();
-      // Stop slideshow if active, then navigate
       if (isAutoCycling.value) {
-        stopAutoCycle();
+        await navigateSlideStep(-1, { resetTimer: true });
+        break;
       }
       if (selectedRowIndex.value > 0) {
         isKeyboardNavigating = true;
@@ -1300,6 +1747,7 @@ onMounted(() => {
     previewContent.value = viewObject.mediaTag;
     detailContent.value = viewObject.descDetail;
     currentFaceTags.value = viewObject.faceTags || null;
+    hoveredFaceTagIndex.value = null;
     // Don't reset detailsExpanded - preserve user's choice
     
     // Show reference banner when photo comes from MediaPlayer
@@ -1322,7 +1770,7 @@ onMounted(() => {
         detailElements[i].hidden = detailsExpanded.value;
       }
       
-      if (showFaceTags.value && currentFaceTags.value) {
+      if (currentFaceTags.value) {
         renderFaceRegions();
       }
     });
@@ -1330,8 +1778,16 @@ onMounted(() => {
   
   // Listen for items reload/refresh messages (preserves UI state)
   window.electronAPI.onItemsRender((data) => {
-    // Parse if it's a string
-    const listObject = typeof data === 'string' ? JSON.parse(data) : data;
+    // Parse if it's a string, but ignore malformed payloads safely.
+    let listObject = data;
+    if (typeof data === 'string') {
+      try {
+        listObject = JSON.parse(data);
+      } catch (error) {
+        console.error('Invalid items:render payload:', error, data);
+        return;
+      }
+    }
     
     // If it's a reload signal, reload items with current sort
     if (listObject && listObject.reload) {
@@ -1354,61 +1810,17 @@ onMounted(() => {
   });
   
   // Rerender face tags on window resize
-  let resizeTimeout;
-  window.addEventListener('resize', () => {
-    // Debounce resize events
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-      if (showFaceTags.value && currentFaceTags.value) {
-        renderFaceRegions();
-      }
-    }, 100);
-  });
-  
-  // Pause slideshow when window loses focus
-  let wasAutoCyclingBeforeBlur = false;
-  window.addEventListener('blur', () => {
-    if (isAutoCycling.value) {
-      wasAutoCyclingBeforeBlur = true;
-      // Pause cycling but keep photo frame mode active
-      if (cycleTimer.value) {
-        clearInterval(cycleTimer.value);
-        cycleTimer.value = null;
-      }
-      isAutoCycling.value = false;
-      showSlideshowIndicator.value = true;
+  window.addEventListener('resize', handleWindowResize);
 
-      if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
-        window.electronAPI.setSlideshowDisplaySleepBlock(false).catch(() => {});
-      }
-      
-      // Auto-hide indicator
-      clearTimeout(slideshowIndicatorTimeout.value);
-      slideshowIndicatorTimeout.value = setTimeout(() => {
-        showSlideshowIndicator.value = false;
-      }, 2000);
-    }
-  });
-  
-  // Resume slideshow when window regains focus
-  window.addEventListener('focus', () => {
-    if (wasAutoCyclingBeforeBlur && isPhotoFrameMode.value) {
-      wasAutoCyclingBeforeBlur = false;
-      isAutoCycling.value = true;
-      showSlideshowIndicator.value = true;
-      cycleTimer.value = setInterval(cycleToNextPhoto, cycleInterval.value * 1000);
+  // Pause/resume slideshow when window focus changes
+  window.addEventListener('blur', handleWindowBlur);
+  window.addEventListener('focus', handleWindowFocus);
 
-      if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
-        window.electronAPI.setSlideshowDisplaySleepBlock(true).catch(() => {});
-      }
-      
-      // Auto-hide indicator
-      clearTimeout(slideshowIndicatorTimeout.value);
-      slideshowIndicatorTimeout.value = setTimeout(() => {
-        showSlideshowIndicator.value = false;
-      }, 2000);
-    }
-  });
+  // Touch/pen swipe gestures for previous/next slide in photo-frame/slideshow context.
+  window.addEventListener('pointerdown', handlePointerDown, { passive: true });
+  window.addEventListener('pointerup', handlePointerUp, { passive: true });
+  window.addEventListener('pointercancel', handlePointerCancel, { passive: true });
+  window.addEventListener('wheel', handleWheelGesture, { passive: false });
 });
 
 // Cleanup on unmount
@@ -1429,9 +1841,24 @@ onUnmounted(() => {
     clearTimeout(mouseoverDebounceTimer);
   }
 
+  if (resizeTimeout) {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = null;
+  }
+
+  window.removeEventListener('resize', handleWindowResize);
+  window.removeEventListener('blur', handleWindowBlur);
+  window.removeEventListener('focus', handleWindowFocus);
+  window.removeEventListener('pointerdown', handlePointerDown);
+  window.removeEventListener('pointerup', handlePointerUp);
+  window.removeEventListener('pointercancel', handlePointerCancel);
+  window.removeEventListener('wheel', handleWheelGesture);
+
   if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
     window.electronAPI.setSlideshowDisplaySleepBlock(false).catch(() => {});
   }
+
+  hoveredFaceTagIndex.value = null;
 });
 </script>
 
@@ -1516,6 +1943,7 @@ A:visited {
   position: sticky;
   height: 70%;
   width: 100%;
+  touch-action: pan-y;
 }
 
 #previewImg {
@@ -1705,8 +2133,22 @@ A:visited {
   gap: 5px;
 }
 
+.faceTagsCycleBtn {
+  padding: 2px 8px;
+  border: 1px solid #6b7280;
+  border-radius: 4px;
+  background: #eef2ff;
+  color: #1f2937;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.faceTagsCycleBtn:hover {
+  background: #e0e7ff;
+}
+
 /* Face Tags Overlay */
-#faceTagsContainer {
+#faceRegionsContainer {
   position: absolute;
   top: 0;
   left: 0;
@@ -1721,6 +2163,15 @@ A:visited {
   background: rgba(255, 102, 0, 0.1);
   pointer-events: all;
   cursor: pointer;
+}
+
+.face-tag-box-hidden {
+  border-color: transparent;
+  background: transparent;
+}
+
+.face-tag-box-hidden .face-tag-number {
+  display: none;
 }
 
 .face-tag-number {
@@ -1741,23 +2192,17 @@ A:visited {
   border-color: #FF3300;
 }
 
-.face-tag-tooltip {
+.face-tag-label {
   position: absolute;
-  top: -45px;
-  left: 0;
+  box-sizing: border-box;
+  padding: 3px 5px;
   background: rgba(0, 0, 0, 0.8);
   color: white;
-  padding: 4px 8px;
   border-radius: 4px;
   font-size: 11px;
   white-space: nowrap;
-  display: none;
   pointer-events: none;
   z-index: 1000;
-}
-
-.face-tag-box:hover .face-tag-tooltip {
-  display: block;
 }
 
 /* Make preview div relative for absolute positioning */

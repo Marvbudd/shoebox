@@ -347,6 +347,10 @@ window.electronAPI.onPersonSelected((personID) => {
   awaitingPersonSelection.value = false;
 });
 
+window.electronAPI.onPersonSelectionCanceled(() => {
+  awaitingPersonSelection.value = false;
+});
+
 const onCollectionChange = async () => {
   if (!selectedCollection.value) {
     itemCount.value = 0;

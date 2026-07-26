@@ -54,6 +54,151 @@ export function verifyAccessions(state, accessionsPath) {
   return state.accessionClass;
 }
 
+export function normalizeDateValue(value) {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const normalized = trimmed.replace(/^([0-9]{4}):([0-9]{2}):([0-9]{2})/, '$1-$2-$3');
+    const parsedDate = new Date(normalized);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate;
+    }
+  }
+
+  if (typeof value === 'number') {
+    const parsedDate = new Date(value);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate;
+    }
+  }
+
+  return null;
+}
+
+export function formatTimeOfDay(value) {
+  const date = normalizeDateValue(value);
+  if (!date) return '';
+
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+export function buildDateParts(value, options = {}) {
+  const { includeTime = false } = options;
+  const date = normalizeDateValue(value);
+  if (!date) return {};
+
+  const dateParts = {};
+
+  if (date.getFullYear()) {
+    dateParts.year = date.getFullYear();
+  }
+
+  const month = date.toLocaleString('default', { month: 'short' });
+  if (month) {
+    dateParts.month = month;
+  }
+
+  if (date.getDate()) {
+    dateParts.day = date.getDate();
+  }
+
+  if (includeTime) {
+    const time = formatTimeOfDay(date);
+    if (time) {
+      dateParts.time = time;
+    }
+  }
+
+  return dateParts;
+}
+
+export function sameCalendarDate(storedDate, comparisonValue) {
+  if (!storedDate) return false;
+
+  const comparisonDate = buildDateParts(comparisonValue);
+  if (!comparisonDate.year || !comparisonDate.month || !comparisonDate.day) {
+    return false;
+  }
+
+  return Number(storedDate.year) === Number(comparisonDate.year) &&
+    storedDate.month === comparisonDate.month &&
+    Number(storedDate.day) === Number(comparisonDate.day);
+}
+
+export function enrichExistingDateWithTime(existingDate, comparisonValue, hasTime = false) {
+  if (!existingDate || existingDate.time || !hasTime) {
+    return null;
+  }
+
+  if (!sameCalendarDate(existingDate, comparisonValue)) {
+    return null;
+  }
+
+  const time = formatTimeOfDay(comparisonValue);
+  if (!time) {
+    return null;
+  }
+
+  return {
+    ...existingDate,
+    time
+  };
+}
+
+export function resolveAccessionsFilePath(directoryPath) {
+  if (!directoryPath) {
+    return null;
+  }
+
+  const resolvedPath = path.resolve(directoryPath);
+
+  if (path.basename(resolvedPath) === 'accessions.json') {
+    return resolvedPath;
+  }
+
+  const candidate = path.join(resolvedPath, 'accessions.json');
+
+  if (fs.existsSync(candidate)) {
+    return candidate;
+  }
+
+  return candidate;
+}
+
+export function validateMediaDirectory(directoryPath) {
+  if (!directoryPath) {
+    return { valid: false, reason: 'No directory was selected.' };
+  }
+
+  const resolvedDirectory = path.resolve(directoryPath);
+  if (!fs.existsSync(resolvedDirectory)) {
+    return { valid: false, reason: `The selected directory does not exist: ${resolvedDirectory}` };
+  }
+
+  const requiredMediaSubdirs = ['photo', 'audio', 'video'];
+  const missing = requiredMediaSubdirs.filter((name) => !fs.existsSync(path.join(resolvedDirectory, name)));
+
+  if (missing.length > 0) {
+    return {
+      valid: false,
+      reason: `Missing media folders in ${resolvedDirectory}: ${missing.join(', ')}. Expected all of: ${requiredMediaSubdirs.join(', ')}.`
+    };
+  }
+
+  return { valid: true, reason: `Found media folders: ${requiredMediaSubdirs.join(', ')}` };
+}
+
 /**
  * Reset accessions - save current, optionally change path, reload main window
  * IMPORTANT: When the model (AccessionClass) changes, views need to refresh.

@@ -86,35 +86,7 @@
       <p class="subtitle">Edit media item metadata</p>
     </header>
 
-    <!-- Queue Navigation Bar -->
-    <div v-if="hasQueue" class="queue-navigation">
-      <div class="queue-info">
-        <span class="collection-name">{{ queueData.collectionText }}</span>
-        <span class="queue-position">{{ queuePosition }}</span>
-      </div>
-      <div class="queue-controls">
-        <button 
-          type="button" 
-          @click="handlePrevItem" 
-          :disabled="!hasPrevItem"
-          class="btn-nav"
-          title="Previous item (in queue)"
-        >
-          ◀ Previous
-        </button>
-        <button 
-          type="button" 
-          @click="handleNextItem" 
-          :disabled="!hasNextItem"
-          class="btn-nav"
-          title="Next item (in queue)"
-        >
-          Next ▶
-        </button>
-      </div>
-    </div>
-
-    <div class="content">
+    <div class="content" :class="{ 'content-batch-locked': faceProcessingControlsDisabled }">
       <div v-if="loading" class="loading">Loading item...</div>
       
       <div v-else-if="error" class="error-box">
@@ -125,24 +97,67 @@
         <div class="two-column-layout">
           <!-- LEFT COLUMN: Form Fields and People -->
           <div class="left-column">
-            <!-- Unassigned faces section -->
-            <div v-if="item.type === 'photo' && getUnassignedFacesLeftToRight().length > 0" class="unassigned-faces-section">
+            <!-- Unresolved/excluded faces section -->
+            <div v-if="item.type === 'photo' && getFaceCandidatesLeftToRight().length > 0" class="unassigned-faces-section">
               <div class="unassigned-faces-header">
-                <strong>⚠️ {{ getUnassignedFacesLeftToRight().length }} face(s) not yet assigned</strong>
-                <span class="unassigned-faces-hint">L→R order • Hover to preview • Click to search</span>
+                <strong>⚠️ {{ getFaceCandidatesLeftToRight().length }} face(s) not yet assigned</strong>
+                <div class="unassigned-faces-header-actions">
+                  <span class="unassigned-faces-hint">L→R order • Hover to preview • Click to search</span>
+                  <button
+                    v-if="showClearFaceData"
+                    type="button"
+                    class="btn-danger btn-clear-compact"
+                    @click="clearFaceData"
+                    title="Discard unresolved/excluded face candidate work from this item"
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
               <div class="face-badges">
-                <button 
-                  v-for="face in getUnassignedFacesLeftToRight()" 
-                  :key="face.faceIndex" 
-                  @click="handleFaceBadgeClick(face.faceIndex)"
-                  @mouseenter="handleFaceBadgeHover(face.faceIndex)"
-                  @mouseleave="handleFaceBadgeLeave()"
-                  class="face-badge-button"
-                  type="button"
+                <div
+                  v-for="face in getFaceCandidatesLeftToRight()"
+                  :key="face.faceIndex"
+                  class="face-badge-group"
                 >
-                  Face #{{ face.faceIndex + 1 }}
-                </button>
+                  <button
+                    @click="handleFaceBadgeClick(face.faceIndex)"
+                    @mouseenter="handleFaceBadgeHover(face.faceIndex)"
+                    @mouseleave="handleFaceBadgeLeave()"
+                    class="face-badge-button"
+                    :disabled="faceProcessingControlsDisabled"
+                    :class="{ excluded: face.isExcluded }"
+                    type="button"
+                    :title="face.isExcluded ? 'Excluded from matching (still assignable)' : 'Unresolved face candidate'"
+                  >
+                    Face #{{ face.faceIndex + 1 }}
+                    <span v-if="typeof face.confidence === 'number'"> ({{ Math.round(face.confidence * 100) }}%)</span>
+                    <span v-if="face.isExcluded"> Excluded</span>
+                  </button>
+                  <button
+                    class="face-badge-discard"
+                    type="button"
+                    :disabled="faceProcessingControlsDisabled"
+                    @click="discardUnassignedFace(face.faceIndex)"
+                    @mouseenter="handleFaceBadgeHover(face.faceIndex)"
+                    @mouseleave="handleFaceBadgeLeave()"
+                    title="Discard this face candidate"
+                  >
+                    Discard
+                  </button>
+                  <button
+                    v-if="getCandidateIDForFaceIndex(face.faceIndex)"
+                    class="face-badge-discard"
+                    type="button"
+                    :disabled="faceProcessingControlsDisabled"
+                    @click="face.isExcluded ? includeUnassignedFace(face.faceIndex) : excludeUnassignedFace(face.faceIndex)"
+                    @mouseenter="handleFaceBadgeHover(face.faceIndex)"
+                    @mouseleave="handleFaceBadgeLeave()"
+                    :title="face.isExcluded ? 'Re-enable this face candidate for matching' : 'Exclude this face candidate from matching without deleting it'"
+                  >
+                    {{ face.isExcluded ? 'Include' : 'Exclude' }}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -159,9 +174,18 @@
                 >
                   Assign selected faces ({{ selectedFaceAssignmentsCount }})
                 </button>
+                <button
+                  v-if="showClearUnassignedPersons"
+                  type="button"
+                  class="btn-danger btn-clear-face-data btn-clear-compact"
+                  @click="clearUnassignedPersons"
+                  title="Remove person rows that do not currently have face assignments from this item"
+                >
+                  Clear Unassigned
+                </button>
               </div>
             </div>
-            <p v-if="item.type === 'photo'" class="hint">Click "+ Add Person" below, select who they are, then use the "Assign Face" dropdown to match detected faces. {{ detectedFaces.length > 0 ? 'Match confidence shown in %.': 'Click "Detect Faces" in the preview section to enable face matching.' }}</p>
+            <p v-if="item.type === 'photo'" class="hint">Click "+ Add Person" below, select who they are, then use the "Assign Face" dropdown to match detected faces. {{ detectedFaces.length > 0 ? 'Match confidence shown in %.': 'Use "Detect Faces (This Photo)" in the controls below the photo preview to enable face matching.' }}</p>
             <p v-else class="hint">Click "+ Add Person" below to add people appearing or speaking in this {{ item.type }}. Use the position field to note their role or appearance.</p>
             
             <!-- People list rendered without its own scrollbar -->
@@ -191,13 +215,14 @@
                 <PersonSelectButton
                   :text="person.personID ? getPersonDisplayName(persons.find(p => p.personID === person.personID)) : '-- Select Person --'"
                   :hasValue="!!person.personID"
-                  :disabled="getMatchForPerson(person.personID) !== undefined"
-                  @click="getMatchForPerson(person.personID) === undefined ? openPersonManagerForSelection(index) : null"
+                  :disabled="faceProcessingControlsDisabled || getMatchForPerson(person.personID) !== undefined"
+                  @click="!faceProcessingControlsDisabled && getMatchForPerson(person.personID) === undefined ? openPersonManagerForSelection(index) : null"
                 />
                 <button 
                   type="button"
                   @click="openPersonManager(person.personID)"
                   class="btn-open-person"
+                  :disabled="faceProcessingControlsDisabled"
                   :title="person.personID ? 'Open this person in Person Manager' : 'Open Person Manager'"
                 >
                   👤
@@ -225,6 +250,7 @@
                     <select 
                       v-model.number="faceAssignments[person.personID]" 
                       class="face-select-small"
+                      :disabled="faceProcessingControlsDisabled"
                       @mouseenter="handleFaceFieldHover(faceAssignments[person.personID])"
                       @mouseleave="handleFaceFieldLeave()"
                     >
@@ -246,6 +272,7 @@
                   v-if="getMatchForPerson(person.personID)"
                   type="button"
                   @click="unmatchPersonFace(person.personID)"
+                  :disabled="faceProcessingControlsDisabled"
                   class="btn-unmatch-inline"
                   title="Unassign this face"
                 >
@@ -255,7 +282,7 @@
                   v-else-if="person.personID && detectedFaces.length > 0"
                   type="button"
                   @click="assignFaceToPersonByID(person.personID)"
-                  :disabled="!faceAssignments[person.personID] && faceAssignments[person.personID] !== 0"
+                  :disabled="faceProcessingControlsDisabled || (!faceAssignments[person.personID] && faceAssignments[person.personID] !== 0)"
                   class="btn-assign-inline"
                 >
                   Assign
@@ -266,7 +293,7 @@
             </div>
             </div>
             
-            <button type="button" @click="addPerson" class="btn-add">+ Add Person</button>
+            <button type="button" @click="addPerson" :disabled="faceProcessingControlsDisabled" class="btn-add">+ Add Person</button>
             <small>Tip: Use Person Manager to add new people to the database</small>
           </div>
 
@@ -324,6 +351,8 @@
                 v-model:year="item.date.year"
                 v-model:month="item.date.month"
                 v-model:day="item.date.day"
+                v-model:time="item.date.time"
+                :show-time="true"
               />
             </div>
 
@@ -498,9 +527,11 @@
                   alt="Preview" 
                   class="media-preview"
                   @load="onImageLoad"
-                  @click="openMediaInWindow"
+                  @click="handlePhotoPreviewClick"
+                  @mousemove="handlePhotoPreviewMouseMove"
+                  @mouseleave="handlePhotoPreviewMouseLeave"
                   style="cursor: pointer;"
-                  title="Click to open in external window"
+                  title="Click to open in external viewer, Shift+click to open snapshot window"
                 />
                 <video 
                   v-else-if="item.type === 'video'" 
@@ -620,29 +651,115 @@
                       />
                       <p class="hint-small">Minimum confidence required for automatic face assignment from person library (lower = more auto-assignments, higher = more conservative)</p>
                     </div>
+
+                    <!-- Phase 1 Match Threshold -->
+                    <div class="setting-group">
+                      <label title="Descriptor distance cutoff for Stage 1 same-photo re-match. Lower is stricter; higher tolerates more descriptor drift.">
+                        Phase 1 Match Threshold: {{ phaseOneMatchThreshold.toFixed(3) }}
+                      </label>
+                      <input
+                        type="range"
+                        v-model.number="phaseOneMatchThreshold"
+                        min="0.05"
+                        max="0.20"
+                        step="0.005"
+                        class="confidence-slider"
+                      />
+                      <p class="hint-small">Stage 1 descriptor distance limit for restoring existing matches in this same photo (lower = stricter, higher = more tolerant)</p>
+                      <p class="hint-small">Recommended starting range for family archives: <strong>0.08 - 0.11</strong></p>
+                    </div>
+
+                    <!-- Phase 1 Region Restore IoU Threshold -->
+                    <div class="setting-group">
+                      <label title="Geometry fallback for Stage 1 re-match. Higher values require tighter overlap between old and new face boxes.">
+                        Phase 1 Region Restore IoU: {{ phaseOneRegionRestoreIoUThreshold.toFixed(2) }}
+                      </label>
+                      <input
+                        type="range"
+                        v-model.number="phaseOneRegionRestoreIoUThreshold"
+                        min="0.55"
+                        max="0.90"
+                        step="0.01"
+                        class="confidence-slider"
+                      />
+                      <p class="hint-small">Stage 1 geometry fallback threshold (IoU) when descriptor distance misses strict match (higher = stricter region overlap required)</p>
+                      <p class="hint-small">Recommended starting range for family archives: <strong>0.70 - 0.80</strong></p>
+                    </div>
+
+                    <!-- Face Matching Debug -->
+                    <div class="setting-group">
+                      <label class="toggle-overlay" title="Enable detailed face re-match logging in the main process.">
+                        <input
+                          type="checkbox"
+                          v-model="faceDebugEnabled"
+                        />
+                        Enable Face Matching Debug Logs (SHOEBOX_FACE_DEBUG)
+                      </label>
+                      <p class="hint-small">Writes detailed Stage 1 face re-match diagnostics in the app console. This is persisted in config and can be changed without restarting.</p>
+                      <p class="hint-small">If the app was started with SHOEBOX_FACE_DEBUG=1, that environment setting still forces debug on for this run.</p>
+                    </div>
                   </div>
                 </div>
                 
-                <button 
-                  type="button" 
-                  @click="handleDetectFaces" 
-                  :disabled="detectingFaces || selectedModels.length === 0"
-                  class="btn-secondary"
-                >
-                  {{ detectingFaces ? 'Detecting...' : 'Detect Faces' }}
-                </button>
-                
-                <label v-if="detectedFaces.length > 0" class="toggle-overlay">
-                  <input type="checkbox" v-model="showFaceOverlays" @change="drawFaceOverlays" />
-                  Show Overlays<br>
-                  <small>({{ detectedFaces.length }} {{ detectedFaces.length === 1 ? 'face' : 'faces' }})</small>
-                </label>
-                
-                <span v-if="faceDetectionStatus" class="detection-status">
-                  <span v-if="facesLoadedFromBioData" title="Loaded from previous detection" style="opacity: 0.6; margin-right: 4px;">📂</span>
-                  <span v-else-if="detectedFaces.length > 0" title="Newly detected" style="opacity: 0.6; margin-right: 4px;">🔍</span>
-                  {{ faceDetectionStatus }}
-                </span>
+                <div class="face-summary-row">
+                  <button
+                    type="button"
+                    class="faceTagsCycleBtn"
+                    @click="cycleFaceTagsMode"
+                    :disabled="faceProcessingControlsDisabled"
+                    :title="'Face labels mode: ' + faceTagsModeLabel"
+                  >
+                    Face Labels: {{ faceTagsModeLabel }}
+                  </button>
+
+                  <div class="face-summary-center" v-if="faceDetectionStatus || detectedFaces.length > 0">
+                    <span v-if="faceDetectionStatus" class="detection-status-inline">
+                      <span v-if="facesLoadedFromBioData" title="Loaded from previous detection" class="status-icon">📂</span>
+                      <span v-else-if="detectedFaces.length > 0" title="Newly detected" class="status-icon">🔍</span>
+                      {{ faceDetectionStatus }}
+                    </span>
+                    <span v-if="detectedFaces.length > 0 && !faceDetectionStatus" class="face-summary-text">{{ faceAssignmentSummary }}</span>
+                  </div>
+                </div>
+
+                <div class="detect-actions-row">
+                  <button
+                    type="button"
+                    @click="handleDetectFaces"
+                    :disabled="faceProcessingControlsDisabled || selectedModels.length === 0"
+                    class="btn-secondary detect-action-btn"
+                    title="Run face detection and matching for this photo"
+                  >
+                    {{ detectingFaces ? 'Detecting Faces...' : 'Detect Faces (This Photo)' }}
+                  </button>
+
+                  <button
+                    v-if="hasQueue"
+                    type="button"
+                    class="btn-secondary detect-action-btn btn-batch-related"
+                    :disabled="faceProcessingControlsDisabled"
+                    @click="runBatchFacePhaseOne"
+                    title="Run phase 1 face detection for all photos in this selected collection queue"
+                  >
+                    {{ batchPhaseOneRunning ? 'Batch Running...' : 'Batch Detect (Collection)' }}
+                  </button>
+
+                  <button
+                    v-if="batchPhaseOneRunning"
+                    type="button"
+                    class="btn-danger detect-action-btn"
+                    @click="cancelBatchFacePhaseOne"
+                  >
+                    {{ batchCancelRequested ? 'Cancel Requested...' : 'Cancel Batch' }}
+                  </button>
+                </div>
+
+                <span v-if="batchPhaseOneProgressText" class="batch-progress-text">{{ batchPhaseOneProgressText }}</span>
+                <div class="face-controls-status-slot">
+                  <div v-if="statusMessage" :class="'status-message status-message-inline ' + statusMessage.type">
+                    {{ statusMessage.text }}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -651,35 +768,70 @@
     </form>
 
     <!-- Bottom Action Bar -->
-    <div v-if="!loading && !error" class="action-bar">
-      <button type="submit" @click="handleSave" :disabled="saving" class="btn-primary">
-        {{ saving ? 'Saving...' : 'Save Changes' }}
-      </button>
-      <button 
-        v-if="hasQueue && hasNextItem"
-        type="button" 
-        @click="handleSaveAndNext" 
-        :disabled="saving"
-        class="btn-primary"
-      >
-        Save and Next ▶
-      </button>
-      <button
-        type="button"
-        @click="handleDelete"
-        :disabled="saving || deleting || !deleteInfo.canDelete"
-        class="btn-danger"
-        :title="deleteButtonTitle"
-      >
-        {{ deleting ? 'Deleting...' : deleteButtonText }}
-      </button>
-      <button type="button" @click="handleCancel" :disabled="saving || deleting" class="btn-secondary">
-        Cancel
-      </button>
+    <div v-if="!loading && !error" class="action-bar" :class="{ 'action-bar-batch-locked': faceProcessingControlsDisabled }">
+      <div v-if="hasQueue" class="action-group queue-action-group">
+        <span class="action-group-label">Processing Collection:</span>
+        <span class="collection-name" :title="processingCollectionTitle">{{ processingCollectionTitleShort }}</span>
+        <span class="queue-position">{{ queuePosition }}</span>
+        <button
+          type="button"
+          @click="handleSaveAndPrev"
+          :disabled="faceProcessingControlsDisabled || saving || !hasPrevItem"
+          class="btn-primary"
+          title="Save and move to previous item in this processing collection"
+        >
+          ◀ Save and Previous
+        </button>
+        <button
+          type="button"
+          @click="handlePrevItem"
+          :disabled="faceProcessingControlsDisabled || !hasPrevItem"
+          class="btn-nav"
+          title="Previous item in selected collection queue"
+        >
+          ◀ Previous
+        </button>
+        <button
+          type="button"
+          @click="handleNextItem"
+          :disabled="faceProcessingControlsDisabled || !hasNextItem"
+          class="btn-nav"
+          title="Next item in selected collection queue"
+        >
+          Next ▶
+        </button>
+        <button
+          type="button"
+          @click="handleSaveAndNext"
+          :disabled="faceProcessingControlsDisabled || saving || !hasNextItem"
+          class="btn-primary"
+          title="Save and move to next item in this processing collection"
+        >
+          Save and Next ▶
+        </button>
+      </div>
+
+      <div class="action-group save-action-group">
+        <button type="submit" @click="handleSave" :disabled="faceProcessingControlsDisabled || saving" class="btn-primary">
+          {{ saving ? 'Saving...' : 'Save Changes' }}
+        </button>
+        <button
+          type="button"
+          @click="handleDelete"
+          :disabled="faceProcessingControlsDisabled || saving || deleting || !deleteInfo.canDelete"
+          class="btn-danger"
+          :title="deleteButtonTitle"
+        >
+          {{ deleting ? 'Deleting...' : deleteButtonText }}
+        </button>
+        <button type="button" @click="handleCancel" :disabled="faceProcessingControlsDisabled || saving || deleting" class="btn-secondary">
+          Cancel
+        </button>
+      </div>
       <div v-if="deleteInfo.deleteBlockReason" class="warning-message">
         ⚠️ {{ deleteInfo.deleteBlockReason }}
       </div>
-      <div v-if="statusMessage" :class="'status-message ' + statusMessage.type">
+      <div v-if="statusMessage && item.type !== 'photo'" :class="'status-message ' + statusMessage.type">
         {{ statusMessage.text }}
       </div>
     </div>
@@ -791,7 +943,7 @@
                   <a 
                     v-if="match.referenceLink"
                     href="#" 
-                    @click.prevent.stop="openReferencePhoto(match.referenceLink)"
+                    @click.prevent.stop="openReferencePhoto(match)"
                     class="match-reference-link"
                   >
                     📷 View reference photo
@@ -837,13 +989,17 @@ import { formatPersonName, expandPersonsByLastName, getPersonDisplayName } from 
 import DateInput from '../../components/DateInput.vue';
 import PersonSelectButton from '../../components/PersonSelectButton.vue';
 import { hasUnsupportedCodec } from '../../shared/videoCodecDetection.js';
+import { computeFaceOverlayLayout, FACE_OVERLAY_MODE, FACE_OVERLAY_STYLE, getNextFaceOverlayMode, normalizeFaceOverlayMode } from '../../shared/faceOverlayEngine.js';
+import { renderPreviewSnapshotDataUrl, renderSnapshotDataUrlFromImageSource } from '../../shared/previewSnapshotRenderer.js';
+import { buildSnapshotFacesFromDetected, buildSingleSnapshotFace } from '../../shared/snapshotFaceBuilders.js';
+import { mergeAssignedFacesIntoCurrent } from './faceMergeHelper.js';
 
 const item = ref({
   accession: '',
   link: '',
   type: '',
   description: '',
-  date: { year: '', month: '', day: '' },
+  date: { year: '', month: '', day: '', time: '' },
   location: [],
   person: [],
   source: [],
@@ -860,6 +1016,7 @@ const isReferencedInPlaylists = ref(false); // Track if item is referenced in pl
 const error = ref(null);
 const statusMessage = ref(null);
 const isMounted = ref(true);
+const suppressUnsavedTracking = ref(false);
 const mediaPreviewPath = ref(null);
 const videoError = ref(false); // Track if video/audio failed to load
 const videoElement = ref(null); // Reference to video element
@@ -884,6 +1041,10 @@ const deleteInfo = ref(createEmptyDeleteInfo());
 const queueData = ref(null); // { collectionKey, collectionText, queue: [...links] }
 const currentQueueIndex = ref(-1);
 const hasUnsavedChanges = ref(false);
+const batchPhaseOneRunning = ref(false);
+const batchPhaseOneProgress = ref(null);
+const batchCancelRequested = ref(false);
+const batchPhaseOneSummary = ref('');
 
 // Custom modal state
 const showConfirmModal = ref(false);
@@ -895,12 +1056,82 @@ let confirmResolve = null;
 
 const showDeleteModal = ref(false);
 
+let statusMessageClearTimer = null;
+
+const clearStatusMessageClearTimer = () => {
+  if (statusMessageClearTimer) {
+    clearTimeout(statusMessageClearTimer);
+    statusMessageClearTimer = null;
+  }
+};
+
+const scheduleStatusMessageClear = (delayMs = 3000) => {
+  clearStatusMessageClearTimer();
+  statusMessageClearTimer = setTimeout(() => {
+    statusMessageClearTimer = null;
+
+    if (!isMounted.value) {
+      return;
+    }
+
+    // Keep errors visible until the operator explicitly triggers another action.
+    if (statusMessage.value?.type === 'error') {
+      return;
+    }
+
+    statusMessage.value = null;
+  }, delayMs);
+};
+
+const scheduleSaveWindowCloseIfStillSuccessful = () => {
+  if (saveCloseTimer) {
+    clearTimeout(saveCloseTimer);
+  }
+
+  saveCloseTimer = setTimeout(async () => {
+    saveCloseTimer = null;
+
+    if (!isMounted.value) {
+      return;
+    }
+
+    // Keep the window open only if a later explicit error replaced success.
+    // Other status transitions (including stale clears) should not block close.
+    if (statusMessage.value?.type === 'error') {
+      saving.value = false;
+      return;
+    }
+
+    try {
+      await window.electronAPI.saveWindowGeometry();
+      window.close();
+    } catch (error) {
+      statusMessage.value = { type: 'error', text: `Saved, but failed to close window: ${error?.message || String(error)}` };
+      saving.value = false;
+    }
+  }, 1500);
+};
+
 // Face detection state
 const imageElement = ref(null);
 const faceCanvas = ref(null);
 const detectedFaces = ref([]);
 const detectingFaces = ref(false);
-const showFaceOverlays = ref(false);
+const faceTagsMode = ref(FACE_OVERLAY_MODE.OFF);
+const isInitializingFaceTagsMode = ref(true);
+const faceTagsModeLabel = computed(() => {
+  switch (faceTagsMode.value) {
+    case FACE_OVERLAY_MODE.ALL:
+      return 'All';
+    case FACE_OVERLAY_MODE.REGIONS:
+      return 'Regions';
+    case FACE_OVERLAY_MODE.ON:
+      return 'On';
+    default:
+      return 'Off';
+  }
+});
+const showFaceOverlays = computed(() => faceTagsMode.value !== FACE_OVERLAY_MODE.OFF);
 const faceDetectionStatus = ref('');
 const imageDimensions = ref({ width: 0, height: 0 });
 
@@ -912,18 +1143,106 @@ const availableModels = ref([]);
 const selectedModels = ref(['ssd']); // Default to SSD
 const confidenceThreshold = ref(0.20); // Will be loaded from nconf
 const autoAssignThreshold = ref(0.60); // Will be loaded from nconf
+const phaseOneMatchThreshold = ref(0.085); // Will be loaded from nconf
+const phaseOneRegionRestoreIoUThreshold = ref(0.72); // Will be loaded from nconf
+const faceDebugEnabled = ref(false); // Persisted nconf override for face match debug logging
+const isInitializingThresholds = ref(true);
+const isInitializingFaceDebugSetting = ref(true);
 const lastUsedModel = ref('ssd');
 const hoveredFaceIndex = ref(null); // Track which face is being hovered over
+const hoveringFaceControl = ref(false); // Track hover originating from badges/face fields
 let hoverClearTimeout = null;
+let saveCloseTimer = null;
 const facesLoadedFromBioData = ref(false); // Track if faces were loaded vs detected
+
+const clearFaceHoverState = () => {
+  hoveringFaceControl.value = false;
+  hoveredFaceIndex.value = null;
+  if (hoverClearTimeout) {
+    clearTimeout(hoverClearTimeout);
+    hoverClearTimeout = null;
+  }
+};
+
+const isValidFaceOverlayMode = (mode) => {
+  return [
+    FACE_OVERLAY_MODE.OFF,
+    FACE_OVERLAY_MODE.ON,
+    FACE_OVERLAY_MODE.REGIONS,
+    FACE_OVERLAY_MODE.ALL
+  ].includes(mode);
+};
+
+const persistFaceTagsMode = async (mode = faceTagsMode.value) => {
+  await window.electronAPI.setConfig('mediaManager:faceTagsMode', mode);
+  await window.electronAPI.setConfig('mediaManager:showFaceTags', mode !== FACE_OVERLAY_MODE.OFF);
+};
+
+const ensureFaceTagsVisible = () => {
+  if (faceTagsMode.value === FACE_OVERLAY_MODE.OFF) {
+    faceTagsMode.value = FACE_OVERLAY_MODE.REGIONS;
+  }
+};
+
+const cycleFaceTagsMode = async () => {
+  faceTagsMode.value = getNextFaceOverlayMode(faceTagsMode.value);
+  if (!isInitializingFaceTagsMode.value) {
+    try {
+      await persistFaceTagsMode(faceTagsMode.value);
+    } catch (err) {
+      console.error('[FACE TAGS] Failed to persist face overlay mode:', err);
+    }
+  }
+  drawFaceOverlays();
+};
 
 // Watch thresholds and save to nconf when changed
 watch(confidenceThreshold, async (newValue) => {
   await window.electronAPI.setConfig('faceDetection:confidenceThreshold', newValue);
 });
 
+const reapplyAutoAssignAfterThresholdChange = async () => {
+  if (isInitializingThresholds.value) return;
+  if (item.value.type !== 'photo') return;
+  if (!Array.isArray(detectedFaces.value) || detectedFaces.value.length === 0) return;
+  if (!Array.isArray(unmatchedFaces.value) || unmatchedFaces.value.length === 0) return;
+
+  try {
+    const autoAssignResult = await autoAssignUnmatchedFaces();
+    const selected = autoAssignResult?.selected || 0;
+
+    if (selected > 0) {
+      const matched = matchedFaces.value.length;
+      const unresolved = unmatchedFaces.value.length;
+      faceDetectionStatus.value = `Auto-assign threshold reapplied: ${selected} new match(es) selected (${matched} matched, ${unresolved} unresolved)`;
+    }
+
+    setTimeout(() => {
+      drawFaceOverlays();
+    }, 50);
+  } catch (err) {
+    console.error('[FACE AUTO-ASSIGN] Error reapplying threshold change:', err);
+  }
+};
+
 watch(autoAssignThreshold, async (newValue) => {
   await window.electronAPI.setConfig('faceDetection:autoAssignThreshold', newValue);
+  await reapplyAutoAssignAfterThresholdChange();
+});
+
+watch(phaseOneMatchThreshold, async (newValue) => {
+  await window.electronAPI.setConfig('faceDetection:phaseOneMatchThreshold', newValue);
+});
+
+watch(phaseOneRegionRestoreIoUThreshold, async (newValue) => {
+  await window.electronAPI.setConfig('faceDetection:phaseOneRegionRestoreIoUThreshold', newValue);
+});
+
+watch(faceDebugEnabled, async (newValue) => {
+  if (isInitializingFaceDebugSetting.value) {
+    return;
+  }
+  await window.electronAPI.setConfig('debug:faceMatching', newValue === true);
 });
 
 // Face matching state
@@ -947,6 +1266,9 @@ const similarityMatches = ref([]);
 const selectedMatches = ref(new Set());
 const currentSearchFaceIndex = ref(null);
 const selectedFaceForSearch = ref(null);
+const candidateFaceIDsByIndex = ref({});
+const excludedFaceIndices = ref(new Set());
+const excludedCandidatesPendingByID = ref({});
 
 // Playlist validation state
 const playlistValidationErrors = ref([]);
@@ -1100,7 +1422,7 @@ const lookupLocation = async (index) => {
       geocodingAttribution.value = true;
       
       statusMessage.value = 'Location lookup successful';
-      setTimeout(() => statusMessage.value = null, 3000);
+      scheduleStatusMessageClear(3000);
     } else {
       throw new Error(result.error || 'Geocoding failed');
     }
@@ -1148,6 +1470,10 @@ const addPerson = async () => {
 
 const removePerson = async (index) => {
   try {
+    // Removing rows while a face-control hover is active can leave stale hover state,
+    // which may filter overlay drawing down to zero entries.
+    clearFaceHoverState();
+
     const person = item.value.person[index];
     
     // Always remove face descriptor for this person/item combination if it exists
@@ -1347,6 +1673,29 @@ const removeSource = (index) => {
   item.value.source.splice(index, 1);
 };
 
+const hydrateItemFromLoadedItem = (loadedItem) => {
+  clearFaceHoverState();
+  suppressUnsavedTracking.value = true;
+  item.value = {
+    accession: loadedItem.accession || '',
+    link: loadedItem.link || '',
+    type: loadedItem.type || '',
+    description: loadedItem.description || '',
+    date: loadedItem.date || { year: '', month: '', day: '', time: '' },
+    location: loadedItem.location || [],
+    person: (loadedItem.person || []).map(p => ({
+      ...p,
+      position: p.position || p.context || ''
+    })),
+    source: loadedItem.source || [],
+    playlist: loadedItem.playlist || { entry: [] }
+  };
+
+  nextTick(() => {
+    suppressUnsavedTracking.value = false;
+  });
+};
+
 const addPlaylistEntry = () => {
   if (!item.value.playlist) {
     item.value.playlist = { entry: [] };
@@ -1487,6 +1836,14 @@ const onImageLoad = () => {
         faceCanvas.value.style.left = (imgRect.left - containerRect.left) + 'px';
         faceCanvas.value.style.top = (imgRect.top - containerRect.top) + 'px';
       }
+
+      // If face data was loaded before the image finished rendering,
+      // redraw now so overlays appear reliably.
+      if (showFaceOverlays.value && detectedFaces.value.length > 0) {
+        setTimeout(() => {
+          drawFaceOverlays();
+        }, 0);
+      }
     }
   } catch (err) {
     console.error('Error in onImageLoad:', err);
@@ -1514,26 +1871,96 @@ const checkVideoLoaded = (event) => {
   }
 };
 
-// Open media in external window
 const openMediaInWindow = async () => {
+  if (!isMounted.value) {
+    return;
+  }
+
   if (item.value.type && item.value.link) {
-    try {
-      const result = await window.electronAPI.openMediaExternal(item.value.type, item.value.link);
-      if (!result.success) {
-        console.error('Failed to open file:', result.error);
-        statusMessage.value = { type: 'error', text: 'Failed to open file: ' + result.error };
-        setTimeout(() => { statusMessage.value = null; }, 3000);
-      }
-    } catch (error) {
-      console.error('Error opening file:', error);
-      statusMessage.value = { type: 'error', text: 'Error opening file: ' + error.message };
-      setTimeout(() => { statusMessage.value = null; }, 3000);
-    }
+    // Fire-and-forget launch: external viewer lifecycle is independent of this window.
+    void window.electronAPI.openMediaExternal(item.value.type, item.value.link)
+      .then((result) => {
+        if (!isMounted.value) {
+          return;
+        }
+        if (!result?.success) {
+          console.error('Failed to open file:', result?.error);
+          statusMessage.value = { type: 'error', text: 'Failed to open file: ' + (result?.error || 'unknown error') };
+          scheduleStatusMessageClear(3000);
+        }
+      })
+      .catch((error) => {
+        if (!isMounted.value) {
+          return;
+        }
+        if (isTransientMediaOpenInvokeError(error?.message || error)) {
+          console.warn('Ignored transient media open IPC error:', error?.message || String(error));
+          return;
+        }
+        if (saving.value) {
+          console.warn('Ignored media open error while save is active:', error?.message || String(error));
+          return;
+        }
+        console.error('Error opening file:', error);
+        statusMessage.value = { type: 'error', text: 'Error opening file: ' + error.message };
+        scheduleStatusMessageClear(3000);
+      });
   }
 };
 
+const openMediaSnapshotWindow = async () => {
+  if (!item.value.type || !item.value.link) {
+    return;
+  }
+
+  try {
+    const faces = buildSnapshotFacesFromDetected({
+      detectedFaces: detectedFaces.value,
+      matchedFaces: matchedFaces.value,
+      unmatchedFaces: unmatchedFaces.value,
+      getLabelForFaceIndex: getPersonLabelForFaceIndex
+    });
+
+    const snapshotResult = renderPreviewSnapshotDataUrl({
+      imageElement: imageElement.value,
+      faces,
+      mode: faceTagsMode.value,
+      hoveredFaceIndex: hoveredFaceIndex.value
+    });
+
+    if (!snapshotResult.success) {
+      statusMessage.value = { type: 'error', text: `Failed to create snapshot: ${snapshotResult.error || 'unknown error'}` };
+      scheduleStatusMessageClear(3000);
+      return;
+    }
+
+    const result = await window.electronAPI.openMediaSnapshotImageExternal({
+      dataUrl: snapshotResult.dataUrl,
+      link: item.value.link,
+    });
+
+    if (!result?.success) {
+      statusMessage.value = { type: 'error', text: `Failed to open snapshot: ${result?.error || 'unknown error'}` };
+      scheduleStatusMessageClear(3000);
+    }
+  } catch (error) {
+    console.error('Error opening snapshot window:', error);
+    statusMessage.value = { type: 'error', text: `Error opening snapshot: ${error.message}` };
+    scheduleStatusMessageClear(3000);
+  }
+};
+
+const handlePhotoPreviewClick = (event) => {
+  if (event?.shiftKey) {
+    void openMediaSnapshotWindow();
+    return;
+  }
+
+  void openMediaInWindow();
+};
+
 // Load existing faceBioData from persons on mount
-const loadExistingFaceBioData = async () => {
+const loadExistingFaceBioData = async ({ merge = false } = {}) => {
   if (!item.value.link || item.value.type !== 'photo') return;
   
   try {
@@ -1610,10 +2037,40 @@ const loadExistingFaceBioData = async () => {
     }
     
     if (loadedDetectedFaces.length > 0) {
+      if (merge && detectedFaces.value.length > 0) {
+        const merged = mergeAssignedFacesIntoCurrent({
+          currentDetectedFaces: detectedFaces.value,
+          currentMatchedFaces: matchedFaces.value,
+          currentUnmatchedFaces: unmatchedFaces.value,
+          loadedDetectedFaces,
+          loadedMatchedFaces
+        });
+
+        detectedFaces.value = merged.detectedFaces;
+        matchedFaces.value = merged.matchedFaces;
+        unmatchedFaces.value = merged.unmatchedFaces;
+        ensureFaceTagsVisible();
+        facesLoadedFromBioData.value = true;
+        lastUsedModel.value = selectedModel;
+
+        if (merged.overlapCount > 0) {
+          console.warn(`[FACE MERGE] Detected ${merged.overlapCount} overlapping assigned/unresolved face region(s). Assigned faces were prioritized.`);
+        }
+
+        const modelName = availableModels.value.find(m => m.key === selectedModel)?.name || selectedModel;
+        faceDetectionStatus.value = `Loaded ${matchedFaces.value.length} assigned face(s) and ${unmatchedFaces.value.length} unresolved candidate(s) (${modelName})`;
+
+        setTimeout(() => {
+          drawFaceOverlays();
+        }, 100);
+        return;
+      }
+
       detectedFaces.value = loadedDetectedFaces;
       matchedFaces.value = loadedMatchedFaces;
       unmatchedFaces.value = [];
-      showFaceOverlays.value = true;
+      candidateFaceIDsByIndex.value = {};
+      ensureFaceTagsVisible();
       facesLoadedFromBioData.value = true;
       lastUsedModel.value = selectedModel;
       
@@ -1627,6 +2084,100 @@ const loadExistingFaceBioData = async () => {
     }
   } catch (err) {
     console.error('[FACE LOAD] Error loading faceBioData:', err);
+  }
+};
+
+const loadExistingCandidateFaces = async () => {
+  if (!item.value.link || item.value.type !== 'photo') return false;
+
+  try {
+    const result = await window.electronAPI.getFaceCandidates(item.value.link);
+    if (!result?.success || !Array.isArray(result.candidates) || result.candidates.length === 0) {
+      return false;
+    }
+
+    const sortedCandidates = [...result.candidates].sort((a, b) => {
+      const ax = Number(a?.region?.x || 0);
+      const bx = Number(b?.region?.x || 0);
+      return ax - bx;
+    });
+
+    const activeCandidates = sortedCandidates.filter(candidate => candidate?.ExcludeFromMatching !== true);
+    const excludedCandidates = sortedCandidates.filter(candidate => candidate?.ExcludeFromMatching === true);
+
+    detectedFaces.value = sortedCandidates.map(candidate => ({
+      region: candidate.region,
+      descriptor: candidate.descriptor,
+      confidence: typeof candidate.confidence === 'number' ? candidate.confidence : 0,
+      model: candidate.model || 'ssd',
+      candidateID: candidate.candidateID,
+      ExcludeFromMatching: candidate?.ExcludeFromMatching === true
+    }));
+
+    unmatchedFaces.value = [];
+    sortedCandidates.forEach((candidate, index) => {
+      if (candidate?.ExcludeFromMatching === true) {
+        return;
+      }
+
+      unmatchedFaces.value.push({
+        faceIndex: index,
+        region: candidate.region,
+        confidence: typeof candidate.confidence === 'number' ? candidate.confidence : 0,
+        candidateID: candidate.candidateID
+      });
+    });
+
+    matchedFaces.value = [];
+    faceAssignments.value = {};
+    candidateFaceIDsByIndex.value = {};
+    excludedFaceIndices.value = new Set();
+    excludedCandidatesPendingByID.value = {};
+    sortedCandidates.forEach((candidate, index) => {
+      if (candidate.candidateID) {
+        candidateFaceIDsByIndex.value[index] = candidate.candidateID;
+      }
+      if (candidate?.ExcludeFromMatching === true) {
+        excludedFaceIndices.value.add(index);
+      }
+    });
+
+    if (detectedFaces.value.length > 0) {
+      let autoSelected = 0;
+      if (unmatchedFaces.value.length > 0) {
+        try {
+          const autoAssignResult = await autoAssignUnmatchedFaces();
+          autoSelected = autoAssignResult?.selected || 0;
+        } catch (autoErr) {
+          console.error('[FACE CANDIDATES] Error auto-assigning rehydrated candidates:', autoErr);
+        }
+      }
+
+      ensureFaceTagsVisible();
+      facesLoadedFromBioData.value = false;
+      const matched = matchedFaces.value.length;
+      const unmatched = unmatchedFaces.value.length;
+      if (autoSelected > 0) {
+        faceDetectionStatus.value = `Loaded ${detectedFaces.value.length} unresolved candidate(s); auto-selected ${autoSelected} match(es), ${unmatched} still unresolved`;
+      } else if (matched > 0) {
+        faceDetectionStatus.value = `Loaded ${detectedFaces.value.length} unresolved candidate(s); ${matched} matched, ${unmatched} still unresolved`;
+      } else {
+        const excludedCount = excludedCandidates.length;
+        faceDetectionStatus.value = excludedCount > 0
+          ? `Loaded ${activeCandidates.length} unresolved face candidate(s), ${excludedCount} excluded`
+          : `Loaded ${activeCandidates.length} unresolved face candidate(s)`;
+      }
+
+      setTimeout(() => {
+        drawFaceOverlays();
+      }, 100);
+      return true;
+    }
+
+    return false;
+  } catch (err) {
+    console.error('[FACE CANDIDATES] Error loading candidatefaces:', err);
+    return false;
   }
 };
 
@@ -1688,8 +2239,14 @@ const handleDetectFaces = async () => {
   matchedFaces.value = [];
   unmatchedFaces.value = [];
   faceAssignments.value = {};
-  hoveredFaceIndex.value = null; // Clear hover state
+  candidateFaceIDsByIndex.value = {};
+  excludedFaceIndices.value = new Set();
+  excludedCandidatesPendingByID.value = {};
+  clearFaceHoverState();
   facesLoadedFromBioData.value = false; // Mark as newly detected, not loaded
+
+  // Flush UI so operator immediately sees that processing has started.
+  await nextTick();
   
   // Clear all existing face assignments from people since regions will be regenerated
   item.value.person.forEach(person => {
@@ -1711,7 +2268,7 @@ const handleDetectFaces = async () => {
       
       if (detectedFaces.value.length === 0) {
         faceDetectionStatus.value = `No faces detected (${modelNames})`;
-        showFaceOverlays.value = false;
+        faceTagsMode.value = FACE_OVERLAY_MODE.OFF;
       } else {
         // Step 2: Try to match faces to existing persons in the item
         faceDetectionStatus.value = 'Matching faces to people...';
@@ -1780,7 +2337,7 @@ const handleDetectFaces = async () => {
           faceDetectionStatus.value = `${modelNames}: ${detectedFaces.value.length} ${detectedFaces.value.length === 1 ? 'face' : 'faces'} detected`;
         }
         
-        showFaceOverlays.value = true;
+        ensureFaceTagsVisible();
         
         // Wait for next tick to ensure canvas is rendered
         setTimeout(() => {
@@ -1790,18 +2347,22 @@ const handleDetectFaces = async () => {
     } else {
       faceDetectionStatus.value = `Error: ${result.error}`;
       detectedFaces.value = [];
-      showFaceOverlays.value = false;
+      faceTagsMode.value = FACE_OVERLAY_MODE.OFF;
     }
   } catch (err) {
     faceDetectionStatus.value = `Error: ${err.message}`;
     detectedFaces.value = [];
-    showFaceOverlays.value = false;
+    faceTagsMode.value = FACE_OVERLAY_MODE.OFF;
   } finally {
     detectingFaces.value = false;
   }
 };
 
 const unmatchFace = async (match) => {
+  if (faceProcessingControlsDisabled.value) {
+    return;
+  }
+
   const confirmed = await showConfirm(
     'Unassign Face',
     `Are you sure you want to unassign Face #${match.faceIndex + 1} from this person? You can reassign it after.`,
@@ -1826,6 +2387,44 @@ const unmatchFace = async (match) => {
     alert(`Failed to unassign face: ${result.error}`);
     return;
   }
+
+  const generateCandidateID = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+
+    const randomSuffix = Math.random().toString(36).slice(2, 10);
+    return `candidate-${Date.now()}-${randomSuffix}`;
+  };
+
+  const getOrCreateCandidateIDForFaceIndex = (faceIndex, fallbackID = null) => {
+    const numericFaceIndex = Number(faceIndex);
+    if (Number.isNaN(numericFaceIndex)) {
+      return null;
+    }
+
+    const fromMap = candidateFaceIDsByIndex.value[numericFaceIndex];
+    if (typeof fromMap === 'string' && fromMap.length > 0) {
+      return fromMap;
+    }
+
+    const fromDetected = detectedFaces.value[numericFaceIndex]?.candidateID;
+    if (typeof fromDetected === 'string' && fromDetected.length > 0) {
+      candidateFaceIDsByIndex.value[numericFaceIndex] = fromDetected;
+      return fromDetected;
+    }
+
+    if (typeof fallbackID === 'string' && fallbackID.length > 0) {
+      candidateFaceIDsByIndex.value[numericFaceIndex] = fallbackID;
+      return fallbackID;
+    }
+
+    const generated = generateCandidateID();
+    candidateFaceIDsByIndex.value[numericFaceIndex] = generated;
+    return generated;
+  };
+
+  const priorCandidateID = person?.faceTag?.candidateID || null;
   
   // Remove the hasFace marker and any legacy faceTag
   
@@ -1837,10 +2436,16 @@ const unmatchFace = async (match) => {
   // Add to unmatched faces
   const face = detectedFaces.value[match.faceIndex];
   if (face) {
+    const candidateID = getOrCreateCandidateIDForFaceIndex(match.faceIndex, priorCandidateID);
+    if (candidateID && (!face.candidateID || face.candidateID !== candidateID)) {
+      face.candidateID = candidateID;
+    }
+
     unmatchedFaces.value.push({
       faceIndex: match.faceIndex,
       region: match.region,
-      confidence: face.confidence
+      confidence: face.confidence,
+      candidateID
     });
   }
   
@@ -1872,8 +2477,324 @@ const unmatchPersonFace = (personID) => {
   }
 };
 
+const getCandidateIDForFaceIndex = (faceIndex) => {
+  const numericFaceIndex = Number(faceIndex);
+  if (Number.isNaN(numericFaceIndex)) {
+    return null;
+  }
+
+  const direct = candidateFaceIDsByIndex.value[numericFaceIndex];
+  if (typeof direct === 'string' && direct.length > 0) {
+    return direct;
+  }
+
+  const face = unmatchedFaces.value.find(f => Number(f.faceIndex) === numericFaceIndex);
+  if (typeof face?.candidateID === 'string' && face.candidateID.length > 0) {
+    return face.candidateID;
+  }
+
+  const detected = detectedFaces.value[numericFaceIndex];
+  if (typeof detected?.candidateID === 'string' && detected.candidateID.length > 0) {
+    return detected.candidateID;
+  }
+
+  return null;
+};
+
+const removeUnmatchedFaceFromUiState = (faceIndex, options = {}) => {
+  const clearPendingAssignments = options.clearPendingAssignments !== false;
+  const numericFaceIndex = Number(faceIndex);
+  if (Number.isNaN(numericFaceIndex)) {
+    return false;
+  }
+
+  const targetFace = unmatchedFaces.value.find(face => face.faceIndex === numericFaceIndex);
+  if (!targetFace) {
+    return false;
+  }
+
+  clearFaceHoverState();
+
+  delete candidateFaceIDsByIndex.value[numericFaceIndex];
+
+  unmatchedFaces.value = unmatchedFaces.value.filter(face => face.faceIndex !== numericFaceIndex);
+
+  if (clearPendingAssignments) {
+    Object.entries(faceAssignments.value).forEach(([personID, assignedFaceIndex]) => {
+      if (Number(assignedFaceIndex) === numericFaceIndex) {
+        delete faceAssignments.value[personID];
+      }
+    });
+  }
+
+  return true;
+};
+
+const buildExcludedCandidateForSave = (faceIndex, candidateID) => {
+  const fullFace = detectedFaces.value[faceIndex];
+  if (!fullFace || !fullFace.region || !Array.isArray(fullFace.descriptor)) {
+    return null;
+  }
+
+  return {
+    candidateID,
+    link: item.value.link,
+    accession: item.value.accession || null,
+    type: 'photo',
+    region: {
+      x: fullFace.region.x,
+      y: fullFace.region.y,
+      w: fullFace.region.w,
+      h: fullFace.region.h
+    },
+    descriptor: Array.from(fullFace.descriptor),
+    model: fullFace.model || selectedModels.value[0] || 'ssd',
+    confidence: typeof fullFace.confidence === 'number' ? fullFace.confidence : null,
+    quality: null,
+    detectedAt: new Date().toISOString(),
+    ExcludeFromMatching: true
+  };
+};
+
+const discardUnassignedFace = async (faceIndex) => {
+  const numericFaceIndex = Number(faceIndex);
+  if (Number.isNaN(numericFaceIndex)) {
+    return;
+  }
+
+   const candidateID = getCandidateIDForFaceIndex(numericFaceIndex);
+   const wasExcluded = excludedFaceIndices.value.has(numericFaceIndex);
+
+  const removedFromUnmatched = removeUnmatchedFaceFromUiState(numericFaceIndex);
+  if (!removedFromUnmatched && !wasExcluded) {
+    return;
+  }
+
+  if (wasExcluded) {
+    excludedFaceIndices.value.delete(numericFaceIndex);
+    excludedFaceIndices.value = new Set(excludedFaceIndices.value);
+  }
+
+  if (candidateID && excludedCandidatesPendingByID.value[candidateID]) {
+    const nextPending = { ...excludedCandidatesPendingByID.value };
+    delete nextPending[candidateID];
+    excludedCandidatesPendingByID.value = nextPending;
+  }
+
+  hasUnsavedChanges.value = true;
+
+  const unmatched = unmatchedFaces.value.length;
+  faceDetectionStatus.value = unmatched > 0
+    ? `${matchedFaces.value.length} matched, ${unmatched} need assignment`
+    : `${matchedFaces.value.length} matched, no unresolved faces`;
+
+  statusMessage.value = { type: 'success', text: `Discarded Face #${numericFaceIndex + 1} (save to apply)` };
+  scheduleStatusMessageClear(2500);
+
+  drawFaceOverlays();
+};
+
+const includeUnassignedFace = async (faceIndex) => {
+  const numericFaceIndex = Number(faceIndex);
+  if (Number.isNaN(numericFaceIndex)) {
+    return;
+  }
+
+  const candidateID = getCandidateIDForFaceIndex(numericFaceIndex);
+  if (!candidateID) {
+    statusMessage.value = { type: 'error', text: 'This face is not a persisted unresolved candidate.' };
+    scheduleStatusMessageClear(2500);
+    return;
+  }
+
+  const proceed = await showConfirm(
+    'Include Face Candidate',
+    `Re-enable Face #${numericFaceIndex + 1} for matching? It will remain available for assignment.`,
+    'Include',
+    'Cancel'
+  );
+
+  if (!proceed) {
+    return;
+  }
+
+  excludedFaceIndices.value.delete(numericFaceIndex);
+  excludedFaceIndices.value = new Set(excludedFaceIndices.value);
+
+  if (excludedCandidatesPendingByID.value[candidateID]) {
+    const nextPending = { ...excludedCandidatesPendingByID.value };
+    delete nextPending[candidateID];
+    excludedCandidatesPendingByID.value = nextPending;
+  }
+
+  const existing = unmatchedFaces.value.some(face => Number(face.faceIndex) === numericFaceIndex);
+  const face = detectedFaces.value[numericFaceIndex];
+  if (!existing && face?.region) {
+    unmatchedFaces.value.push({
+      faceIndex: numericFaceIndex,
+      region: face.region,
+      confidence: typeof face.confidence === 'number' ? face.confidence : 0,
+      candidateID
+    });
+  }
+
+  hasUnsavedChanges.value = true;
+
+  const unmatched = unmatchedFaces.value.length;
+  faceDetectionStatus.value = unmatched > 0
+    ? `${matchedFaces.value.length} matched, ${unmatched} need assignment`
+    : `${matchedFaces.value.length} matched, no unresolved faces`;
+
+  statusMessage.value = { type: 'success', text: `Included Face #${numericFaceIndex + 1} for matching (save to apply)` };
+  scheduleStatusMessageClear(2500);
+
+  drawFaceOverlays();
+};
+
+const excludeUnassignedFace = async (faceIndex) => {
+  const numericFaceIndex = Number(faceIndex);
+  if (Number.isNaN(numericFaceIndex)) {
+    return;
+  }
+
+  const candidateID = getCandidateIDForFaceIndex(numericFaceIndex);
+  if (!candidateID) {
+    statusMessage.value = { type: 'error', text: 'This face is not a persisted unresolved candidate.' };
+    scheduleStatusMessageClear(2500);
+    return;
+  }
+
+  const proceed = await showConfirm(
+    'Exclude Face Candidate',
+    `Exclude Face #${numericFaceIndex + 1} from matching? It will remain stored but will no longer be used by matching workflows.`,
+    'Exclude',
+    'Cancel'
+  );
+
+  if (!proceed) {
+    return;
+  }
+
+  const excludedPayload = buildExcludedCandidateForSave(numericFaceIndex, candidateID);
+  if (!excludedPayload) {
+    statusMessage.value = { type: 'error', text: 'Unable to prepare excluded candidate for save.' };
+    scheduleStatusMessageClear(2500);
+    return;
+  }
+
+  excludedCandidatesPendingByID.value = {
+    ...excludedCandidatesPendingByID.value,
+    [candidateID]: excludedPayload
+  };
+
+  excludedFaceIndices.value.add(numericFaceIndex);
+  excludedFaceIndices.value = new Set(excludedFaceIndices.value);
+
+  removeUnmatchedFaceFromUiState(numericFaceIndex, { clearPendingAssignments: false });
+  hasUnsavedChanges.value = true;
+
+  const unmatched = unmatchedFaces.value.length;
+  faceDetectionStatus.value = unmatched > 0
+    ? `${matchedFaces.value.length} matched, ${unmatched} need assignment`
+    : `${matchedFaces.value.length} matched, no unresolved faces`;
+
+  statusMessage.value = { type: 'success', text: `Excluded Face #${numericFaceIndex + 1} from matching (save to apply)` };
+  scheduleStatusMessageClear(2500);
+
+  drawFaceOverlays();
+};
+
+const getRemovableUnassignedPersonIndices = () => {
+  return item.value.person
+    .map((person, index) => ({ person, index }))
+    .filter(({ person }) => !getMatchForPerson(person.personID))
+    .map(({ index }) => index);
+};
+
+const clearFaceData = async () => {
+  const unresolvedCount = unmatchedFaces.value.length;
+  const excludedCount = excludedFaceIndices.value.size;
+
+  if (unresolvedCount === 0 && excludedCount === 0) {
+    return;
+  }
+
+  const proceed = await showConfirm(
+    'Clear Face Data',
+    `This will discard ${unresolvedCount} unresolved face(s) and clear ${excludedCount} excluded face marker(s) from this item.\n\nThis does not save changes yet. Continue?`,
+    'Clear Face Data',
+    'Cancel'
+  );
+
+  if (!proceed) {
+    return;
+  }
+
+  if (item.value.type === 'photo' && unresolvedCount > 0) {
+    const faceIndicesToDiscard = unmatchedFaces.value.map(face => face.faceIndex);
+    for (const faceIndex of faceIndicesToDiscard) {
+      await discardUnassignedFace(faceIndex);
+    }
+  }
+
+  if (excludedCount > 0) {
+    excludedFaceIndices.value = new Set();
+    excludedCandidatesPendingByID.value = {};
+    hasUnsavedChanges.value = true;
+  }
+
+  const matched = matchedFaces.value.length;
+  faceDetectionStatus.value = matched > 0
+    ? `All ${matched} faces matched`
+    : 'No faces detected';
+
+  statusMessage.value = { type: 'success', text: 'Cleared face data (save to apply)' };
+  scheduleStatusMessageClear(2500);
+
+  if (showFaceOverlays.value) {
+    drawFaceOverlays();
+  }
+};
+
+const clearUnassignedPersons = async () => {
+  const removablePersonIndices = getRemovableUnassignedPersonIndices();
+  const unassignedPersonCount = removablePersonIndices.length;
+
+  if (unassignedPersonCount === 0) {
+    return;
+  }
+
+  const proceed = await showConfirm(
+    'Clear Unassigned Persons',
+    `This will remove ${unassignedPersonCount} person row(s) that do not currently have face assignments from this item.\n\nThis does not save changes yet. Continue?`,
+    'Clear Persons',
+    'Cancel'
+  );
+
+  if (!proceed) {
+    return;
+  }
+
+  for (const index of [...removablePersonIndices].sort((a, b) => b - a)) {
+    await removePerson(index);
+  }
+
+  hasUnsavedChanges.value = true;
+
+  statusMessage.value = { type: 'success', text: 'Cleared unassigned people (save to apply)' };
+  setTimeout(() => {
+    if (isMounted.value) {
+      statusMessage.value = null;
+    }
+  }, 2500);
+};
+
 // Assign face to person by personID (for inline assign)
 const assignFaceToPersonByID = async (personID) => {
+  if (faceProcessingControlsDisabled.value) {
+    return;
+  }
+
   // Ensure numeric index (faceAssignments may come from select v-model)
   const faceIndex = Number(faceAssignments.value[personID]);
   
@@ -1895,8 +2816,8 @@ const assignFaceToPersonByID = async (personID) => {
     return;
   }
   
-  const unmatchedFace = unmatchedFaces.value.find(f => f.faceIndex === faceIndex);
-  if (!unmatchedFace) {
+  const assignableFace = getAssignableFaceByIndex(faceIndex);
+  if (!assignableFace) {
     alert('Face not found');
     return;
   }
@@ -1926,6 +2847,7 @@ const assignFaceToPersonByID = async (personID) => {
     descriptor: plainDescriptor,
     model: model,
     confidence: fullFace.confidence,
+    candidateID: fullFace.candidateID || assignableFace.candidateID || candidateFaceIDsByIndex.value[faceIndex] || null,
     pending: true  // Mark as not yet saved to backend
   };
   
@@ -1934,12 +2856,22 @@ const assignFaceToPersonByID = async (personID) => {
   matchedFaces.value.push({
     faceIndex,
     personID: person.personID,
-    confidence: unmatchedFace.confidence,
-    region: unmatchedFace.region
+    confidence: assignableFace.confidence,
+    region: assignableFace.region
   });
   
   // Remove from unmatched
   unmatchedFaces.value = unmatchedFaces.value.filter(f => f.faceIndex !== faceIndex);
+  excludedFaceIndices.value.delete(faceIndex);
+  excludedFaceIndices.value = new Set(excludedFaceIndices.value);
+
+  const candidateID = person.faceTag.candidateID;
+  if (candidateID && excludedCandidatesPendingByID.value[candidateID]) {
+    const nextPending = { ...excludedCandidatesPendingByID.value };
+    delete nextPending[candidateID];
+    excludedCandidatesPendingByID.value = nextPending;
+  }
+
   delete faceAssignments.value[personID];
   
   // Force reactivity update
@@ -1980,14 +2912,53 @@ const assignSelectedFaces = async () => {
 // Get list of faces that haven't been assigned yet
 const getUnassignedFaces = () => {
   // Sort by face number (faceIndex) for dropdown
-  return [...unmatchedFaces.value].sort((a, b) => {
+  return getAssignableFaces().sort((a, b) => {
     return a.faceIndex - b.faceIndex;
   });
 };
 
-const getUnassignedFacesLeftToRight = () => {
+const getAssignableFaces = () => {
+  const pending = [...unmatchedFaces.value];
+
+  for (const faceIndex of excludedFaceIndices.value.values()) {
+    const numericFaceIndex = Number(faceIndex);
+    if (Number.isNaN(numericFaceIndex)) {
+      continue;
+    }
+
+    const alreadyPresent = pending.some(face => Number(face.faceIndex) === numericFaceIndex);
+    const face = detectedFaces.value[numericFaceIndex];
+    if (alreadyPresent || !face?.region) {
+      continue;
+    }
+
+    pending.push({
+      faceIndex: numericFaceIndex,
+      region: face.region,
+      confidence: typeof face.confidence === 'number' ? face.confidence : 0,
+      candidateID: getCandidateIDForFaceIndex(numericFaceIndex),
+      isExcluded: true
+    });
+  }
+
+  return pending.map(face => ({
+    ...face,
+    isExcluded: excludedFaceIndices.value.has(Number(face.faceIndex))
+  }));
+};
+
+const getAssignableFaceByIndex = (faceIndex) => {
+  const numericFaceIndex = Number(faceIndex);
+  if (Number.isNaN(numericFaceIndex)) {
+    return null;
+  }
+
+  return getAssignableFaces().find(face => Number(face.faceIndex) === numericFaceIndex) || null;
+};
+
+const getFaceCandidatesLeftToRight = () => {
   // Sort left-to-right by region x-coordinate for badge display
-  return [...unmatchedFaces.value].sort((a, b) => {
+  return getAssignableFaces().sort((a, b) => {
     const faceA = detectedFaces.value[a.faceIndex];
     const faceB = detectedFaces.value[b.faceIndex];
     if (!faceA || !faceB) return 0;
@@ -1998,6 +2969,22 @@ const getUnassignedFacesLeftToRight = () => {
 // Get the match info for a person (if they have a face assigned)
 const getMatchForPerson = (personID) => {
   return matchedFaces.value.find(m => m.personID === personID);
+};
+
+const getPersonLabelForFaceIndex = (faceIndex) => {
+  const match = matchedFaces.value.find(m => Number(m.faceIndex) === Number(faceIndex));
+  if (!match || !match.personID) {
+    return null;
+  }
+
+  const person = persons.value.find(p => p.personID === match.personID)
+    || item.value.person.find(p => p.personID === match.personID);
+
+  if (!person) {
+    return null;
+  }
+
+  return getPersonDisplayName(person);
 };
 
 
@@ -2024,6 +3011,7 @@ const handleFaceBadgeHover = (faceIndex) => {
   if (faceIndex === null || faceIndex === undefined || faceIndex === '') {
     return;
   }
+  hoveringFaceControl.value = true;
   if (hoverClearTimeout) {
     clearTimeout(hoverClearTimeout);
     hoverClearTimeout = null;
@@ -2034,12 +3022,15 @@ const handleFaceBadgeHover = (faceIndex) => {
 };
 
 const handleFaceBadgeLeave = () => {
+  hoveringFaceControl.value = false;
   if (hoverClearTimeout) {
     clearTimeout(hoverClearTimeout);
   }
   hoverClearTimeout = setTimeout(() => {
-    hoveredFaceIndex.value = null;
-    drawFaceOverlays();
+    if (!hoveringFaceControl.value) {
+      hoveredFaceIndex.value = null;
+      drawFaceOverlays();
+    }
   }, 1000);
 };
 
@@ -2051,7 +3042,79 @@ const handleFaceFieldLeave = () => {
   handleFaceBadgeLeave();
 };
 
+const findHoveredFaceIndex = (event) => {
+  const img = imageElement.value;
+  if (!img || !event || !detectedFaces.value.length) {
+    return null;
+  }
+
+  const rect = img.getBoundingClientRect();
+  if (!rect.width || !rect.height) {
+    return null;
+  }
+
+  const xNorm = (event.clientX - rect.left) / rect.width;
+  const yNorm = (event.clientY - rect.top) / rect.height;
+
+  if (xNorm < 0 || xNorm > 1 || yNorm < 0 || yNorm > 1) {
+    return null;
+  }
+
+  for (let index = 0; index < detectedFaces.value.length; index += 1) {
+    const face = detectedFaces.value[index];
+    if (!face || !face.region) continue;
+
+    const isMatched = matchedFaces.value.some(m => Number(m.faceIndex) === Number(index));
+    const isUnmatched = unmatchedFaces.value.some(u => Number(u.faceIndex) === Number(index));
+    if (!isMatched && !isUnmatched) continue;
+
+    const xMin = Number(face.region.x) - (Number(face.region.w) / 2);
+    const xMax = Number(face.region.x) + (Number(face.region.w) / 2);
+    const yMin = Number(face.region.y) - (Number(face.region.h) / 2);
+    const yMax = Number(face.region.y) + (Number(face.region.h) / 2);
+
+    if (xNorm >= xMin && xNorm <= xMax && yNorm >= yMin && yNorm <= yMax) {
+      return index;
+    }
+  }
+
+  return null;
+};
+
+const handlePhotoPreviewMouseMove = (event) => {
+  if (detectedFaces.value.length === 0) {
+    return;
+  }
+
+  hoveringFaceControl.value = false;
+
+  const hovered = findHoveredFaceIndex(event);
+  if (hoveredFaceIndex.value === hovered) {
+    return;
+  }
+
+  hoveredFaceIndex.value = hovered;
+  drawFaceOverlays();
+};
+
+const handlePhotoPreviewMouseLeave = () => {
+  if (hoveringFaceControl.value) {
+    return;
+  }
+
+  if (hoveredFaceIndex.value === null) {
+    return;
+  }
+
+  hoveredFaceIndex.value = null;
+  drawFaceOverlays();
+};
+
 const handleFaceBadgeClick = async (faceIndex) => {
+  if (faceProcessingControlsDisabled.value) {
+    return;
+  }
+
   // Check if there are any persons with face descriptors before attempting search
   const personsWithDescriptors = await window.electronAPI.getPersonsWithDescriptors();
   
@@ -2148,6 +3211,7 @@ const searchPersonLibrary = async (faceIndex, personsWithDescriptors, distanceTh
           effectiveDistance,
           confidence: Math.round((1 - distance) * 100), // Convert distance to confidence %
           referenceLink: descriptorEntry.link,
+          referenceRegion: descriptorEntry.region || null,
           alreadyInPhoto: alreadyInPhoto
         };
       }
@@ -2369,31 +3433,155 @@ const closeSimilaritySearch = () => {
   selectedMatches.value = new Set();
 };
 
-// Open reference photo in system default viewer
-const openReferencePhoto = async (link) => {
+const loadImageForSnapshot = (src) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to decode reference photo image'));
+    img.src = src;
+  });
+};
+
+const getCurrentPreviewLayoutSize = () => {
+  const img = imageElement.value;
+  if (!img) {
+    return null;
+  }
+
+  const rect = img.getBoundingClientRect();
+  const width = Number(rect?.width || 0);
+  const height = Number(rect?.height || 0);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return {
+    width,
+    height
+  };
+};
+
+const isUserCanceledOpenError = (errorValue) => {
+  const text = String(errorValue || '').toLowerCase();
+  if (!text) {
+    return false;
+  }
+
+  // Different desktop/opening stacks use different wording for user cancellation.
+  return /cancel(?:led|ed)?|dismissed|aborted|portal.*cancel/.test(text);
+};
+
+const isReferencePhotoMissingOrDecodeError = (errorValue) => {
+  const text = String(errorValue || '').toLowerCase();
+  if (!text) {
+    return false;
+  }
+
+  return /not found|no such file|enoent|failed to decode reference photo image|invalid snapshot image format|snapshot image is empty/.test(text);
+};
+
+const isTransientMediaOpenInvokeError = (errorValue) => {
+  const text = String(errorValue || '').toLowerCase();
+  if (!text) {
+    return false;
+  }
+
+  // IPC lifecycle churn can reject invoke without indicating a media-path failure.
+  return /reply\b.*never sent|object has been destroyed|render frame was disposed|channel closed|webcontents.*destroyed/.test(text);
+};
+
+// Open reference photo in snapshot view with optional region + label overlay.
+const openReferencePhoto = async (match) => {
+  const link = match?.referenceLink;
+  if (!link) {
+    return;
+  }
+
   // Don't show messages if component has been unmounted
   if (!isMounted.value) {
     return;
   }
   
   try {
-    // Open in system default viewer using canonical OS IPC path
-    const result = await window.electronAPI.openMediaExternal('photo', link);
+    const label = getPersonDisplayName({
+      first: match?.first,
+      last: match?.last
+    });
+
+    const region = match?.referenceRegion;
+    const hasRegion = region
+      && Number.isFinite(Number(region.x))
+      && Number.isFinite(Number(region.y))
+      && Number.isFinite(Number(region.w))
+      && Number.isFinite(Number(region.h));
+
+    if (!hasRegion) {
+      const fallbackResult = await window.electronAPI.openMediaExternal('photo', link);
+      if (!fallbackResult?.success && isMounted.value) {
+        if (isUserCanceledOpenError(fallbackResult?.error)) {
+          return;
+        }
+        // File was resolved, but external viewer launch can still fail (or be cancelled by user).
+        // Keep this non-fatal to avoid false "not found" messages.
+        console.warn('[REFERENCE PHOTO] External viewer open failed:', fallbackResult?.error);
+      }
+      return;
+    }
+
+    const mediaPath = await window.electronAPI.getMediaPath('photo', link);
+    if (!mediaPath) {
+      if (isMounted.value) {
+        statusMessage.value = { type: 'error', text: 'Reference photo not found or could not be opened' };
+        scheduleStatusMessageClear(3000);
+      }
+      return;
+    }
+
+    const referenceImage = await loadImageForSnapshot(mediaPath);
+    const previewLayout = getCurrentPreviewLayoutSize();
+    const snapshotResult = renderSnapshotDataUrlFromImageSource({
+      imageSource: referenceImage,
+      mode: FACE_OVERLAY_MODE.ALL,
+      hoveredFaceIndex: null,
+      layoutWidth: previewLayout?.width,
+      layoutHeight: previewLayout?.height,
+      faces: buildSingleSnapshotFace({
+        label,
+        region,
+        faceIndex: 0,
+        numberText: '1'
+      })
+    });
+
+    if (!snapshotResult.success) {
+      if (isMounted.value) {
+        statusMessage.value = { type: 'error', text: `Reference snapshot failed: ${snapshotResult.error || 'unknown error'}` };
+        scheduleStatusMessageClear(3000);
+      }
+      return;
+    }
+
+    const result = await window.electronAPI.openMediaSnapshotImageExternal({
+      dataUrl: snapshotResult.dataUrl,
+      link
+    });
     
     if (!result.success && isMounted.value) {
-      console.error('[REFERENCE PHOTO] Failed to open:', result.error);
-      statusMessage.value = { type: 'error', text: 'Reference photo not found or could not be opened' };
-      setTimeout(() => {
-        if (isMounted.value) statusMessage.value = null;
-      }, 3000);
+      if (isUserCanceledOpenError(result?.error)) {
+        return;
+      }
+      // Snapshot rendered successfully; launch failure is usually chooser/app-level and not
+      // a missing reference photo. Log for debugging but do not show a false not-found error.
+      console.warn('[REFERENCE PHOTO] Snapshot viewer open failed:', result.error);
     }
   } catch (error) {
+    if (isUserCanceledOpenError(error?.message || error)) {
+      return;
+    }
     console.error('[REFERENCE PHOTO] Error opening reference photo:', error);
-    if (isMounted.value) {
+    if (isMounted.value && isReferencePhotoMissingOrDecodeError(error?.message || error)) {
       statusMessage.value = { type: 'error', text: 'Reference photo not found or could not be opened' };
-      setTimeout(() => {
-        if (isMounted.value) statusMessage.value = null;
-      }, 3000);
+      scheduleStatusMessageClear(3000);
     }
   }
 };
@@ -2447,80 +3635,182 @@ const drawFaceOverlays = () => {
     
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = FACE_OVERLAY_STYLE.labelFont;
     
-    // Draw rectangles for each detected face
-    detectedFaces.value.forEach((face, index) => {
-      if (!face || !face.region) {
-        console.warn(`drawFaceOverlays: Invalid face data at index ${index}`);
-        return;
-      }
-      
-      const hasHover = hoveredFaceIndex.value !== null && hoveredFaceIndex.value !== undefined;
-      // If hovering a face, show ONLY that face
-      if (hasHover && hoveredFaceIndex.value !== index) {
-        return; // Skip this face
-      }
-      // If not hovering, show faces only when checkbox is enabled
-      if (!hasHover && !showFaceOverlays.value) {
-        return; // Skip this face
-      }
-      
-      // Check if this face is matched or unmatched
-      const isMatched = matchedFaces.value.some(m => m.faceIndex === index);
-      const isUnmatched = unmatchedFaces.value.some(u => u.faceIndex === index);
-      
-      // MWG Regions format: x, y are center coordinates (normalized 0-1)
-      // w, h are width and height (normalized 0-1)
-      const region = face.region;
-      
-      // Convert normalized coordinates to pixel coordinates
-      const centerX = region.x * canvas.width;
-      const centerY = region.y * canvas.height;
-      const width = region.w * canvas.width;
-      const height = region.h * canvas.height;
-      
-      // Calculate top-left corner
-      const x = centerX - (width / 2);
-      const y = centerY - (height / 2);
-      
-      // Draw rectangle - different color for matched vs unmatched
-      if (isMatched) {
-        ctx.strokeStyle = '#0080ff'; // Blue for matched faces
-      } else {
-        ctx.strokeStyle = '#00ff00'; // Green for unmatched faces
-      }
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, width, height);
-      
-      // Draw face number with background for better visibility
-      ctx.font = 'bold 16px sans-serif';
-      const faceNumText = `${index + 1}`;
-      const faceNumMetrics = ctx.measureText(faceNumText);
-      
-      // Background for face number
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(x + 2, y + 2, faceNumMetrics.width + 8, 22);
-      
-      // Face number text - match color to border
-      ctx.fillStyle = isMatched ? '#0080ff' : '#00ff00';
-      ctx.fillText(faceNumText, x + 6, y + 18);
+    const faces = detectedFaces.value
+      .map((face, index) => {
+        if (!face || !face.region) {
+          return null;
+        }
+
+        const isMatched = matchedFaces.value.some(m => Number(m.faceIndex) === Number(index));
+        const isUnmatched = unmatchedFaces.value.some(u => Number(u.faceIndex) === Number(index));
+        const isExcluded = excludedFaceIndices.value.has(index);
+        if (!isMatched && !isUnmatched && !isExcluded) {
+          return null;
+        }
+
+        return {
+          faceIndex: index,
+          numberText: String(index + 1),
+          label: isMatched ? getPersonLabelForFaceIndex(index) : (isExcluded ? 'Excluded' : null),
+          state: isMatched ? 'matched' : (isExcluded ? 'excluded' : 'unmatched'),
+          region: face.region
+        };
+      })
+      .filter(Boolean);
+
+    const hasHoverValue = hoveredFaceIndex.value !== null
+      && hoveredFaceIndex.value !== undefined
+      && hoveredFaceIndex.value !== '';
+    const hoveredIndex = hasHoverValue ? Number(hoveredFaceIndex.value) : null;
+    const hasValidHoveredFace = Number.isFinite(hoveredIndex)
+      && faces.some(face => Number(face.faceIndex) === hoveredIndex);
+
+    const layout = computeFaceOverlayLayout({
+      faces,
+      renderWidth: canvas.width,
+      renderHeight: canvas.height,
+      mode: faceTagsMode.value,
+      hoveredFaceIndex: hasValidHoveredFace ? hoveredIndex : null,
+      measureText: (text) => ctx.measureText(text).width
     });
+
+    let entriesToDraw = layout;
+    const shouldIsolateHoveredFace = hoveredFaceIndex.value !== null
+      && (faceTagsMode.value === FACE_OVERLAY_MODE.REGIONS || faceTagsMode.value === FACE_OVERLAY_MODE.ALL);
+    if (shouldIsolateHoveredFace || (hoveringFaceControl.value && hoveredFaceIndex.value !== null)) {
+      const hoveredEntries = layout.filter(entry => Number(entry.faceIndex) === Number(hoveredFaceIndex.value));
+      // If hover state points to a stale/non-renderable face, fall back to drawing all.
+      entriesToDraw = hoveredEntries.length > 0 ? hoveredEntries : layout;
+    }
+
+    for (const entry of entriesToDraw) {
+      const color = entry.state === 'matched'
+        ? '#0080ff'
+        : (entry.state === 'excluded' ? '#f59e0b' : '#00ff00');
+
+      if (entry.regionVisible) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = FACE_OVERLAY_STYLE.borderWidth;
+        ctx.strokeRect(entry.rect.x, entry.rect.y, entry.rect.w, entry.rect.h);
+
+        ctx.font = FACE_OVERLAY_STYLE.numberFont;
+        const faceNumMetrics = ctx.measureText(entry.numberText);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(entry.rect.x + 2, entry.rect.y + 2, faceNumMetrics.width + 8, FACE_OVERLAY_STYLE.numberBoxHeight);
+
+        ctx.fillStyle = color;
+        ctx.fillText(entry.numberText, entry.rect.x + 6, entry.rect.y + FACE_OVERLAY_STYLE.numberTextYOffset);
+      }
+
+      if (entry.labelVisible && entry.labelText && entry.labelRect) {
+        ctx.font = FACE_OVERLAY_STYLE.labelFont;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+        ctx.fillRect(entry.labelRect.x, entry.labelRect.y, entry.labelRect.w, entry.labelRect.h);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(entry.labelText, entry.labelRect.x + 5, entry.labelRect.y + FACE_OVERLAY_STYLE.labelTextYOffset);
+      }
+    }
   } catch (err) {
     console.error('Error drawing face overlays:', err);
   }
 };
 
-const handleSave = async () => {
-  // Check for unassigned faces (using unmatchedFaces which is already maintained)
-  if (unmatchedFaces.value.length > 0) {
-    const proceed = await showConfirm(
-      'Unassigned Faces',
-      `Warning: You have ${unmatchedFaces.value.length} detected face(s) that are not assigned to anyone.\n\nThis may mean you forgot to press the "Assign" button.\n\nDo you want to save anyway?`,
-      'Save Anyway',
+const buildUnresolvedCandidateFacesForSave = () => {
+  if (item.value.type !== 'photo' || detectedFaces.value.length === 0) {
+    return null;
+  }
+
+  const unresolved = [];
+  for (const unmatchedFace of unmatchedFaces.value) {
+    const faceIndex = Number(unmatchedFace.faceIndex);
+    if (Number.isNaN(faceIndex)) continue;
+
+    const fullFace = detectedFaces.value[faceIndex];
+    if (!fullFace || !fullFace.region || !Array.isArray(fullFace.descriptor)) {
+      continue;
+    }
+
+    unresolved.push({
+      candidateID: unmatchedFace.candidateID || fullFace.candidateID || candidateFaceIDsByIndex.value[faceIndex] || null,
+      link: item.value.link,
+      accession: item.value.accession || null,
+      type: 'photo',
+      region: {
+        x: fullFace.region.x,
+        y: fullFace.region.y,
+        w: fullFace.region.w,
+        h: fullFace.region.h
+      },
+      descriptor: Array.from(fullFace.descriptor),
+      model: fullFace.model || selectedModels.value[0] || 'ssd',
+      confidence: typeof fullFace.confidence === 'number' ? fullFace.confidence : null,
+      quality: null,
+      detectedAt: new Date().toISOString()
+    });
+  }
+
+  for (const candidate of Object.values(excludedCandidatesPendingByID.value)) {
+    if (!candidate || !candidate.candidateID) {
+      continue;
+    }
+    unresolved.push(candidate);
+  }
+
+  return unresolved;
+};
+
+const confirmPendingFaceSaveChanges = async () => {
+  const unresolvedCount = unmatchedFaces.value.length;
+  const excludedCount = Object.keys(excludedCandidatesPendingByID.value).length;
+
+  if (unresolvedCount === 0 && excludedCount === 0) {
+    return true;
+  }
+
+  if (excludedCount > 0 && unresolvedCount > 0) {
+    return showConfirm(
+      'Unassigned And Excluded Faces',
+      `You have ${unresolvedCount} detected face(s) that are still unresolved and ${excludedCount} face(s) marked Exclude from Matching.\n\nSaving now will keep the unresolved faces as candidate faces and save the excluded face(s) so they are no longer used for descriptor matching.\n\nDo you want to save these face changes now?`,
+      'Save Face Changes',
       'Go Back'
     );
+  }
+
+  if (excludedCount > 0) {
+    return showConfirm(
+      'Excluded Faces Pending Save',
+      `You have ${excludedCount} face(s) marked Exclude from Matching.\n\nSaving now will persist that change so those face(s) remain visible but are no longer used for descriptor matching.\n\nDo you want to save this exclusion now?`,
+      'Save Exclusion',
+      'Go Back'
+    );
+  }
+
+  return showConfirm(
+    'Unassigned Faces',
+    `Warning: You have ${unresolvedCount} detected face(s) that are not assigned to anyone.\n\nThis may mean you forgot to press the "Assign" button.\n\nDo you want to save anyway?`,
+    'Save Anyway',
+    'Go Back'
+  );
+};
+
+const handleSave = async () => {
+  if (saveCloseTimer) {
+    clearTimeout(saveCloseTimer);
+    saveCloseTimer = null;
+  }
+
+  if (faceProcessingControlsDisabled.value) {
+    return;
+  }
+
+  // Confirm pending face state changes before save.
+  if (item.value.type === 'photo') {
+    const proceed = await confirmPendingFaceSaveChanges();
     if (!proceed) {
-      return; // User canceled save to fix assignments
+      return;
     }
   }
   
@@ -2577,6 +3867,13 @@ const handleSave = async () => {
     // Remove empty date if no fields filled
     if (!cleanedItem.date.year && !cleanedItem.date.month && !cleanedItem.date.day) {
       delete cleanedItem.date;
+    } else if (cleanedItem.date && !cleanedItem.date.time) {
+      delete cleanedItem.date.time;
+    }
+
+    const unresolvedCandidates = buildUnresolvedCandidateFacesForSave();
+    if (unresolvedCandidates) {
+      cleanedItem.candidatefaces = unresolvedCandidates;
     }
 
     // Keep faceTags in person objects for backend to process
@@ -2589,19 +3886,15 @@ const handleSave = async () => {
 
     if (result.success) {
       hasUnsavedChanges.value = false;
+      clearStatusMessageClearTimer();
       statusMessage.value = { type: 'success', text: 'Changes saved successfully!' };
       
       // Only close window if not in queue mode
       if (!hasQueue.value) {
-        setTimeout(async () => {
-          await window.electronAPI.saveWindowGeometry();
-          window.close();
-        }, 1500);
+        scheduleSaveWindowCloseIfStillSuccessful();
       } else {
-        setTimeout(() => {
-          statusMessage.value = null;
-          saving.value = false;
-        }, 2000);
+        scheduleStatusMessageClear(2000);
+        saving.value = false;
       }
     } else {
       statusMessage.value = { type: 'error', text: 'Error: ' + result.error };
@@ -2614,6 +3907,10 @@ const handleSave = async () => {
 };
 
 const handleDelete = async () => {
+  if (faceProcessingControlsDisabled.value) {
+    return;
+  }
+
   if (!deleteInfo.value.canDelete) {
     return;
   }
@@ -2622,6 +3919,10 @@ const handleDelete = async () => {
 };
 
 const handleCancel = async () => {
+  if (faceProcessingControlsDisabled.value) {
+    return;
+  }
+
   await window.electronAPI.saveWindowGeometry();
   window.close();
 };
@@ -2634,12 +3935,136 @@ const queuePosition = computed(() => {
   if (!hasQueue.value || currentQueueIndex.value < 0) return '';
   return `${currentQueueIndex.value + 1} / ${queueData.value.queue.length}`;
 });
+const processingCollectionTitle = computed(() => {
+  const raw = queueData.value?.collectionText;
+  return raw && String(raw).trim() ? String(raw).trim() : 'Selected Collection';
+});
+const processingCollectionTitleShort = computed(() => {
+  const title = processingCollectionTitle.value;
+  return title.length > 44 ? `${title.slice(0, 41)}...` : title;
+});
+const faceProcessingControlsDisabled = computed(() => batchPhaseOneRunning.value || detectingFaces.value);
+const showClearFaceData = computed(() => (
+  item.value.type === 'photo'
+  && (unmatchedFaces.value.length > 0 || excludedFaceIndices.value.size > 0)
+));
+const showClearUnassignedPersons = computed(() => (
+  item.value.type === 'photo'
+  && item.value.person.some(person => !getMatchForPerson(person.personID))
+));
+
+const faceAssignmentSummary = computed(() => {
+  const total = detectedFaces.value.length;
+  if (total === 0) {
+    return 'No faces detected yet';
+  }
+
+  const assigned = matchedFaces.value.length;
+  const unresolved = unmatchedFaces.value.length;
+  return `${assigned} assigned, ${unresolved} unresolved, ${total} detected`;
+});
+
+const batchPhaseOneProgressText = computed(() => {
+  if (batchPhaseOneSummary.value) {
+    return batchPhaseOneSummary.value;
+  }
+
+  const progress = batchPhaseOneProgress.value;
+  if (!progress) return '';
+
+  const prefix = `Batch ${progress.processed}/${progress.total}`;
+  const cancelSuffix = batchCancelRequested.value ? ' (cancel pending)' : '';
+  if (progress.skipped) {
+    return `${prefix}: skipped ${progress.link} (${progress.reason || 'ignored'})${cancelSuffix}`;
+  }
+
+  return `${prefix}: ${progress.link} -> ${progress.unresolvedCandidates || 0} unresolved candidate(s)${cancelSuffix}`;
+});
+
+const runBatchFacePhaseOne = async () => {
+  if (!hasQueue.value || batchPhaseOneRunning.value) {
+    return;
+  }
+
+  const queueLinks = Array.isArray(queueData.value?.queue)
+    ? queueData.value.queue.map(link => String(link))
+    : [];
+  if (queueLinks.length === 0) {
+    statusMessage.value = { type: 'info', text: 'No queue items available for batch processing.' };
+    scheduleStatusMessageClear(3000);
+    return;
+  }
+
+  const proceed = await showConfirm(
+    'Run Batch Face Detection (Phase 1)',
+    `Run phase 1 face detection for ${queueLinks.length} queue item(s)? This stores unmatched regions in candidatefaces and keeps existing person assignments untouched.`,
+    'Run Batch',
+    'Cancel'
+  );
+
+  if (!proceed) {
+    return;
+  }
+
+  batchPhaseOneRunning.value = true;
+  batchCancelRequested.value = false;
+  batchPhaseOneSummary.value = '';
+  batchPhaseOneProgress.value = { processed: 0, total: queueLinks.length, link: '' };
+
+  // Flush UI so operator immediately sees the batch-running state.
+  await nextTick();
+
+  try {
+    const result = await window.electronAPI.runBatchFacePhaseOne({
+      links: [...queueLinks],
+      models: [...selectedModels.value].map(model => String(model)),
+      minConfidence: Number(confidenceThreshold.value)
+    });
+
+    if (!result.success) {
+      statusMessage.value = { type: 'error', text: `Batch failed: ${result.error}` };
+      return;
+    }
+
+    const skippedTotal = Number(result?.skipped?.total || 0);
+    const skippedMissing = Number(result?.skipped?.missingFiles || 0);
+    const skippedUnreadable = Number(result?.skipped?.unreadableFiles || 0);
+    const skippedOther = Number(result?.skipped?.other || 0);
+    const skipSummary = skippedTotal > 0
+      ? ` Skipped ${skippedTotal} item(s) [missing: ${skippedMissing}, unreadable: ${skippedUnreadable}, other: ${skippedOther}].`
+      : '';
+    const logSummary = result?.log?.filename
+      ? ` Report: ${result.log.filename}`
+      : '';
+
+    const runSummary = result.canceled
+      ? `Batch canceled after ${result.processed}/${result.total} item(s). ${result.totalCandidatesAdded} unresolved candidate(s) saved.${skipSummary}${logSummary}`
+      : `Batch complete: ${result.photosProcessed} photo(s), ${result.totalFacesDetected} face(s), ${result.totalCandidatesAdded} unresolved candidate(s) saved.${skipSummary}${logSummary}`;
+
+    batchPhaseOneSummary.value = runSummary;
+  } catch (err) {
+    statusMessage.value = { type: 'error', text: `Batch failed: ${err.message}` };
+  } finally {
+    batchPhaseOneRunning.value = false;
+    batchCancelRequested.value = false;
+  }
+};
+
+const cancelBatchFacePhaseOne = async () => {
+  try {
+    batchCancelRequested.value = true;
+    await window.electronAPI.cancelBatchFacePhaseOne();
+  } catch (err) {
+    batchCancelRequested.value = false;
+    statusMessage.value = { type: 'error', text: `Failed to cancel batch: ${err.message}` };
+  }
+};
 
 const navigateToQueueItem = (newIndex) => {
   if (!hasQueue.value || newIndex < 0 || newIndex >= queueData.value.queue.length) return;
   
   const newLink = queueData.value.queue[newIndex];
-  const searchParams = `link=${encodeURIComponent(newLink)}&queue=${encodeURIComponent(JSON.stringify(queueData.value))}`;
+  const searchParams = `link=${encodeURIComponent(newLink)}&idx=${newIndex}&queue=${encodeURIComponent(JSON.stringify(queueData.value))}`;
   window.location.search = searchParams;
 };
 
@@ -2701,7 +4126,7 @@ const handlePrevItem = async () => {
   if (prevIndex === -1) {
     if (item.value.type === 'photo') {
       statusMessage.value = { type: 'info', text: 'No more photos in this direction' };
-      setTimeout(() => { statusMessage.value = null; }, 2000);
+      scheduleStatusMessageClear(2000);
     }
     return;
   }
@@ -2728,7 +4153,7 @@ const handleNextItem = async () => {
   if (nextIndex === -1) {
     if (item.value.type === 'photo') {
       statusMessage.value = { type: 'info', text: 'No more photos in queue' };
-      setTimeout(() => { statusMessage.value = null; }, 2000);
+      scheduleStatusMessageClear(2000);
     }
     return;
   }
@@ -2736,17 +4161,11 @@ const handleNextItem = async () => {
   navigateToQueueItem(nextIndex);
 };
 
-const handleSaveAndNext = async () => {
-  // Check for unassigned faces (using unmatchedFaces which is already maintained)
-  if (unmatchedFaces.value.length > 0) {
-    const proceed = await showConfirm(
-      'Unassigned Faces',
-      `Warning: You have ${unmatchedFaces.value.length} detected face(s) that are not assigned to anyone.\n\nThis may mean you forgot to press the "Assign" button.\n\nDo you want to save anyway?`,
-      'Save Anyway',
-      'Go Back'
-    );
+const handleSaveAndNavigate = async (direction = 1) => {
+  if (item.value.type === 'photo') {
+    const proceed = await confirmPendingFaceSaveChanges();
     if (!proceed) {
-      return; // User canceled save to fix assignments
+      return;
     }
   }
   
@@ -2795,6 +4214,13 @@ const handleSaveAndNext = async () => {
     // Remove empty date if no fields filled
     if (!cleanedItem.date.year && !cleanedItem.date.month && !cleanedItem.date.day) {
       delete cleanedItem.date;
+    } else if (cleanedItem.date && !cleanedItem.date.time) {
+      delete cleanedItem.date.time;
+    }
+
+    const unresolvedCandidates = buildUnresolvedCandidateFacesForSave();
+    if (unresolvedCandidates) {
+      cleanedItem.candidatefaces = unresolvedCandidates;
     }
     
     // Convert to plain object to avoid IPC cloning issues
@@ -2806,22 +4232,32 @@ const handleSaveAndNext = async () => {
     if (result.success) {
       hasUnsavedChanges.value = false;
       
-      // Navigate to next item of same type (photo-only if current is photo)
-      if (hasNextItem.value) {
-        const nextIndex = await findNextItemOfSameType(currentQueueIndex.value, 1);
+      // Navigate within queue by direction (photo-only if current is photo)
+      const hasDirectionTarget = direction > 0 ? hasNextItem.value : hasPrevItem.value;
+      if (hasDirectionTarget) {
+        const targetIndex = await findNextItemOfSameType(currentQueueIndex.value, direction);
         
-        if (nextIndex === -1) {
+        if (targetIndex === -1) {
           if (item.value.type === 'photo') {
-            statusMessage.value = { type: 'success', text: 'Saved! No more photos in queue.' };
+            statusMessage.value = {
+              type: 'success',
+              text: direction > 0 ? 'Saved! No more photos ahead in queue.' : 'Saved! No more photos behind in queue.'
+            };
           } else {
-            statusMessage.value = { type: 'success', text: 'Saved! No more items in queue.' };
+            statusMessage.value = {
+              type: 'success',
+              text: direction > 0 ? 'Saved! No more items ahead in queue.' : 'Saved! No more items behind in queue.'
+            };
           }
           saving.value = false;
         } else {
-          navigateToQueueItem(nextIndex);
+          navigateToQueueItem(targetIndex);
         }
       } else {
-        statusMessage.value = { type: 'success', text: 'Saved! End of queue.' };
+        statusMessage.value = {
+          type: 'success',
+          text: direction > 0 ? 'Saved! End of queue.' : 'Saved! Start of queue.'
+        };
         saving.value = false;
       }
     } else {
@@ -2835,9 +4271,17 @@ const handleSaveAndNext = async () => {
   }
 };
 
+const handleSaveAndNext = async () => {
+  await handleSaveAndNavigate(1);
+};
+
+const handleSaveAndPrev = async () => {
+  await handleSaveAndNavigate(-1);
+};
+
 // Track changes to item data
 watch(item, () => {
-  if (!loading.value) {
+  if (!loading.value && !suppressUnsavedTracking.value) {
     hasUnsavedChanges.value = true;
   }
 }, { deep: true });
@@ -2847,6 +4291,7 @@ onMounted(async () => {
     // Get item identifier and queue data from query string
     const urlParams = new URLSearchParams(window.location.search);
     const identifier = urlParams.get('link');
+    const queueIndexParam = Number.parseInt(urlParams.get('idx'), 10);
     const queueParam = urlParams.get('queue');
     
     // Parse queue data if provided
@@ -2854,8 +4299,15 @@ onMounted(async () => {
       try {
         queueData.value = JSON.parse(decodeURIComponent(queueParam));
         // Find current item index in queue
-        if (queueData.value && queueData.value.queue) {
-          currentQueueIndex.value = queueData.value.queue.indexOf(identifier);
+        if (queueData.value && Array.isArray(queueData.value.queue)) {
+          const isValidIndex = Number.isInteger(queueIndexParam)
+            && queueIndexParam >= 0
+            && queueIndexParam < queueData.value.queue.length
+            && queueData.value.queue[queueIndexParam] === identifier;
+
+          currentQueueIndex.value = isValidIndex
+            ? queueIndexParam
+            : queueData.value.queue.indexOf(identifier);
         }
       } catch (e) {
         console.error('Failed to parse queue data:', e);
@@ -2869,11 +4321,26 @@ onMounted(async () => {
     }
     
     // Load persons and audio/video items in parallel
-    const [loadedPersons, loadedAudioVideo, savedConfidenceThreshold, savedAutoAssignThreshold] = await Promise.all([
+    const [
+      loadedPersons,
+      loadedAudioVideo,
+      savedConfidenceThreshold,
+      savedAutoAssignThreshold,
+      savedPhaseOneMatchThreshold,
+      savedPhaseOneRegionRestoreIoUThreshold,
+      savedFaceDebugEnabled,
+      savedFaceTagsMode,
+      savedShowFaceTags
+    ] = await Promise.all([
       window.electronAPI.getExistingPersons(),
       window.electronAPI.getAudioVideoItems(),
       window.electronAPI.getConfig('faceDetection:confidenceThreshold'),
-      window.electronAPI.getConfig('faceDetection:autoAssignThreshold')
+      window.electronAPI.getConfig('faceDetection:autoAssignThreshold'),
+      window.electronAPI.getConfig('faceDetection:phaseOneMatchThreshold'),
+      window.electronAPI.getConfig('faceDetection:phaseOneRegionRestoreIoUThreshold'),
+      window.electronAPI.getConfig('debug:faceMatching'),
+      window.electronAPI.getConfig('mediaManager:faceTagsMode'),
+      window.electronAPI.getConfig('mediaManager:showFaceTags')
     ]);
     
     // Set thresholds from config if available
@@ -2883,6 +4350,24 @@ onMounted(async () => {
     if (savedAutoAssignThreshold !== undefined) {
       autoAssignThreshold.value = savedAutoAssignThreshold;
     };
+    if (Number.isFinite(Number(savedPhaseOneMatchThreshold))) {
+      phaseOneMatchThreshold.value = Number(savedPhaseOneMatchThreshold);
+    }
+    if (Number.isFinite(Number(savedPhaseOneRegionRestoreIoUThreshold))) {
+      phaseOneRegionRestoreIoUThreshold.value = Number(savedPhaseOneRegionRestoreIoUThreshold);
+    }
+    faceDebugEnabled.value = savedFaceDebugEnabled === true || savedFaceDebugEnabled === 'true';
+
+    const normalizedMode = normalizeFaceOverlayMode(savedFaceTagsMode);
+    if (isValidFaceOverlayMode(normalizedMode)) {
+      faceTagsMode.value = normalizedMode;
+    } else {
+      faceTagsMode.value = savedShowFaceTags ? FACE_OVERLAY_MODE.REGIONS : FACE_OVERLAY_MODE.OFF;
+    }
+
+    isInitializingFaceTagsMode.value = false;
+    isInitializingThresholds.value = false;
+    isInitializingFaceDebugSetting.value = false;
     
     // Expand persons so each appears once per last name (matches nav column behavior)
     persons.value = expandPersonsByLastName(loadedPersons);
@@ -2913,6 +4398,11 @@ onMounted(async () => {
         personSelectionIndex.value = null; // Clear selection index
       }
     });
+
+    window.electronAPI.onPersonSelectionCanceled(() => {
+      sourceSelectionIndex.value = null;
+      personSelectionIndex.value = null;
+    });
     
     // Listen for item load events from other windows
     window.electronAPI.onItemLoad(async (identifier, queueDataParam) => {
@@ -2932,6 +4422,12 @@ onMounted(async () => {
       // Load the new item with queue data if provided
       let searchParams = `link=${encodeURIComponent(identifier)}`;
       if (queueDataParam) {
+        const queueIndex = Array.isArray(queueDataParam.queue)
+          ? queueDataParam.queue.indexOf(identifier)
+          : -1;
+        if (queueIndex >= 0) {
+          searchParams += `&idx=${queueIndex}`;
+        }
         searchParams += `&queue=${encodeURIComponent(JSON.stringify(queueDataParam))}`;
       }
       window.location.search = searchParams;
@@ -2941,26 +4437,22 @@ onMounted(async () => {
     window.electronAPI.onCollectionItemsUpdated((data) => {
       // If the current item is in a collection that was just updated, reload it
       if (queueData.value && queueData.value.collectionKey === data.collectionKey && item.value && item.value.link) {
+        if (hasUnsavedChanges.value) {
+          statusMessage.value = {
+            type: 'info',
+            text: 'Collection updated elsewhere. Save or cancel current edits to refresh this item.'
+          };
+          scheduleStatusMessageClear(3500);
+          return;
+        }
+
         // Reload the item from disk to get the latest changes
         const reloadItem = async () => {
           try {
             const reloadedItem = await window.electronAPI.loadItem(item.value.link);
             if (reloadedItem) {
-              // Replace the item data with the fresh version, preserving reactive properties
-              item.value = {
-                accession: reloadedItem.accession || '',
-                link: reloadedItem.link || '',
-                type: reloadedItem.type || '',
-                description: reloadedItem.description || '',
-                date: reloadedItem.date || { year: '', month: '', day: '' },
-                location: reloadedItem.location || [],
-                person: (reloadedItem.person || []).map(p => ({
-                  ...p,
-                  position: p.position || p.context || ''
-                })),
-                source: reloadedItem.source || [],
-                playlist: reloadedItem.playlist || { entry: [] }
-              };
+              hydrateItemFromLoadedItem(reloadedItem);
+              hasUnsavedChanges.value = false;
             }
           } catch (error) {
             console.error('Error reloading item after collection update:', error);
@@ -2968,6 +4460,10 @@ onMounted(async () => {
         };
         reloadItem();
       }
+    });
+
+    window.electronAPI.onBatchFaceProgress((progressData) => {
+      batchPhaseOneProgress.value = progressData;
     });
     
     const loadedItem = await window.electronAPI.loadItem(identifier);
@@ -2982,21 +4478,8 @@ onMounted(async () => {
     deleteInfo.value = loadedItem.deleteInfo || createEmptyDeleteInfo();
     fileExists.value = deleteInfo.value.fileExists ?? true;
     isReferencedInPlaylists.value = loadedItem.isReferencedInPlaylists ?? false;
-    // Initialize item with defaults for missing arrays/objects
-    item.value = {
-      accession: loadedItem.accession || '',
-      link: loadedItem.link || '',
-      type: loadedItem.type || '',
-      description: loadedItem.description || '',
-      date: loadedItem.date || { year: '', month: '', day: '' },
-      location: loadedItem.location || [],
-      person: (loadedItem.person || []).map(p => ({
-        ...p,  // Preserve all original properties from backend
-        position: p.position || p.context || ''  // Use 'position' as standard field name
-      })),
-      source: loadedItem.source || [],
-      playlist: loadedItem.playlist || { entry: [] }
-    };
+    // Initialize item with defaults for missing arrays/objects.
+    hydrateItemFromLoadedItem(loadedItem);
     
     // Get media preview path
     if (item.value.type && item.value.link) {
@@ -3046,12 +4529,14 @@ onMounted(async () => {
         }
       }
       
-      // Load existing faceBioData if available (after model pre-selection)
+      // Load unresolved candidatefaces first (phase 2 queue), then fallback to faceBioData.
       // This will be called after image loads, so we wait for the image
       // The actual loading happens in onImageLoad or we can call it here if needed
       // For now, we'll call it after a short delay to ensure image is ready
       setTimeout(() => {
-        loadExistingFaceBioData();
+        loadExistingCandidateFaces().then((loadedCandidates) => {
+          loadExistingFaceBioData({ merge: loadedCandidates });
+        });
       }, 200);
     }
     
@@ -3065,6 +4550,15 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   isMounted.value = false;
+  clearStatusMessageClearTimer();
+  if (hoverClearTimeout) {
+    clearTimeout(hoverClearTimeout);
+    hoverClearTimeout = null;
+  }
+  if (saveCloseTimer) {
+    clearTimeout(saveCloseTimer);
+    saveCloseTimer = null;
+  }
   window.removeEventListener('resize', handleWindowResize);
 });
 </script>
@@ -3107,6 +4601,8 @@ header h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
@@ -3131,10 +4627,33 @@ header h1 {
   gap: 0.5rem;
 }
 
+.queue-batch-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-batch {
+  background: rgba(33, 136, 56, 0.5);
+  border-color: rgba(210, 255, 219, 0.45);
+}
+
+.btn-batch-cancel {
+  background: rgba(172, 35, 35, 0.55);
+  border-color: rgba(255, 215, 215, 0.45);
+}
+
+.batch-progress-text {
+  font-size: 0.82rem;
+  opacity: 0.95;
+  max-width: 460px;
+}
+
 .btn-nav {
-  background: rgba(255,255,255,0.2);
-  color: white;
-  border: 1px solid rgba(255,255,255,0.3);
+  background: #eef2ff;
+  color: #1f2937;
+  border: 1px solid #c7d2fe;
   padding: 0.4rem 1rem;
   border-radius: 4px;
   cursor: pointer;
@@ -3144,8 +4663,8 @@ header h1 {
 }
 
 .btn-nav:hover:not(:disabled) {
-  background: rgba(255,255,255,0.3);
-  border-color: rgba(255,255,255,0.5);
+  background: #e0e7ff;
+  border-color: #a5b4fc;
 }
 
 .btn-nav:disabled {
@@ -3222,10 +4741,40 @@ header h1 {
   flex-wrap: wrap;
   gap: 1rem;
   align-items: center;
+  justify-content: space-between;
   box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
   position: sticky;
   bottom: 0;
   z-index: 2;
+}
+
+.action-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.queue-action-group {
+  flex: 1 1 700px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.save-action-group {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.action-group-label {
+  color: #4b5563;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .action-bar .warning-message {
@@ -3731,6 +5280,34 @@ header h1 {
   cursor: not-allowed;
 }
 
+.faceTagsCycleBtn {
+  padding: 0.625rem 1rem;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  background: #f3f4f6;
+  color: #1f2937;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.faceTagsCycleBtn:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+.faceTagsCycleBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.action-bar .btn-primary,
+.action-bar .btn-secondary,
+.action-bar .btn-danger,
+.action-bar .btn-nav {
+  font-size: 0.92rem;
+  padding: 0.62rem 1rem;
+  min-height: 38px;
+}
+
 .status-message {
   margin-top: 1rem;
   padding: 1rem;
@@ -3782,16 +5359,91 @@ header h1 {
   border-top: 1px solid #dee2e6;
 }
 
+.face-controls-status-slot {
+  min-height: 26px;
+}
+
+.status-message-inline {
+  margin-top: 0;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.82rem;
+}
+
 .face-detection-controls .btn-secondary {
-  width: 100%;
-  padding: 0.6rem 1rem;
+  width: auto;
+  padding: 0.58rem 0.95rem;
   font-size: 0.9rem;
+}
+
+.face-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  flex-wrap: nowrap;
+}
+
+.face-summary-text {
+  font-size: 0.88rem;
+  color: #374151;
+  font-weight: 500;
+}
+
+.face-summary-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.detection-status-inline {
+  font-size: 0.88rem;
+  color: #4b5563;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-icon {
+  opacity: 0.65;
+  margin-right: 4px;
+}
+
+.detect-actions-row {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.detect-action-btn {
+  flex: 0 0 auto;
+  min-width: 0;
+  font-size: 0.92rem;
+  padding: 0.62rem 1rem;
+}
+
+.btn-batch-related {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #1f2937;
+}
+
+.btn-batch-related:hover:not(:disabled) {
+  background: #e0e7ff;
+  border-color: #a5b4fc;
+  color: #1f2937;
 }
 
 /* Advanced Settings */
 .advanced-settings {
   width: 100%;
   margin-bottom: 0.5rem;
+  text-align: center;
 }
 
 .btn-link {
@@ -3801,7 +5453,11 @@ header h1 {
   cursor: pointer;
   font-size: 0.85rem;
   padding: 0.25rem 0;
-  text-align: left;
+  max-width: 100%;
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .btn-link:hover {
@@ -3946,6 +5602,12 @@ header h1 {
 
 .btn-assign-selected:hover {
   text-decoration: underline;
+}
+
+.btn-clear-compact {
+  padding: 0.42rem 0.7rem;
+  font-size: 0.82rem;
+  border-radius: 4px;
 }
 
 .hint {
@@ -4188,6 +5850,12 @@ header h1 {
   margin-bottom: 0.35rem;
 }
 
+.unassigned-faces-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .unassigned-faces-section strong {
   margin: 0;
   font-size: 0.95rem;
@@ -4202,6 +5870,12 @@ header h1 {
 .unassigned-faces-section .face-badges {
   display: flex;
   flex-wrap: wrap;
+  gap: 4px;
+}
+
+.face-badge-group {
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
 }
 
@@ -4238,6 +5912,35 @@ header h1 {
   background: #6c757d;
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.excluded-faces-section {
+  border-color: #f4c676;
+  background: #fff8eb;
+}
+
+.face-badge-button.excluded {
+  background: #b7791f;
+  cursor: pointer;
+}
+
+.face-badge-button.excluded:hover {
+  background: #9c6517;
+}
+
+.face-badge-discard {
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #d9534f;
+  background: #fff;
+  color: #b52a27;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.face-badge-discard:hover {
+  background: #fcebea;
 }
 
 .face-assignment-section,
@@ -4291,7 +5994,7 @@ header h1 {
 }
 
 .face-match-row {
-  display: grid;
+  font-size: 0.85rem;
   grid-template-columns: 1fr auto;
   gap: 1rem;
   align-items: center;

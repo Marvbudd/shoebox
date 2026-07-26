@@ -12,15 +12,120 @@ import { dirname } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const STRICT_DISPLAY_CHECKS = process.env.SHOEBOX_STRICT_DISPLAY_CHECKS === '1';
+let hasWarnedDisplayFallback = false;
 
 /**
  * Check if a window reference is valid and not destroyed
  */
 function isValidWindow(windowRef) {
   return windowRef && 
-         windowRef.value && 
          typeof windowRef.value.isDestroyed === 'function' && 
          !windowRef.value.isDestroyed();
+}
+
+function getAllDisplaysSafe(context = 'windowManager') {
+  const screenApi = electron?.screen;
+  const hasGetAllDisplays = typeof screenApi?.getAllDisplays === 'function';
+  const hasGetPrimaryDisplay = typeof screenApi?.getPrimaryDisplay === 'function';
+
+  if (!hasGetAllDisplays || !hasGetPrimaryDisplay) {
+    throw new Error(`[WindowManager] Invalid Electron screen API in ${context}: expected getAllDisplays() and getPrimaryDisplay()`);
+  }
+
+  const displays = screenApi.getAllDisplays();
+  if (Array.isArray(displays) && displays.length > 0) {
+    return displays;
+  }
+
+  const message = `[WindowManager] getAllDisplays() returned no displays in ${context}. Falling back to primary display.`;
+  if (!hasWarnedDisplayFallback) {
+    console.error(message);
+    hasWarnedDisplayFallback = true;
+  }
+
+  if (STRICT_DISPLAY_CHECKS) {
+    throw new Error(`[WindowManager] Strict display checks enabled. ${message}`);
+  }
+
+  return [screenApi.getPrimaryDisplay()];
+}
+
+function resolveTargetDisplay(confname, nconf, context = 'windowManager') {
+  const displays = getAllDisplaysSafe(context);
+  const primaryDisplay = electron.screen.getPrimaryDisplay();
+  const savedDisplayId = nconf.get(`ui:${confname}:displayId`);
+
+  if (savedDisplayId !== undefined && savedDisplayId !== null) {
+    const byId = displays.find(display => display.id === savedDisplayId);
+    if (byId) {
+      return byId;
+    }
+  }
+
+  // Backward compatibility with legacy index-based persistence.
+  const legacyIndex = nconf.get(`ui:${confname}:display`);
+  if (Number.isInteger(legacyIndex) && legacyIndex >= 0 && legacyIndex < displays.length) {
+    return displays[legacyIndex];
+  }
+
+  return primaryDisplay;
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(Math.max(value, min), max);
+}
+
+function getSafeWindowBounds(confname, nconf, targetDisplay, defaults = {}) {
+  const workArea = targetDisplay.workArea || targetDisplay.bounds;
+  const defaultWidth = defaults.width || 800;
+  const defaultHeight = defaults.height || 600;
+  const minWidth = defaults.minWidth || 400;
+  const minHeight = defaults.minHeight || 300;
+
+  const savedX = nconf.get(`ui:${confname}:x`);
+  const savedY = nconf.get(`ui:${confname}:y`);
+  const savedWidth = nconf.get(`ui:${confname}:width`);
+  const savedHeight = nconf.get(`ui:${confname}:height`);
+
+  const width = clampNumber(
+    Number.isFinite(savedWidth) ? savedWidth : defaultWidth,
+    minWidth,
+    Math.max(minWidth, workArea.width)
+  );
+
+  const height = clampNumber(
+    Number.isFinite(savedHeight) ? savedHeight : defaultHeight,
+    minHeight,
+    Math.max(minHeight, workArea.height)
+  );
+
+  const maxX = workArea.x + workArea.width - width;
+  const maxY = workArea.y + workArea.height - height;
+  const fallbackX = workArea.x + Math.max(0, Math.floor((workArea.width - width) / 2));
+  const fallbackY = workArea.y + Math.max(0, Math.floor((workArea.height - height) / 2));
+
+  const x = clampNumber(
+    Number.isFinite(savedX) ? savedX : fallbackX,
+    workArea.x,
+    Math.max(workArea.x, maxX)
+  );
+
+  const y = clampNumber(
+    Number.isFinite(savedY) ? savedY : fallbackY,
+    workArea.y,
+    Math.max(workArea.y, maxY)
+  );
+
+  return {
+    x,
+    y,
+    width,
+    height
+  };
 }
 
 /**
@@ -28,6 +133,8 @@ function isValidWindow(windowRef) {
  */
 export function saveWindowState(window, confname, nconf) {
   const windowBounds = window.isMaximized() ? window.getNormalBounds() : window.getBounds();
+  const allDisplays = getAllDisplaysSafe(`saveWindowState(${confname})`);
+  const matchingDisplay = electron.screen.getDisplayMatching(windowBounds);
 
   nconf.set(`ui:${confname}:width`,  windowBounds.width);
   nconf.set(`ui:${confname}:height`, windowBounds.height);
@@ -35,7 +142,6 @@ export function saveWindowState(window, confname, nconf) {
   nconf.set(`ui:${confname}:y`,      windowBounds.y);
   nconf.set(`ui:${confname}:isMaximized`, window.isMaximized());
 
-  let allDisplays = electron.screen.getAllDisplays();
   const currentDisplay = allDisplays.findIndex(display => {
     return windowBounds.x >= display.bounds.x &&
       windowBounds.x < display.bounds.x + display.bounds.width &&
@@ -43,6 +149,7 @@ export function saveWindowState(window, confname, nconf) {
       windowBounds.y < display.bounds.y + display.bounds.height;
   });
 
+  nconf.set(`ui:${confname}:displayId`, matchingDisplay?.id ?? null);
   nconf.set(`ui:${confname}:display`, currentDisplay);
   nconf.save('user');
 }
@@ -51,40 +158,15 @@ export function saveWindowState(window, confname, nconf) {
  * Create a new window with saved position/size
  */
 export function newWindow(confname, preload, parentWindow, show, nconf) {
-  let displayIndex = nconf.get(`ui:${confname}:display`);
-  let allDisplays = electron.screen.getAllDisplays();
-  let targetDisplay = allDisplays[displayIndex] || electron.screen.getPrimaryDisplay();
+  let targetDisplay = resolveTargetDisplay(confname, nconf, `newWindow(${confname})`);
   let modalValue = parentWindow ? true : false;
 
-  let savedX = nconf.get(`ui:${confname}:x`);
-  let savedY = nconf.get(`ui:${confname}:y`);
-  
-  // Validate saved position is on target display
-  let x = savedX;
-  let y = savedY;
-  
-  if (savedX !== undefined && savedY !== undefined) {
-    const isOnTargetDisplay = 
-      savedX >= targetDisplay.bounds.x &&
-      savedX < targetDisplay.bounds.x + targetDisplay.bounds.width &&
-      savedY >= targetDisplay.bounds.y &&
-      savedY < targetDisplay.bounds.y + targetDisplay.bounds.height;
-    
-    if (!isOnTargetDisplay) {
-      x = targetDisplay.bounds.x + 100;
-      y = targetDisplay.bounds.y + 100;
-    }
-  } else {
-    x = targetDisplay.bounds.x + 100;
-    y = targetDisplay.bounds.y + 100;
-  }
-
-  let windowBounds = {
-    x: x,
-    y: y,
-    width: nconf.get(`ui:${confname}:width`) || 400,
-    height: nconf.get(`ui:${confname}:height`) || 300
-  };
+  let windowBounds = getSafeWindowBounds(confname, nconf, targetDisplay, {
+    width: 400,
+    height: 300,
+    minWidth: 300,
+    minHeight: 200
+  });
 
   const mainWindow = parentWindow; // For parent reference
   const win = new BrowserWindow(
@@ -146,38 +228,14 @@ export function createMediaWindow(mediaInfo, windowRef, nconf) {
  */
 export function createPersonManagerWindow(windowRef, nconf) {
   if (!windowRef.value) {
-    let displayIndex = nconf.get('ui:personManager:display');
-    let allDisplays = electron.screen.getAllDisplays();
-    let targetDisplay = allDisplays[displayIndex] || electron.screen.getPrimaryDisplay();
-    
-    let savedX = nconf.get('ui:personManager:x');
-    let savedY = nconf.get('ui:personManager:y');
-    
-    let x = savedX;
-    let y = savedY;
-    
-    if (savedX !== undefined && savedY !== undefined) {
-      const isOnTargetDisplay = 
-        savedX >= targetDisplay.bounds.x &&
-        savedX < targetDisplay.bounds.x + targetDisplay.bounds.width &&
-        savedY >= targetDisplay.bounds.y &&
-        savedY < targetDisplay.bounds.y + targetDisplay.bounds.height;
-      
-      if (!isOnTargetDisplay) {
-        x = targetDisplay.bounds.x + 100;
-        y = targetDisplay.bounds.y + 100;
-      }
-    } else {
-      x = targetDisplay.bounds.x + 100;
-      y = targetDisplay.bounds.y + 100;
-    }
-    
-    let windowBounds = {
-      x: x,
-      y: y,
-      width: nconf.get('ui:personManager:width') || 1000,
-      height: nconf.get('ui:personManager:height') || 700
-    };
+    let targetDisplay = resolveTargetDisplay('personManager', nconf, 'createPersonManagerWindow');
+
+    let windowBounds = getSafeWindowBounds('personManager', nconf, targetDisplay, {
+      width: 1000,
+      height: 700,
+      minWidth: 800,
+      minHeight: 600
+    });
     
     windowRef.value = new BrowserWindow({
       ...windowBounds,
@@ -191,7 +249,6 @@ export function createPersonManagerWindow(windowRef, nconf) {
     });
 
     const vueDistPath = path.resolve(__dirname, '../../render/vue-dist/personManager/index.html');
-    console.log('Loading Person Manager from:', vueDistPath);
     
     windowRef.value.loadFile(vueDistPath)
       .then(() => {
@@ -209,7 +266,6 @@ export function createPersonManagerWindow(windowRef, nconf) {
     });
 
     windowRef.value.on('closed', () => {
-      console.log('Person Manager window closed');
       windowRef.value = null;
     });
 
@@ -236,42 +292,83 @@ export function createPersonManagerWindow(windowRef, nconf) {
 }
 
 /**
+ * Create Face Matching window
+ */
+export function createFaceMatchingWindow(payload, windowRef, nconf) {
+  if (!windowRef.value) {
+    let targetDisplay = resolveTargetDisplay('faceMatching', nconf, 'createFaceMatchingWindow');
+
+    let windowBounds = getSafeWindowBounds('faceMatching', nconf, targetDisplay, {
+      width: 1100,
+      height: 760,
+      minWidth: 900,
+      minHeight: 600
+    });
+
+    windowRef.value = new BrowserWindow({
+      ...windowBounds,
+      autoHideMenuBar: true,
+      show: false,
+      webPreferences: {
+        preload: path.resolve(__dirname, '../../render/vue/windows/FaceMatching/preload.js'),
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    });
+
+    const vueDistPath = path.resolve(__dirname, '../../render/vue-dist/faceMatching/index.html');
+
+    windowRef.value.loadFile(vueDistPath)
+      .then(() => {
+        windowRef.value.show();
+        windowRef.value.focus();
+        if (windowRef.value?.webContents && !windowRef.value.isDestroyed()) {
+          windowRef.value.webContents.send('faceMatching:load', payload || {});
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load Face Matching:', err);
+      });
+
+    windowRef.value.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      console.error('Face Matching failed to load:', errorCode, errorDescription);
+    });
+
+    windowRef.value.on('close', () => {
+      if (windowRef.value) {
+        saveWindowState(windowRef.value, 'faceMatching', nconf);
+      }
+    });
+
+    windowRef.value.on('closed', () => {
+      windowRef.value = null;
+    });
+
+    windowRef.value.webContents.on('destroyed', () => {
+      windowRef.value = null;
+    });
+  } else if (isValidWindow(windowRef)) {
+    windowRef.value.show();
+    windowRef.value.focus();
+    if (windowRef.value.webContents) {
+      windowRef.value.webContents.send('faceMatching:load', payload || {});
+    }
+  }
+}
+
+/**
  * Create create accessions window
  */
 export function createCreateAccessionsWindow(windowRef, nconf) {
   if (!windowRef.value) {
-    let displayIndex = nconf.get('ui:createAccessions:display');
-    let allDisplays = electron.screen.getAllDisplays();
-    let targetDisplay = allDisplays[displayIndex] || electron.screen.getPrimaryDisplay();
-    
-    let savedX = nconf.get('ui:createAccessions:x');
-    let savedY = nconf.get('ui:createAccessions:y');
-    
-    let x = savedX;
-    let y = savedY;
-    
-    if (savedX !== undefined && savedY !== undefined) {
-      const isOnTargetDisplay = 
-        savedX >= targetDisplay.bounds.x &&
-        savedX < targetDisplay.bounds.x + targetDisplay.bounds.width &&
-        savedY >= targetDisplay.bounds.y &&
-        savedY < targetDisplay.bounds.y + targetDisplay.bounds.height;
-      
-      if (!isOnTargetDisplay) {
-        x = targetDisplay.bounds.x + 100;
-        y = targetDisplay.bounds.y + 100;
-      }
-    } else {
-      x = targetDisplay.bounds.x + 100;
-      y = targetDisplay.bounds.y + 100;
-    }
-    
-    let windowBounds = {
-      x: x,
-      y: y,
-      width: nconf.get('ui:createAccessions:width') || 800,
-      height: nconf.get('ui:createAccessions:height') || 700
-    };
+    let targetDisplay = resolveTargetDisplay('createAccessions', nconf, 'createCreateAccessionsWindow');
+
+    let windowBounds = getSafeWindowBounds('createAccessions', nconf, targetDisplay, {
+      width: 800,
+      height: 700,
+      minWidth: 700,
+      minHeight: 600
+    });
     
     windowRef.value = new BrowserWindow({
       ...windowBounds,
@@ -321,38 +418,14 @@ export function createCreateAccessionsWindow(windowRef, nconf) {
  */
 export function createMediaManagerWindow(identifier, queueData, windowRef, nconf) {
   if (!windowRef.value) {
-    let displayIndex = nconf.get('ui:mediaManager:display');
-    let allDisplays = electron.screen.getAllDisplays();
-    let targetDisplay = allDisplays[displayIndex] || electron.screen.getPrimaryDisplay();
-    
-    let savedX = nconf.get('ui:mediaManager:x');
-    let savedY = nconf.get('ui:mediaManager:y');
-    
-    let x = savedX;
-    let y = savedY;
-    
-    if (savedX !== undefined && savedY !== undefined) {
-      const isOnTargetDisplay = 
-        savedX >= targetDisplay.bounds.x &&
-        savedX < targetDisplay.bounds.x + targetDisplay.bounds.width &&
-        savedY >= targetDisplay.bounds.y &&
-        savedY < targetDisplay.bounds.y + targetDisplay.bounds.height;
-      
-      if (!isOnTargetDisplay) {
-        x = targetDisplay.bounds.x + 100;
-        y = targetDisplay.bounds.y + 100;
-      }
-    } else {
-      x = targetDisplay.bounds.x + 100;
-      y = targetDisplay.bounds.y + 100;
-    }
-    
-    let windowBounds = {
-      x: x,
-      y: y,
-      width: nconf.get('ui:mediaManager:width') || 1000,
-      height: nconf.get('ui:mediaManager:height') || 800
-    };
+    let targetDisplay = resolveTargetDisplay('mediaManager', nconf, 'createMediaManagerWindow');
+
+    let windowBounds = getSafeWindowBounds('mediaManager', nconf, targetDisplay, {
+      width: 1000,
+      height: 800,
+      minWidth: 900,
+      minHeight: 700
+    });
     
     windowRef.value = new BrowserWindow({
       ...windowBounds,
@@ -436,38 +509,14 @@ export function createMediaManagerWindow(identifier, queueData, windowRef, nconf
  */
 export function createUpdateCollectionWindow(windowRef, nconf) {
   if (!windowRef.value) {
-    let displayIndex = nconf.get('ui:updateCollection:display');
-    let allDisplays = electron.screen.getAllDisplays();
-    let targetDisplay = allDisplays[displayIndex] || electron.screen.getPrimaryDisplay();
-    
-    let savedX = nconf.get('ui:updateCollection:x');
-    let savedY = nconf.get('ui:updateCollection:y');
-    
-    let x = savedX;
-    let y = savedY;
-    
-    if (savedX !== undefined && savedY !== undefined) {
-      const isOnTargetDisplay = 
-        savedX >= targetDisplay.bounds.x &&
-        savedX < targetDisplay.bounds.x + targetDisplay.bounds.width &&
-        savedY >= targetDisplay.bounds.y &&
-        savedY < targetDisplay.bounds.y + targetDisplay.bounds.height;
-      
-      if (!isOnTargetDisplay) {
-        x = targetDisplay.bounds.x + 100;
-        y = targetDisplay.bounds.y + 100;
-      }
-    } else {
-      x = targetDisplay.bounds.x + 100;
-      y = targetDisplay.bounds.y + 100;
-    }
-    
-    let windowBounds = {
-      x: x,
-      y: y,
-      width: nconf.get('ui:updateCollection:width') || 800,
-      height: nconf.get('ui:updateCollection:height') || 700
-    };
+    let targetDisplay = resolveTargetDisplay('updateCollection', nconf, 'createUpdateCollectionWindow');
+
+    let windowBounds = getSafeWindowBounds('updateCollection', nconf, targetDisplay, {
+      width: 800,
+      height: 700,
+      minWidth: 700,
+      minHeight: 600
+    });
     
     windowRef.value = new BrowserWindow({
       ...windowBounds,
@@ -518,16 +567,14 @@ export function createUpdateCollectionWindow(windowRef, nconf) {
 export function createCollectionSetOperationsWindow(operation, targetCollection, windowRef, nconf) {
   console.log('Creating Collection Set Operations window...', { operation, targetCollection });
   if (!windowRef.value) {
-    let displayIndex = nconf.get('ui:collectionSetOperations:display');
-    let allDisplays = electron.screen.getAllDisplays();
-    let targetDisplay = allDisplays[displayIndex] || electron.screen.getPrimaryDisplay();
-    
-    let windowBounds = {
-      x: nconf.get('ui:collectionSetOperations:x') || targetDisplay.bounds.x + 100,
-      y: nconf.get('ui:collectionSetOperations:y') || targetDisplay.bounds.y + 100,
-      width: nconf.get('ui:collectionSetOperations:width') || 700,
-      height: nconf.get('ui:collectionSetOperations:height') || 600
-    };
+    let targetDisplay = resolveTargetDisplay('collectionSetOperations', nconf, 'createCollectionSetOperationsWindow');
+
+    let windowBounds = getSafeWindowBounds('collectionSetOperations', nconf, targetDisplay, {
+      width: 700,
+      height: 600,
+      minWidth: 650,
+      minHeight: 500
+    });
     
     windowRef.value = new BrowserWindow({
       ...windowBounds,
@@ -588,38 +635,14 @@ export function createCollectionSetOperationsWindow(operation, targetCollection,
 export function createCollectionManagerWindow(mode, windowRef, modeRef, nconf) {
   modeRef.value = mode;
   if (!windowRef.value) {
-    let displayIndex = nconf.get('ui:collectionManager:display');
-    let allDisplays = electron.screen.getAllDisplays();
-    let targetDisplay = allDisplays[displayIndex] || electron.screen.getPrimaryDisplay();
-    
-    let savedX = nconf.get('ui:collectionManager:x');
-    let savedY = nconf.get('ui:collectionManager:y');
-    
-    let x = savedX;
-    let y = savedY;
-    
-    if (savedX !== undefined && savedY !== undefined) {
-      const isOnTargetDisplay = 
-        savedX >= targetDisplay.bounds.x &&
-        savedX < targetDisplay.bounds.x + targetDisplay.bounds.width &&
-        savedY >= targetDisplay.bounds.y &&
-        savedY < targetDisplay.bounds.y + targetDisplay.bounds.height;
-      
-      if (!isOnTargetDisplay) {
-        x = targetDisplay.bounds.x + 100;
-        y = targetDisplay.bounds.y + 100;
-      }
-    } else {
-      x = targetDisplay.bounds.x + 100;
-      y = targetDisplay.bounds.y + 100;
-    }
-    
-    let windowBounds = {
-      x: x,
-      y: y,
-      width: nconf.get('ui:collectionManager:width') || 600,
-      height: nconf.get('ui:collectionManager:height') || 600
-    };
+    let targetDisplay = resolveTargetDisplay('collectionManager', nconf, 'createCollectionManagerWindow');
+
+    let windowBounds = getSafeWindowBounds('collectionManager', nconf, targetDisplay, {
+      width: 600,
+      height: 600,
+      minWidth: 550,
+      minHeight: 500
+    });
     
     windowRef.value = new BrowserWindow({
       ...windowBounds,

@@ -56,7 +56,8 @@
           <div 
             v-for="person in filteredPersons" 
             :key="person.personID"
-            @click="(mode !== 'edit' && mode !== 'new') ? selectPerson(person) : null"
+            @click="handlePersonItemClick(person)"
+            @dblclick="handlePersonItemDoubleClick(person)"
             :class="{ 
               'person-item': true, 
               'selected': selectedPerson?.personID === person.personID,
@@ -193,6 +194,14 @@
               <button @click="enterEditMode" class="btn-primary">
                 Edit This Person
               </button>
+              <button
+                @click="handleMatchUnassigned"
+                class="btn-secondary btn-match-unassigned"
+                :disabled="!canMatchUnassigned || matchUnassignedBusy"
+                :title="matchUnassignedButtonTitle"
+              >
+                {{ matchUnassignedButtonLabel }}
+              </button>
             </template>
             
             <!-- Edit/New mode: Show Save, Delete, and Cancel -->
@@ -219,7 +228,7 @@
             
             <!-- Select mode: Show Select button -->
             <template v-if="mode === 'select'">
-              <button @click="handleSelectPerson" class="btn-primary btn-primary-large" :disabled="!selectedPerson.personID">
+              <button @click="handleSelectPerson()" class="btn-primary btn-primary-large" :disabled="!selectedPerson.personID">
                 ✓ Select This Person
               </button>
               <button @click="handleCancel" class="btn-secondary">
@@ -251,6 +260,8 @@ const isNewPerson = ref(false);
 const deleting = ref(false);
 const searchInput = ref(null);
 const mode = ref('browse'); // 'browse', 'edit', 'new', 'select'
+const matchUnassignedBusy = ref(false);
+const faceMatchThreshold = ref(0.60);
 
 const focusSearchInput = async () => {
   await nextTick();
@@ -266,6 +277,33 @@ const confirmModalMessage = ref('');
 const confirmOkText = ref('OK');
 const confirmCancelText = ref('Cancel');
 let confirmResolve = null;
+const teardownCallbacks = [];
+const selectionOutcomeSent = ref(false);
+
+const clonePerson = (person) => {
+  if (!person || typeof person !== 'object') {
+    return null;
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(person));
+  } catch (_error) {
+    return null;
+  }
+};
+
+const hasPendingEdits = () => hasUnsavedChanges() && (mode.value === 'edit' || mode.value === 'new');
+
+const notifySelectionCanceled = () => {
+  if (selectionOutcomeSent.value) {
+    return;
+  }
+
+  selectionOutcomeSent.value = true;
+  if (window.electronAPI?.sendPersonSelectionCanceled) {
+    window.electronAPI.sendPersonSelectionCanceled();
+  }
+};
 
 // Custom confirm dialog to avoid Electron focus bug
 const showConfirm = (title, message, okText = 'OK', cancelText = 'Cancel') => {
@@ -314,8 +352,14 @@ const loadPersons = async () => {
     if (selectedPerson.value && !hasUnsavedChanges()) {
       const refreshedPerson = allPersons.find(p => p.personID === selectedPerson.value.personID);
       if (refreshedPerson) {
-        selectedPerson.value = refreshedPerson;
-        originalPerson.value = JSON.parse(JSON.stringify(refreshedPerson));
+        const refreshedClone = clonePerson(refreshedPerson);
+        if (refreshedClone) {
+          if (refreshedClone.living === undefined) {
+            refreshedClone.living = false;
+          }
+          selectedPerson.value = refreshedClone;
+          originalPerson.value = clonePerson(refreshedClone);
+        }
       }
     }
   } catch (error) {
@@ -349,6 +393,54 @@ const canDelete = computed(() => {
   if (!selectedPerson.value || isNewPerson.value) return false;
   // Person can be deleted if they have no item references
   return selectedPerson.value.itemCount === 0;
+});
+
+const selectedPersonDescriptorCount = computed(() => {
+  const faceBioData = selectedPerson.value?.faceBioData;
+
+  if (Array.isArray(faceBioData)) {
+    return faceBioData.filter(entry => Array.isArray(entry?.descriptor) && entry.descriptor.length === 128).length;
+  }
+
+  const descriptors = faceBioData?.descriptors;
+  if (Array.isArray(descriptors)) {
+    return descriptors.filter(entry => Array.isArray(entry?.descriptor) && entry.descriptor.length === 128).length;
+  }
+
+  if (descriptors && typeof descriptors === 'object') {
+    return Object.values(descriptors).filter((entry) => {
+      if (Array.isArray(entry) && entry.length === 128) {
+        return true;
+      }
+      return Array.isArray(entry?.descriptor) && entry.descriptor.length === 128;
+    }).length;
+  }
+
+  return 0;
+});
+
+const canMatchUnassigned = computed(() => {
+  return mode.value === 'browse'
+    && !!selectedPerson.value?.personID
+    && selectedPersonDescriptorCount.value > 0
+    && !matchUnassignedBusy.value;
+});
+
+const matchUnassignedButtonLabel = computed(() => {
+  if (matchUnassignedBusy.value) {
+    return 'Matching...';
+  }
+  return 'Match Unassigned';
+});
+
+const matchUnassignedButtonTitle = computed(() => {
+  if (!selectedPerson.value?.personID) {
+    return 'Select a person first';
+  }
+  if (selectedPersonDescriptorCount.value === 0) {
+    return 'No face descriptors are available for this person yet';
+  }
+  return 'Open Face Matching for this person';
 });
 
 // Methods
@@ -389,6 +481,81 @@ const selectPerson = async (person) => {
   saveMessage.value = null;
 };
 
+const handleMatchUnassigned = async () => {
+  if (!selectedPerson.value?.personID || matchUnassignedBusy.value || mode.value !== 'browse') {
+    return;
+  }
+
+  matchUnassignedBusy.value = true;
+  saveMessage.value = null;
+
+  try {
+    const personID = selectedPerson.value.personID;
+    const personName = formatPersonName(selectedPerson.value);
+    const assignedLinks = [];
+    const faceBioData = selectedPerson.value?.faceBioData;
+    if (Array.isArray(faceBioData)) {
+      for (const entry of faceBioData) {
+        if (typeof entry?.link === 'string' && entry.link.length > 0) {
+          assignedLinks.push(entry.link);
+        }
+      }
+    }
+
+    const result = await window.electronAPI.getMatchUnassignedDescriptor(personID, 0, {
+      minConfidence: faceMatchThreshold.value,
+      perDescriptorLimit: 60,
+      maxDescriptors: 250
+    });
+
+    if (!result?.success) {
+      saveMessage.value = { type: 'error', text: `Unable to prepare Match Unassigned results: ${result?.error || 'Unknown error'}` };
+      return;
+    }
+
+    const descriptorCount = Number(result.descriptorCount || 0);
+    if (descriptorCount === 0) {
+      saveMessage.value = { type: 'info', text: 'No face descriptors are available for this person.' };
+      setTimeout(() => {
+        if (saveMessage.value?.type === 'info') {
+          saveMessage.value = null;
+        }
+      }, 3000);
+      return;
+    }
+
+    const openResult = await window.electronAPI.openFaceMatching({
+      personID,
+      personName,
+      descriptorCount,
+      descriptorIndex: Number(result.descriptorIndex || 0),
+      descriptorGroup: result.descriptorGroup || null,
+      assignedLinks,
+      minConfidence: Number(result.minConfidence || faceMatchThreshold.value),
+      perDescriptorLimit: 60,
+      maxDescriptors: 250,
+      totalUnresolvedCandidates: Number(result.totalUnresolvedCandidates || 0),
+      originWindow: 'personManager'
+    });
+
+    if (!openResult?.success) {
+      saveMessage.value = { type: 'error', text: `Unable to open Face Matching: ${openResult?.error || 'Unknown error'}` };
+      return;
+    }
+
+    saveMessage.value = { type: 'success', text: `Opened Face Matching (${descriptorCount} descriptor${descriptorCount === 1 ? '' : 's'}).` };
+    setTimeout(() => {
+      if (saveMessage.value?.type === 'success') {
+        saveMessage.value = null;
+      }
+    }, 3000);
+  } catch (error) {
+    saveMessage.value = { type: 'error', text: `Match Unassigned failed: ${error.message || String(error)}` };
+  } finally {
+    matchUnassignedBusy.value = false;
+  }
+};
+
 const enterEditMode = () => {
   if (!selectedPerson.value) return;
   previousMode.value = mode.value; // Remember where we came from
@@ -396,14 +563,31 @@ const enterEditMode = () => {
   saveMessage.value = null;
 };
 
-const handleSelectPerson = async () => {
-  if (!selectedPerson.value || !selectedPerson.value.personID) return;
+const handlePersonItemClick = async (person) => {
+  if (mode.value === 'edit' || mode.value === 'new') {
+    return;
+  }
+
+  await selectPerson(person);
+};
+
+const handlePersonItemDoubleClick = async (person) => {
+  if (mode.value !== 'select') {
+    return;
+  }
+
+  await selectPerson(person);
+  await handleSelectPerson(person);
+};
+
+const handleSelectPerson = async (targetPerson = selectedPerson.value) => {
+  if (!targetPerson || !targetPerson.personID) return;
   
   // Check if person is already assigned (for validation)
-  if (contextPersonIDs.value.includes(selectedPerson.value.personID)) {
+  if (contextPersonIDs.value.includes(targetPerson.personID)) {
     const confirmed = await showConfirm(
       'Person Already Assigned',
-      `${formatPersonName(selectedPerson.value)} is already assigned to this media item. Select anyway?`,
+      `${formatPersonName(targetPerson)} is already assigned to this media item. Select anyway?`,
       'Select Anyway',
       'Cancel'
     );
@@ -413,7 +597,8 @@ const handleSelectPerson = async () => {
   }
   
   // Send selection back to Media Manager
-  window.electronAPI.sendPersonSelection(selectedPerson.value.personID);
+  selectionOutcomeSent.value = true;
+  window.electronAPI.sendPersonSelection(targetPerson.personID);
   
   // Close window
   window.close();
@@ -598,6 +783,7 @@ const handleDelete = async () => {
 const handleCancel = async () => {
   if (mode.value === 'select') {
     // In select mode, just close the window
+    notifySelectionCanceled();
     window.close();
     return;
   }
@@ -651,6 +837,15 @@ const handleCancel = async () => {
 
 // Lifecycle
 onMounted(async () => {
+  try {
+    const configuredThreshold = await window.electronAPI.getConfig('faceDetection:autoAssignThreshold');
+    if (Number.isFinite(configuredThreshold)) {
+      faceMatchThreshold.value = Math.max(0, Math.min(1, Number(configuredThreshold)));
+    }
+  } catch (error) {
+    console.warn('Unable to load faceDetection:autoAssignThreshold, using default 0.60', error);
+  }
+
   // Load persons initially
   await loadPersons();
   
@@ -672,28 +867,51 @@ onMounted(async () => {
   }
   
   // Listen for mode change events (when window is already open)
-  window.electronAPI.onModeChange((modeData) => {
+  const removeModeChangeListener = window.electronAPI.onModeChange(async (modeData) => {
     console.log('Mode change event received:', modeData);
-    if (modeData.mode) {
-      mode.value = modeData.mode;
-      contextPersonIDs.value = modeData.assignedPersonIDs || [];
-      // Clear selection when switching to select mode
-      if (modeData.mode === 'select') {
-        selectedPerson.value = null;
-        originalPerson.value = null;
-        isNewPerson.value = false;
-        saveMessage.value = null;
-        focusSearchInput();
+    if (!modeData?.mode) {
+      return;
+    }
+
+    if (modeData.mode === 'select' && hasPendingEdits()) {
+      const confirmed = await showConfirm(
+        'Unsaved Changes',
+        'You have unsaved changes. Switch to Select mode and discard them?',
+        'Discard & Switch',
+        'Stay Here'
+      );
+
+      if (!confirmed) {
+        notifySelectionCanceled();
+        return;
       }
     }
-  });
 
-  window.electronAPI.onFocusSearch(() => {
+    mode.value = modeData.mode;
+    contextPersonIDs.value = modeData.assignedPersonIDs || [];
+
+    if (modeData.mode === 'select') {
+      selectionOutcomeSent.value = false;
+      selectedPerson.value = null;
+      originalPerson.value = null;
+      isNewPerson.value = false;
+      saveMessage.value = null;
+      focusSearchInput();
+    }
+  });
+  if (typeof removeModeChangeListener === 'function') {
+    teardownCallbacks.push(removeModeChangeListener);
+  }
+
+  const removeFocusSearchListener = window.electronAPI.onFocusSearch(() => {
     focusSearchInput();
   });
+  if (typeof removeFocusSearchListener === 'function') {
+    teardownCallbacks.push(removeFocusSearchListener);
+  }
   
   // Listen for person selection events from other windows
-  window.electronAPI.onPersonSelect((personID) => {
+  const removePersonSelectListener = window.electronAPI.onPersonSelect((personID) => {
     if (personID) {
       // Find and select the person
       const person = persons.value.find(p => p.personID === personID);
@@ -702,19 +920,41 @@ onMounted(async () => {
       }
     }
   });
+  if (typeof removePersonSelectListener === 'function') {
+    teardownCallbacks.push(removePersonSelectListener);
+  }
 
   // Refresh list when items change so itemCount stays current
-  window.electronAPI.onPersonsRefresh(async () => {
+  const removePersonsRefreshListener = window.electronAPI.onPersonsRefresh(async () => {
     await loadPersons();
   });
+  if (typeof removePersonsRefreshListener === 'function') {
+    teardownCallbacks.push(removePersonsRefreshListener);
+  }
   
   // Warn before closing window if there are unsaved changes
-  window.addEventListener('beforeunload', (e) => {
-    if (hasUnsavedChanges() && (mode.value === 'edit' || mode.value === 'new')) {
+  const beforeUnloadHandler = (e) => {
+    if (mode.value === 'select') {
+      notifySelectionCanceled();
+    }
+
+    if (hasPendingEdits()) {
       e.preventDefault();
       e.returnValue = '';
     }
-  });
+  };
+  window.addEventListener('beforeunload', beforeUnloadHandler);
+  teardownCallbacks.push(() => window.removeEventListener('beforeunload', beforeUnloadHandler));
+});
+
+onUnmounted(() => {
+  for (const teardown of teardownCallbacks.splice(0)) {
+    try {
+      teardown();
+    } catch (_error) {
+      // Ignore teardown errors during renderer shutdown.
+    }
+  }
 });
 </script>
 
@@ -1033,6 +1273,15 @@ header h1 {
 
 .btn-secondary:hover {
   background-color: #f5f5f5;
+}
+
+.btn-match-unassigned {
+  border-color: #2196f3;
+  color: #0d5ea8;
+}
+
+.btn-match-unassigned:hover:not(:disabled) {
+  background-color: #e7f3ff;
 }
 
 /* Messages */

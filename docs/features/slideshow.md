@@ -30,7 +30,10 @@ The slideshow:
 
 - **Space**: Pause/Resume slideshow
 - **Escape**: Exit photo frame mode completely
-- **↑ Up / ↓ Down**: Stop and return to manual navigation
+
+::: info Manual Slide Navigation While Playing
+During an active slideshow, **↑ Up** moves to the previous slide and **↓ Down** moves to the next slide without stopping playback. The autoplay timer resets after each manual step so it does not immediately auto-advance again.
+:::
 
 ## Controls
 
@@ -38,10 +41,12 @@ The slideshow:
 
 Control how long each photo displays:
 
-- **← Left**: Decrease speed (faster cycling)
-- **→ Right**: Increase speed (slower cycling)
+- **← Left**: Decrease seconds between slides (faster cycling)
+- **→ Right**: Increase seconds between slides (slower cycling)
 - Range: 1-30 seconds per photo
 - Default: 5 seconds
+
+Speed keys apply while slideshow playback is active.
 
 ::: tip Finding Your Speed
 Start with the default 5 seconds. For quick browsing, try 2-3 seconds. For contemplative viewing or displays, use 10-15 seconds.
@@ -57,10 +62,12 @@ Start with the default 5 seconds. For quick browsing, try 2-3 seconds. For conte
 
 - **Ctrl+Shift+R**: Toggle Random/Sequential
   - **Sequential**: Follows your current sort order (Date, Person, etc.)
-  - **Random**: Picks photos randomly, avoiding recently shown items
+  - **Random**: Picks photos randomly, avoiding repeats until all visible photos are shown
 
 ::: info Random Mode
-Random mode tracks visited photos to avoid repetition until all have been shown. Once the collection is exhausted, it resets and starts over with a fresh shuffle.
+Random mode tracks visited photos to avoid repetition until all visible photos have been shown. Once exhausted, it resets and starts a fresh shuffle.
+
+When navigating manually in random mode, Shoebox preserves slideshow history so **↑/↓** can move backward/forward through what was actually shown.
 :::
 
 ## Photo Frame Mode
@@ -70,7 +77,6 @@ When you start a slideshow, Shoebox enters **Photo Frame Mode**:
 - Navigation column hidden
 - Header bar hidden
 - Photo expands to full window
-- Face tags automatically hidden
 - Metadata display optional (your preference)
 
 ### Metadata Display
@@ -95,7 +101,16 @@ A subtle overlay in the top-right shows slideshow status:
 
 ### Keyboard Shortcuts Tooltip
 
-When you first enter photo frame mode, a tooltip displays available controls. It fades after a few seconds but can be recalled if needed.
+When you first enter photo frame mode, a tooltip displays available controls and fades after a few seconds.
+
+- **H**: Re-display the slideshow shortcut tooltip while in photo frame/slideshow mode
+
+### Touch/Pen Gestures
+
+In photo frame/slideshow mode:
+
+- **Swipe left**: Next slide
+- **Swipe right**: Previous slide
 
 ## Auto-Pause
 
@@ -137,7 +152,7 @@ During slideshow, Shoebox prevents display sleep/screen saver activation so the 
 2. Start slideshow
 3. Fast speed (2-3 seconds)
 4. Sequential mode to catch every photo
-5. Stop (↓) when you see something interesting
+5. Use **↑/↓** to step manually while playback continues, or press **Space** to pause on something interesting
 
 ### Presentations
 
@@ -192,9 +207,8 @@ See [Collections](./collections.md) for how to create and manage them.
 
 ### Slideshow Exits Unexpectedly
 
-- Pressing **↑** or **↓** stops the slideshow and returns to manual navigation
 - **Escape** exits photo frame mode
-- Both are intentional behaviors for quick exit
+- Exiting photo frame mode is intentional
 
 Have ideas? [Open an issue](https://github.com/Marvbudd/shoebox/issues) on GitHub!
 

@@ -1,6 +1,6 @@
 <template>
   <div class="date-input">
-    <div class="date-row" :class="{ 'date-row-small': size === 'small' }">
+    <div class="date-row" :class="{ 'date-row-small': size === 'small', 'date-row-with-time': showTime && size !== 'small' }">
       <input 
         :value="year"
         @input="$emit('update:year', $event.target.value)"
@@ -23,6 +23,14 @@
         placeholder="Day"
         :class="size === 'small' ? 'date-day-small' : 'date-day'"
       />
+      <input
+        v-if="showTime"
+        :value="time"
+        @input="$emit('update:time', $event.target.value)"
+        type="text"
+        placeholder="HH:MM:SS"
+        :class="size === 'small' ? 'date-time-small' : 'date-time'"
+      />
     </div>
     <small v-if="showHint" class="date-hint">Partial dates allowed (e.g., year only)</small>
   </div>
@@ -42,6 +50,14 @@ defineProps({
     type: String,
     default: ''
   },
+  time: {
+    type: String,
+    default: ''
+  },
+  showTime: {
+    type: Boolean,
+    default: false
+  },
   showHint: {
     type: Boolean,
     default: true
@@ -53,7 +69,7 @@ defineProps({
   }
 });
 
-defineEmits(['update:year', 'update:month', 'update:day']);
+defineEmits(['update:year', 'update:month', 'update:day', 'update:time']);
 
 const validMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 </script>
@@ -69,6 +85,10 @@ const validMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
   gap: 0.5rem;
 }
 
+.date-row-with-time {
+  grid-template-columns: 120px 120px 80px 120px;
+}
+
 .date-row-small {
   display: flex;
   gap: 0.5rem;
@@ -77,7 +97,8 @@ const validMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 .date-year,
 .date-month,
-.date-day {
+.date-day,
+.date-time {
   padding: 0.75rem;
   border: 1px solid #ced4da;
   border-radius: 4px;
@@ -86,7 +107,8 @@ const validMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 .date-year:focus,
 .date-month:focus,
-.date-day:focus {
+.date-day:focus,
+.date-time:focus {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
@@ -98,7 +120,8 @@ const validMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 .date-year-small,
 .date-month-small,
-.date-day-small {
+.date-day-small,
+.date-time-small {
   width: auto !important;
   padding: 0.5rem;
   border: 1px solid #ced4da;
@@ -116,6 +139,14 @@ const validMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 .date-day-small {
   width: 50px !important;
+}
+
+.date-time {
+  width: 120px;
+}
+
+.date-time-small {
+  width: 90px !important;
 }
 
 .date-hint {

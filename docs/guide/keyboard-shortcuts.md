@@ -48,18 +48,25 @@ Transform Shoebox into a digital photo frame for displaying your archive.
   - Default: 5 seconds per photo
 
 ### Speed Control
-- **← Left Arrow**: Decrease slideshow speed by 1 second (slower = longer per photo, min: 1s, max: 30s)
-- **→ Right Arrow**: Increase slideshow speed by 1 second (faster = shorter per photo, min: 1s, max: 30s)
+- **← Left Arrow**: Increase slideshow speed by 1 second (faster = shorter per photo, min: 1s, max: 30s)
+- **→ Right Arrow**: Decrease slideshow speed by 1 second (slower = longer per photo, min: 1s, max: 30s)
 
 ### Navigation Mode
 - **Backspace**: Reverse direction (forward ⇄ backward)
 - **Ctrl+Shift+R**: Toggle Random/Sequential mode
   - Random: Randomly selects next photo (avoids repetition)
   - Sequential: Follows current sort order
+- **↑ Up Arrow**: Show previous slide while slideshow remains active
+- **↓ Down Arrow**: Show next slide while slideshow remains active
+  - The autoplay timer resets after each manual step
+- **H**: Re-show slideshow shortcut tooltip
+
+### Touch and Pen Gestures
+- **Swipe left**: Next slide
+- **Swipe right**: Previous slide
   
 ### Exit
 - **Escape**: Exit photo frame mode (stops slideshow)
-- **↑ Up / ↓ Down**: Stop slideshow and resume manual navigation
 
 ### Visual Indicators
 The slideshow shows an overlay with current status:

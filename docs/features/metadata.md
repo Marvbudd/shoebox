@@ -174,7 +174,7 @@ The Media Manager uses a two-column layout:
 - **Left Column**: Metadata editing forms
   - People section with scrollable list (up to 5 people before scrolling)
   - Basic info (accession, file, type, archive path, file status)
-  - Date entry (year, month, day)
+  - Date entry (year, month, day, with optional time)
   - Location fields (city, state, GPS lookup)
   - Source information
   - Playlist entries
@@ -183,14 +183,21 @@ The Media Manager uses a two-column layout:
 - **Right Column**: Media preview and face detection
   - Large media preview (photo/video/audio)
   - Click preview to open media in external window
-  - Face detection controls (for photos)
+  - Reorganized face detection controls (for photos) with batch-first action grouping
   - Detected faces visualization
   - Face-to-person assignment
+
+Recent usability updates emphasize queue-based throughput:
+
+- Batch-related controls and status are grouped near the preview for faster review loops
+- Queue navigation and save-and-navigate actions stay visible in a consistent position
+- Progress and completion messaging are consolidated to reduce duplicate status text during batch work
 
 **People Section Features**:
 
 - **Person selection**: Dropdown populated from Person Manager database
 - **Person Manager access**: Click 👤 button to open Person Manager
+- **Select mode shortcut**: When Person Manager is opened from Media Manager for selection, double-click a person to select and confirm in one step (same result as **Select This Person**)
 - **Position context**: Add descriptive text (e.g., "holding baby", "in back row")
 - **Reorder controls**: Use ▲ ▼ buttons to change person order
 - **Face assignment**: For photos, use "Assign Face" dropdown to match detected faces (shown with confidence %)
@@ -206,6 +213,23 @@ The Media Manager uses a two-column layout:
 5. Use "Assign Face" dropdown to match numbered faces
 6. Click **Assign** button to link person to face
 7. Confidence percentage shown for assignments
+
+**False-positive cleanup shortcut:**
+
+If detection produces many incorrect faces (for example, pattern-heavy photos with no real people), click **Clear** in the unresolved faces section in Media Manager. Use **Clear Unassigned** in the People section when you also want to remove person rows without current face matches for that item. Save, then run detection again with tighter settings if needed.
+
+**Batch Face Processing (queue mode):**
+
+1. Open Media Manager from a collection with **Limit** enabled
+2. Click **Run Batch Face Phase 1**
+3. Confirm the run to process queue items in order with progress and cancellation
+4. Let Shoebox preserve existing assignments and store unmatched regions as unresolved candidates
+5. Optional: create/refresh maintenance collections when prompted to build archive-wide unresolved review queues
+6. Review items and finish assignments per photo from either:
+  - your current working collection, or
+  - **Face Candidates: Unresolved** (maintenance queue)
+7. For person-centric review, open **Person Manager** and click **Match Unassigned** on a person with face descriptors
+8. Face Matching will then present descriptor groups one at a time, ranking unresolved faces nearest to each descriptor so you can assign the best matches before moving on
 
 **Navigation**:
 
@@ -227,6 +251,8 @@ The Media Manager uses a two-column layout:
 5. Use Next button to move through queue
 6. Modify only what's different for each item
 7. Face detection pre-selects last-used model per photo
+8. For large photo sets, run **Run Batch Face Phase 1** first, then review the generated **Face Candidates: Unresolved** collection
+9. If you already know the person you want to refine, use **People > Manage Persons** and **Match Unassigned** to work descriptor-by-descriptor instead of reviewing the whole collection first
 :::
 
 ## Metadata Display
@@ -285,10 +311,13 @@ Keep your Person Library clean by removing person records that are no longer ref
 
 **Using Archive Validation** (Archive > Validate):
 
-1. Run validation to detect unreferenced persons
-2. If unreferenced persons are found, a "Cleanup Unreferenced Persons" button appears
-3. Click to remove all unreferenced persons at once
-4. A list of removed persons is shown for confirmation
+1. Run validation to detect:
+  - unreferenced persons
+  - orphaned face descriptors
+  - orphaned/invalid unresolved face candidates (`candidatefaces`)
+2. If issues are found, cleanup buttons appear (for example, **Cleanup Unreferenced Persons**, **Cleanup Orphaned Descriptors**, **Cleanup Orphaned Face Candidates**)
+3. Click the relevant cleanup action to remove invalid/unreferenced data
+4. A summary of removed records is shown for confirmation
 5. Archive is automatically backed up before cleanup
 
 **Safety Features:**

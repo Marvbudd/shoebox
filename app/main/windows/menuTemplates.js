@@ -22,6 +22,7 @@ import { Menu } from 'electron';
  * @param {Function} options.backupArchive - Handler for backing up archive
  * @param {Function} options.backupAllCollections - Handler for backing up all collections
  * @param {Function} options.createMaintenanceCollections - Handler for creating maintenance collections
+ * @param {Function} options.createSymlinkNamedCollections - Handler for creating collections from symlink source directories
  * @param {Function} options.updateCollectionMetadata - Handler for editing collection metadata
  * @param {Function} options.addItemsFromCollection - Handler for adding items from another collection
  * @param {Function} options.removeItemsFromCollection - Handler for removing items in another collection
@@ -52,6 +53,7 @@ export function createMainMenu(options) {
     backupArchive,
     backupAllCollections,
     createMaintenanceCollections,
+    createSymlinkNamedCollections,
     updateCollectionMetadata,
     addItemsFromCollection,
     removeItemsFromCollection,
@@ -178,6 +180,10 @@ export function createMainMenu(options) {
           label: 'Bul&k Edit Items in Collection',
           click: createBulkEditItemsWindow
         } : null),
+        {
+          label: 'Create S&ymlink Named Collections',
+          click: createSymlinkNamedCollections
+        },
         (showCollection ? {
           label: 'E&xport Collection',
           click: buildCollection

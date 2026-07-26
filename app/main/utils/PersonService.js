@@ -611,13 +611,14 @@ export class PersonService {
     Object.entries(persons).forEach(([personID, person]) => {
       if (person.faceBioData) {
         person.faceBioData.forEach(desc => {
-          if (desc.link === link) {
+          if (desc.link === link && desc?.ExcludeFromMatching !== true) {
             descriptors.push({
               personID,
               model: desc.model,
               region: desc.region,
               descriptor: desc.descriptor,
-              confidence: desc.confidence
+              confidence: desc.confidence,
+              ExcludeFromMatching: desc.ExcludeFromMatching === true
             });
           }
         });
@@ -639,7 +640,7 @@ export class PersonService {
     
     personIDs.forEach(personID => {
       if (persons[personID] && persons[personID].faceBioData) {
-        const descriptor = persons[personID].faceBioData.find(d => d.link === link);
+        const descriptor = persons[personID].faceBioData.find(d => d.link === link && d?.ExcludeFromMatching !== true);
         if (descriptor) {
           results.set(personID, descriptor);
         }

@@ -11,7 +11,7 @@ WINDOW="${1:-${VUE_WINDOW:-mainWindow}}"
 echo "Building Vue window: $WINDOW"
 
 # Run Vite build
-VUE_WINDOW="$WINDOW" yarn vite build
+VUE_WINDOW="$WINDOW" yarn exec vite build
 
 # Define paths
 BUILD_DIR="app/render/vue-dist/$WINDOW"

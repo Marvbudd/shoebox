@@ -145,7 +145,7 @@ When you have an archive already open, the Add Media Metadata window automatical
 5. Enter optional metadata that applies to ALL items being imported:
    - **Person**: First/Last name (creates person references for all items)
    - **Description**: Text that applies to all items
-   - **Date**: Year/Month/Day (if all items share the same date)
+   - **Date**: Year/Month/Day with optional HH:MM:SS time (if all items share the same date)
    - **Location**: Detail/City/State (if all items from same location)
    - **Source**: Who provided these items (First/Last, Date received)
 6. Click **Save**
@@ -163,7 +163,7 @@ When you have an archive already open, the Add Media Metadata window automatical
 **Metadata Extraction (Photos Only):**
 
 Shoebox automatically extracts:
-- **Date**: From EXIF DateTimeOriginal, CreateDate, ModifyDate, etc.
+- **Date**: From EXIF DateTimeOriginal, CreateDate, ModifyDate, etc., including time when available
 - **GPS**: Latitude/longitude coordinates (plus city/state if present in metadata)
 - **Description**: From EXIF/IPTC/XMP description, caption, or title fields
 

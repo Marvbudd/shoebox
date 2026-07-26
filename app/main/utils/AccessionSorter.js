@@ -13,6 +13,8 @@
  * See docs/refactoring-recommendations.md for details
  */
 
+import { hmsToSeconds } from './helpers.js';
+
 export class AccessionSorter {
   /**
    * Sort items by date (earliest to latest)
@@ -293,11 +295,17 @@ export class AccessionSorter {
    * @private
    */
   _createDateSort(date) {
-    const { year, month, day } = date || {};
-    return new Date(
+    const { year, month, day, time } = date || {};
+    const dateSort = new Date(
       year || 0,
       (month && month.length === 3) ? this.getMonthNumber(month) - 1 : 0,
       day || 1
     );
+
+    if (time) {
+      dateSort.setSeconds(dateSort.getSeconds() + hmsToSeconds(time));
+    }
+
+    return dateSort;
   }
 }

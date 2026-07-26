@@ -5,7 +5,44 @@ All notable changes to Shoebox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.0.0] - 2026-07-26
+
+### Added
+- **Optional time-of-day support for item dates**: Item dates now support an optional `HH:MM:SS` value in addition to year/month/day. Media Manager and Add Media Metadata now accept manual time entry, and main item details display time when present.
+- **Date/time regression tests**: Added focused tests covering date parsing, time preservation, same-day time sorting, and safe enrichment of existing items from EXIF/XMP metadata.
+- **Maintenance collection for duplicate date/time timestamps**: Maintenance collection creation now includes **Items with the same date/time**, grouping items that share the same date and time down. Items without a time value are excluded.
+- **Phase 1 batch face matching workflow**: First use Media Manager Batch to detect faces for an entire collection unattended, choose collection, then Limit. Then added a descriptor-group based review flow for Face Matching. Person Manager now opens a dedicated Face Matching screen that processes one descriptor at a time, letting the operator assign groups of faces that match each descriptor for the selected person.
+- **Media Manager face cleanup shortcut**: Added **Clear All Face Data and Persons**, which discards unresolved detected faces and removes person rows that do not currently have a matched face for the item. This is useful when a photo has false detections and you want to reset face work quickly.
+
+### Changed
+- **Date sorting now uses full date-time values**: Same-day items now sort by stored time when available, while compact navigation views continue to omit time from display to preserve space.
+- **Main item details show symlink target when applicable**: The main detail pane now shows the symlink path for archive items that are stored as symlinks.
+- **Create Accessions and Add Media Metadata date workflow**: Default item dates now support optional time values during import, while source received dates remain year/month/day.
+- **Person Manager select-mode speedup**: In Media Manager selection flows, double-clicking a person now selects and confirms immediately (equivalent to pressing **Select This Person**).
+- **Face hover preview labels**: In Media Manager, hover previews now show matched person names and remain available even when **Show Overlays** is disabled.
+- **Face tagging workflow refinement**: Updated face-tag overlay and hover behavior across windows to improve consistency during assignment and unresolved-face review.
+- **Face Labels mode behavior unified across windows**: Main Window and Media Manager now share one Face Labels interaction model with persisted mode selection (`Off`, `On`, `Regions`, `All`) and consistent hover-isolation behavior.
+- **Preview interaction and snapshot workflow consolidated**: Main Window and Media Manager previews now use **single-click** to open media externally and **Shift+click** to open snapshot images. Similarity-search **View reference photo** also uses the shared snapshot path for consistent overlay rendering and file-opening behavior.
+- **Snapshot cache lifecycle management**: Shoebox now clears prior run snapshot artifacts from its cache snapshot directory during app startup.
+- **Phase 1 rematch controls exposed in Media Manager Advanced Settings**: Added persisted controls for **Phase 1 Match Threshold** (default `0.085`) and **Phase 1 Region Restore IoU** (default `0.72`) so strict descriptor matching and geometry fallback can be tuned without code changes.
+- **Slideshow control refinements during active playback**: **↑/↓** now move previous/next slide without stopping playback, manual stepping resets autoplay timing, and random mode maintains history for stable previous/next navigation.
+- **Slideshow discoverability and interaction updates**: Added **H** to re-show slideshow shortcuts and added swipe gestures (left/right) for next/previous slide navigation.
+
+### Fixed
+- **Existing item metadata enrichment**: When Add Media Metadata encounters an item already present in `accessions.json`, Shoebox now adds EXIF/XMP time only when the stored year/month/day matches the extracted date and the stored item lacks time. Manually changed dates are left untouched.
+- **Archive creation path handling**: Fixed `accessions.json` path resolution so explicit file paths are not treated as directories, preventing errors such as `.../accessions.json/accessions.json` during archive creation.
+- **Create Accessions validation and person lookup resilience**: Improved handling for missing media directories and missing archive paths so Create Accessions and existing-person lookup fail more clearly instead of crashing.
+- **Vue build script under Yarn 4**: Updated the Vue build script to invoke Vite correctly with Yarn Berry, restoring `yarn run build:vue` after dependencies are installed.
+- **Reference photo preview overlays**: Similarity-search reference previews now display the matched face region and person label when region metadata is available.
+- **Reference snapshot file-open reliability**: Replaced browser HTML temp-file snapshot opening with generated PNG snapshots opened via OS file handlers to avoid intermittent `ERR_FILE_NOT_FOUND` failures.
+
+### Documentation
+- Updated archive schema and workflow docs to describe `date.time`, optional manual time entry, time-aware sorting, and current Add Media Metadata behavior.
+- Updated face detection and Media Manager docs with the new batch phase 1 workflow, unresolved candidate queue behavior, and maintenance-collection review flow.
+- Updated face detection docs to reflect current Face Labels mode behavior and hover interactions in Main Window and Media Manager.
+- Updated face detection docs with persisted advanced controls for Phase 1 re-match thresholds and current preview interaction shortcuts (single-click external open, Shift+click snapshot).
+- Documented select-mode double-click person selection and hover name labels for face previews with overlays off.
+- Documented when and how to use **Clear All Face Data and Persons** to recover quickly from false-positive face detection runs.
 
 ## [3.2.2] - 2026-06-02
 

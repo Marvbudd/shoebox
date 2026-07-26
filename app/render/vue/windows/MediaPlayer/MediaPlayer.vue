@@ -101,7 +101,8 @@ let updateInterval = null;
 let durationTimer = null;  // Store timeout for playlist duration auto-pause
 let currentMediaLink = null;
 let playlistEntries = [];  // Store playlist entries for auto-display
-let lastDisplayedEntry = null;  // Track last auto-displayed entry to avoid duplicates
+let lastDisplayedCueKey = null;  // Track last auto-displayed cue to avoid duplicate triggers
+let pauseListener = null;
 
 // Reference state - tracks when media was opened from a playlist reference
 const referenceInfo = ref({
@@ -193,9 +194,35 @@ const getCurrentPlaybackInfo = () => {
 // Expose to window for IPC
 window.getCurrentPlaybackTime = getCurrentPlaybackInfo;
 
+const detachMediaElementListeners = () => {
+  if (mediaElement && pauseListener) {
+    mediaElement.removeEventListener('pause', pauseListener);
+  }
+  pauseListener = null;
+};
+
 // Receive media display data from main process
 const handleMediaDisplay = async (mediaData) => {
-  const itemObject = typeof mediaData === 'string' ? JSON.parse(mediaData) : mediaData;
+  let itemObject = mediaData;
+  if (typeof mediaData === 'string') {
+    try {
+      itemObject = JSON.parse(mediaData);
+    } catch (error) {
+      console.error('Invalid mediaDisplay payload:', error, mediaData);
+      detailContent.value = '<p>Unable to display media: invalid payload.</p>';
+      mediaPreviewPath.value = null;
+      hasMediaElement.value = false;
+      return;
+    }
+  }
+
+  if (!itemObject || typeof itemObject !== 'object') {
+    console.error('Invalid mediaDisplay payload object:', itemObject);
+    detailContent.value = '<p>Unable to display media: invalid data.</p>';
+    mediaPreviewPath.value = null;
+    hasMediaElement.value = false;
+    return;
+  }
   
   detailContent.value = itemObject.descDetail;
   document.title = itemObject.link || 'Shoebox Media';
@@ -239,6 +266,7 @@ const handleMediaDisplay = async (mediaData) => {
     clearTimeout(durationTimer);
     durationTimer = null;
   }
+  detachMediaElementListeners();
   
   // Wait for DOM update to find media element
   nextTick(() => {
@@ -250,7 +278,7 @@ const handleMediaDisplay = async (mediaData) => {
       updateInterval = setInterval(updateCurrentTime, 100);
       
       // Add event listeners to clear duration timer when user manually controls playback
-      const handlePause = () => {
+      pauseListener = () => {
         // Clear timer if it exists (means user paused, not timer)
         // If timer paused it, durationTimer will already be null
         if (durationTimer) {
@@ -259,7 +287,7 @@ const handleMediaDisplay = async (mediaData) => {
         }
       };
       
-      mediaElement.addEventListener('pause', handlePause);
+      mediaElement.addEventListener('pause', pauseListener);
       
       // Handle auto-play with start time and duration
       if (itemObject.entry) {
@@ -336,7 +364,7 @@ const dismissReference = () => {
 // Extract playlist entries from DOM
 const extractPlaylistEntries = () => {
   playlistEntries = [];
-  lastDisplayedEntry = null;
+  lastDisplayedCueKey = null;
   
   const playEntryElements = document.querySelectorAll('.playEntry');
   playEntryElements.forEach(entryElement => {
@@ -380,9 +408,10 @@ const checkPlaylistEntries = (currentTime) => {
     // Check if we're within 0.5 seconds of the start time (to avoid missing it)
     if (currentTime >= entry.startSeconds - 0.5 && currentTime < entry.startSeconds + 1) {
       // Don't display same entry twice
-      if (lastDisplayedEntry === entry.ref) continue;
+      const cueKey = `${entry.ref}@@${entry.start}`;
+      if (lastDisplayedCueKey === cueKey) continue;
       
-      lastDisplayedEntry = entry.ref;
+      lastDisplayedCueKey = cueKey;
       
       // Display the referenced photo
       window.electronAPI.playItem({
@@ -462,6 +491,7 @@ onUnmounted(() => {
     clearTimeout(durationTimer);
     durationTimer = null;
   }
+  detachMediaElementListeners();
 });
 </script>
 
@@ -486,6 +516,7 @@ onUnmounted(() => {
 }
 
 #previewDiv {
+  position: relative;
   flex: 3 1 0;
   min-height: 0;
   width: 100%;
@@ -502,6 +533,13 @@ onUnmounted(() => {
   height: auto;
   width: auto;
   object-fit: contain;
+}
+
+.face-overlay-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
 }
 
 #previewAudio {

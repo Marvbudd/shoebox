@@ -10,8 +10,12 @@
 
 import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
+import canvas from 'canvas';
 import { AccessionClass } from '../../main/utils/AccessionClass.js';
+import { validateMediaDirectory } from '../utils/helpers.js';
+import { FACE_OVERLAY_STYLE } from '../../render/vue/shared/faceOverlayEngine.js';
 
 /**
  * Register accessions and media IPC handlers
@@ -84,6 +88,11 @@ export function registerAccessionsHandlers(
         setAccessionClass(undefined);
       }
 
+      const validation = validateMediaDirectory(formData.directory);
+      if (!validation.valid) {
+        throw new Error(validation.reason);
+      }
+
       // Set new accessions path
       const accessionsPath = path.resolve(formData.directory, "accessions.json");
       nconf.set('db:accessionsPath', accessionsPath);
@@ -122,6 +131,7 @@ export function registerAccessionsHandlers(
         dateYear: formData.dateYear || '',
         dateMonth: formData.dateMonth || '',
         dateDay: formData.dateDay || '',
+        dateTime: formData.dateTime || '',
         locationDetail: formData.locationDetail || '',
         locationCity: formData.locationCity || '',
         locationState: formData.locationState || ''
@@ -237,6 +247,185 @@ export function registerAccessionsHandlers(
     } catch (error) {
       console.error('Failed to open media file:', error);
       return { success: false, error: error.message };
+    }
+  });
+
+  // Open a static photo + face-tag snapshot image via the OS default image viewer.
+  ipcMain.handle('media:openSnapshotExternal', async (_event, payload = {}) => {
+    try {
+      verifyAccessions();
+      const accessionClass = getAccessionClass();
+      const type = payload.type;
+      const link = payload.link;
+      const overlaySnapshot = payload.overlaySnapshot || null;
+
+      if (type !== 'photo' || !link) {
+        return { success: false, error: 'Snapshot export requires a photo link' };
+      }
+
+      const baseDir = path.dirname(accessionClass.accessionFilename);
+      const fullPath = path.resolve(baseDir, type, link);
+      if (!fs.existsSync(fullPath)) {
+        return { success: false, error: `Photo not found: ${fullPath}` };
+      }
+      const sourceImage = await canvas.loadImage(fullPath);
+      if (!sourceImage || !sourceImage.width || !sourceImage.height) {
+        return { success: false, error: 'Unable to decode source photo for snapshot' };
+      }
+
+      const renderCanvas = canvas.createCanvas(sourceImage.width, sourceImage.height);
+      const ctx = renderCanvas.getContext('2d');
+      ctx.drawImage(sourceImage, 0, 0, sourceImage.width, sourceImage.height);
+
+      const mode = overlaySnapshot?.mode || 'off';
+      const faces = Array.isArray(overlaySnapshot?.faces) ? overlaySnapshot.faces : [];
+
+      if (mode !== 'off') {
+        ctx.textBaseline = 'alphabetic';
+        for (let index = 0; index < faces.length; index++) {
+          const face = faces[index];
+          const region = face?.region;
+          if (!region) continue;
+
+          const w = Number(region.w || 0) * sourceImage.width;
+          const h = Number(region.h || 0) * sourceImage.height;
+          const x = Number(region.x || 0) * sourceImage.width - (w / 2);
+          const y = Number(region.y || 0) * sourceImage.height - (h / 2);
+
+          if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+            continue;
+          }
+
+          ctx.strokeStyle = '#ff6600';
+          ctx.lineWidth = FACE_OVERLAY_STYLE.borderWidth;
+          ctx.strokeRect(x, y, w, h);
+
+          const numberText = face?.numberText || String(index + 1);
+          ctx.font = FACE_OVERLAY_STYLE.numberFont;
+          const numberWidth = ctx.measureText(numberText).width;
+          const numberHeight = FACE_OVERLAY_STYLE.numberBoxHeight;
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+          ctx.fillRect(x + 2, y + 2, numberWidth + 10, numberHeight);
+          ctx.fillStyle = '#ff6600';
+          ctx.fillText(numberText, x + 6, y + FACE_OVERLAY_STYLE.numberTextYOffset);
+
+          const label = String(face?.label || '').trim();
+          if (label.length === 0) {
+            continue;
+          }
+
+          ctx.font = FACE_OVERLAY_STYLE.labelFont;
+          const labelWidth = Math.ceil(ctx.measureText(label).width) + 12;
+          const labelHeight = FACE_OVERLAY_STYLE.labelBoxHeight;
+          const labelX = Math.max(0, Math.min(sourceImage.width - labelWidth, x + 2));
+          const labelYAbove = y - (labelHeight + 6);
+          const labelY = labelYAbove < 0
+            ? Math.min(sourceImage.height - labelHeight, y + h + 6)
+            : labelYAbove;
+
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+          ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(label, labelX + 5, labelY + FACE_OVERLAY_STYLE.labelTextYOffset);
+        }
+      }
+
+      const safeStem = String(link)
+        .replace(/[^a-zA-Z0-9._-]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 80) || 'snapshot';
+
+      const fileName = `shoebox-snapshot-${safeStem}-${Date.now()}-${crypto.randomUUID()}.png`;
+      const cacheRoot = process.env.XDG_CACHE_HOME
+        ? path.resolve(process.env.XDG_CACHE_HOME)
+        : path.join(os.homedir(), '.cache');
+      const snapshotDir = path.join(cacheRoot, 'shoebox', 'snapshots');
+
+      let outFile;
+      try {
+        fs.mkdirSync(snapshotDir, { recursive: true });
+        outFile = path.join(snapshotDir, fileName);
+      } catch (_mkdirError) {
+        outFile = path.join(os.tmpdir(), fileName);
+      }
+
+      fs.writeFileSync(outFile, renderCanvas.toBuffer('image/png'));
+
+      const openResult = await shell.openPath(outFile);
+      if (openResult) {
+        console.error('Failed to open snapshot image file:', openResult);
+        return { success: false, error: openResult };
+      }
+
+      return { success: true, filePath: outFile };
+    } catch (error) {
+      console.error('Failed to open external snapshot:', error);
+      return { success: false, error: error.message || String(error) };
+    }
+  });
+
+  // Open a renderer-generated static snapshot image (PNG/JPEG/WebP) via the OS default app.
+  ipcMain.handle('media:openSnapshotImageExternal', async (_event, payload = {}) => {
+    try {
+      verifyAccessions();
+      const accessionClass = getAccessionClass();
+      const dataUrl = payload?.dataUrl;
+      const linkHint = String(payload?.link || 'snapshot');
+
+      if (!dataUrl || typeof dataUrl !== 'string') {
+        return { success: false, error: 'Missing snapshot image data' };
+      }
+
+      const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+      if (!match) {
+        return { success: false, error: 'Invalid snapshot image format' };
+      }
+
+      const mimeType = String(match[1] || '').toLowerCase();
+      const base64Data = match[2] || '';
+      let extension = 'png';
+      if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
+        extension = 'jpg';
+      } else if (mimeType === 'image/webp') {
+        extension = 'webp';
+      }
+
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+      if (!imageBuffer || imageBuffer.length === 0) {
+        return { success: false, error: 'Snapshot image is empty' };
+      }
+
+      const safeStem = linkHint
+        .replace(/[^a-zA-Z0-9._-]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 80) || 'snapshot';
+
+      const fileName = `shoebox-snapshot-${safeStem}-${Date.now()}-${crypto.randomUUID()}.${extension}`;
+      const cacheRoot = process.env.XDG_CACHE_HOME
+        ? path.resolve(process.env.XDG_CACHE_HOME)
+        : path.join(os.homedir(), '.cache');
+      const snapshotDir = path.join(cacheRoot, 'shoebox', 'snapshots');
+
+      let outFile;
+      try {
+        fs.mkdirSync(snapshotDir, { recursive: true });
+        outFile = path.join(snapshotDir, fileName);
+      } catch (_mkdirError) {
+        outFile = path.join(os.tmpdir(), fileName);
+      }
+
+      fs.writeFileSync(outFile, imageBuffer);
+
+      const openResult = await shell.openPath(outFile);
+      if (openResult) {
+        console.error('Failed to open snapshot image file:', openResult);
+        return { success: false, error: openResult };
+      }
+
+      return { success: true, filePath: outFile };
+    } catch (error) {
+      console.error('Failed to open generated snapshot image:', error);
+      return { success: false, error: error.message || String(error) };
     }
   });
 

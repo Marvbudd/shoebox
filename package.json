@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "3.2.2",
+  "version": "4.0.0",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",
@@ -70,14 +70,16 @@
   },
   "scripts": {
     "start": "./app/node_modules/.bin/electron app/main/main.js",
+    "start:face-debug": "SHOEBOX_FACE_DEBUG=1 yarn start",
     "dev": "vite",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "build:vue": "yarn build:personManager && yarn build:createAccessions && yarn build:mediaManager && yarn build:updateCollection && yarn build:collectionManager && yarn build:mainWindow && yarn build:mediaPlayer && yarn build:collectionSetOperations",
+    "build:vue": "yarn build:personManager && yarn build:faceMatching && yarn build:createAccessions && yarn build:mediaManager && yarn build:updateCollection && yarn build:collectionManager && yarn build:mainWindow && yarn build:mediaPlayer && yarn build:collectionSetOperations",
     "build:mainWindow": "./scripts/build-vue.sh mainWindow",
     "build:mediaManager": "./scripts/build-vue.sh mediaManager",
     "build:personManager": "./scripts/build-vue.sh personManager",
+    "build:faceMatching": "./scripts/build-vue.sh faceMatching",
     "build:createAccessions": "./scripts/build-vue.sh createAccessions",
     "build:updateCollection": "./scripts/build-vue.sh updateCollection",
     "build:collectionManager": "./scripts/build-vue.sh collectionManager",
@@ -121,10 +123,10 @@
     "handlebars": "^4.7.9",
     "nconf": "^0.13.0",
     "vite": "^8.1.5",
-    "vitepress": "^1.6.4",
+    "vitepress": "^2.0.0-alpha.18",
     "vue": "^3.5.40"
   },
-  "packageManager": "yarn@4.14.1",
+  "packageManager": "yarn@4.17.1",
   "resolutions": {
     "minimatch": "^10.2.5",
     "rollup": "^4.60.1",
@@ -134,7 +136,11 @@
     "node-gyp>undici": "7.28.0"
   },
   "devDependencies": {
+    "@algolia/client-search": "^5.56.0",
     "@vitejs/plugin-vue": "^6.0.8",
-    "electron": "^40.10.6"
+    "algoliasearch": "^5.56.0",
+    "electron": "^40.10.6",
+    "electron-builder-squirrel-windows": "26.15.3",
+    "search-insights": "^2.17.3"
   }
 }

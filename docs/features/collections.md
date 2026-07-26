@@ -226,6 +226,7 @@ The system scans your entire archive and creates collections for items missing d
 - **Source data** (`_nosource`) - Items with no source attribution
 - **Description** (`_nodescription`) - Items with no description text
 - **Living people** (`_living`) - Items containing people marked as living
+- **Same date/time** (`_samedatetime`) - Items that share the same recorded date/time - they may be duplicates
 
 ### Using Maintenance Collections
 
@@ -250,6 +251,7 @@ The system scans your entire archive and creates collections for items missing d
 | `_nosource` | Missing Source | Items with empty or missing source array |
 | `_nodescription` | Missing Desc | Items with empty, missing, or whitespace-only description |
 | `_living` | Living People | Items with at least one person marked as living |
+| `_samedatetime` | Same Date/Time | Items where two or more entries have the same date/time; items without a time value are excluded |
 
 ::: tip Use Case: Archive Quality Control
 Before releasing or sharing your family archive, run Create Maintenance Collections to find all items still needing metadata. Work through each collection systematically until all are empty, then you'll know your archive is complete.
@@ -266,6 +268,33 @@ The **Living People** collection helps identify items containing people who are 
 ### Deleting Maintenance Collections
 
 Maintenance collections are regular collections and can be deleted using **Collections > Delete Collection**. However, it's often easier to simply re-run **Create Maintenance Collections** to replace them with updated data.
+
+## Symlink-Named Collections
+
+Symlink-named collections are generated from directory groupings represented by symlink-backed archive items.
+
+### When to Use This
+
+Use this immediately after **Archive > Add Media Metadata** creates `accessions.json` when your archive items are symlink-backed and you want Shoebox collections that mirror existing source folder groupings.
+
+This helps operators apply bulk metadata by group, especially when source directory names carry useful context such as date, activity, or location.
+
+### Creating Symlink-Named Collections
+
+1. Go to **Collections > Create Symlink Named Collections**
+2. Shoebox checks for `mklinks.conf` next to `accessions.json`
+3. Shoebox reads line 2 of `mklinks.conf` as the source directory root
+4. For each top-level directory represented by symlink targets under that root, Shoebox creates or updates one collection
+
+Rules:
+- Only symlink-backed archive items are considered
+- Non-symlink items are ignored
+- Items outside the configured source root are ignored
+- Collection `text` and `title` are set to the source directory name
+- Collection key is derived from the source directory name with spaces removed
+- If a collection already exists, items are added without duplicating existing links
+
+If `mklinks.conf` is missing or line 2 is missing/invalid, Shoebox warns the operator and does not create symlink-named collections.
 
 ## Validation
 
@@ -300,6 +329,7 @@ Backup files have the same name as the collection with a timestamp appended (no 
 - **Validate Collection**: Check collection integrity
 - **Backup All Collections**: Create timestamped backups
 - **Create Maintenance Collections**: Generate collections for items with missing data
+- **Create Symlink Named Collections**: Generate collections from symlink source directories (using `mklinks.conf` line 2)
 - **Export Collection**: Create shareable directory (only visible when collection loaded)
 
 ## Best Practices

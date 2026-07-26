@@ -26,7 +26,8 @@ The `accessions.json` file is the core data file for the Shoebox application. It
   },
   "persons": {
     "PersonID": { /* person biographical data */ }
-  }
+  },
+  "candidatefaces": [ /* unresolved face candidates */ ]
 }
 ```
 
@@ -36,6 +37,41 @@ The `accessions.json` file is the core data file for the Shoebox application. It
 2. **PersonID References** - Items reference persons via stable UUID-based keys
 3. **Separation of Concerns** - Biographical data separate from item-specific context
 4. **Nullable TMGID** - TMG Links (stable page references) can be added later
+
+### Unresolved Candidate Faces (`candidatefaces`)
+
+`candidatefaces` is a top-level array used by unresolved-face workflows. It stores candidate regions/descriptors that were detected but not yet approved as person assignments.
+
+**Typical uses:**
+- Batch queue output for unresolved review
+- Person-oriented Match Unassigned review
+- Maintenance-collection generation for unresolved face work
+
+**Example:**
+```json
+"candidatefaces": [
+  {
+    "candidateID": "8b40bd62-9ec4-4b17-96f0-5de9e2b8d8f0",
+    "link": "IMG_3515.JPG",
+    "region": {"x": 0.51, "y": 0.34, "w": 0.12, "h": 0.16},
+    "descriptor": [0.101, -0.224, 0.778, /* ...125 more floats */],
+    "model": "ssd",
+    "confidence": 0.88,
+    "resolved": false
+  }
+]
+```
+
+**Structure properties:**
+
+- `candidateID` - Unique identifier for the candidate entry
+- `link` - Source item filename
+- `region` - Face region (x, y, w, h normalized 0-1)
+- `descriptor` - 128-dimensional float array used for matching
+- `model` - Detection model metadata (`ssd`, `mtcnn`, `tinyFace`, `manual`)
+- `confidence` - Detection confidence (0-1)
+- `resolved` - Optional workflow state used by unresolved review
+- `ExcludeFromMatching` - Optional flag (only present when true). When present, matching code must ignore this candidate in automated matching/review flows.
 
 ### Primary Keys and Identifiers
 
@@ -102,14 +138,23 @@ Flexible date representation supporting partial dates:
 "date": {
   "year": "1980",      // String or number
   "month": "Sep",      // Optional: short or full month name
-  "day": "14"          // Optional: string or number
+  "day": "14",         // Optional: string or number
+  "time": "13:45:22"   // Optional: HH:MM:SS
 }
 ```
+
+**Notes:**
+- `time` is optional and only used for item creation dates, not for compact displays that intentionally omit it.
+- Shoebox sorts by full date-time when `time` is present, even in views that only display year/month/day.
+- Existing archives without `time` remain valid.
 
 **Examples:**
 ```json
 // Full date
 {"year": "1980", "month": "Sep", "day": "14"}
+
+// Full date with time
+{"year": "1980", "month": "Sep", "day": "14", "time": "13:45:22"}
 
 // Year only
 {"year": "1915"}
@@ -263,6 +308,10 @@ Tracks how and when items were acquired:
 | `personID` | string | Yes | personID reference to person who provided the item |
 | `received` | object | No | When the item was received (same format as `date`) |
 
+::: tip Time Support Scope
+Only item creation dates currently use the optional `date.time` field. Source `received` dates continue to use year/month/day.
+:::
+
 ## Persons Object
 
 Centralized person library storing biographical data once per unique individual.
@@ -401,6 +450,7 @@ Each person record stores face descriptors centrally:
 - `region` - Face region (x, y, w, h normalized 0-1)
 - `descriptor` - 128-dimensional float array (face embedding)
 - `confidence` - Detection confidence (0-1), 1.0 for manual regions
+- `ExcludeFromMatching` - Optional flag (only present when true). When true, this descriptor remains visible but is ignored by matching flows.
 
 **Key Benefits:**
 
@@ -539,6 +589,7 @@ A comprehensive validation tool is available via **Archive > Validate**. This ge
 - **Face Tags**: Face tag personIDs match item.person array
 - **Accession Numbers**: No duplicate accession values
 - **Orphaned Face Descriptors**: Face descriptors that don't match any items or person assignments
+- **Candidate Face Integrity**: `candidatefaces` entries have valid links, valid regions, valid descriptors, and point to existing items
 - **Unreferenced Persons**: Persons not linked to any items
 
 Validation generates a timestamped log file with detailed error reports.
@@ -552,6 +603,12 @@ When validation detects issues that can be automatically cleaned up, buttons app
 - Appears when orphaned face descriptors are detected
 - Creates backup before cleanup
 - Useful after deleting items or reorganizing person assignments
+
+**Cleanup Orphaned Face Candidates**
+- Removes orphaned/invalid unresolved face candidate entries from `candidatefaces`
+- Appears when candidate face validation finds missing links, missing items, invalid regions, invalid descriptors, or invalid entries
+- Creates backup before cleanup
+- Useful after deleting items, imports, and large face detection cleanup passes
 
 **Cleanup Unreferenced Persons**
 - Removes persons not referenced by any items

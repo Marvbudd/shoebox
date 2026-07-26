@@ -126,22 +126,49 @@ export class FaceDetectionService {
       throw new Error('Face detection models not loaded. Call loadModels() first.');
     }
 
-    if (!fs.existsSync(imagePath)) {
-      throw new Error(`Image file not found: ${imagePath}`);
-    }
-
     try {
+      if (!fs.existsSync(imagePath)) {
+        throw new Error(`Image file not found: ${imagePath}`);
+      }
+
+      const fileStats = fs.statSync(imagePath);
+      if (!fileStats.isFile() || fileStats.size <= 0) {
+        throw new Error(`Image file is not readable: ${imagePath}`);
+      }
+
       // Load image from disk
       const img = await canvas.loadImage(imagePath);
+
+      if (!img || !Number.isFinite(img.width) || !Number.isFinite(img.height) || img.width <= 0 || img.height <= 0) {
+        throw new Error(`Image could not be decoded: ${imagePath}`);
+      }
+
+      // Use a concrete canvas surface to avoid "Not an image canvas" errors from face-api internals.
+      const detectionCanvas = canvas.createCanvas(img.width, img.height);
+      const ctx = detectionCanvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, img.width, img.height);
+
+      const imageData = ctx.getImageData(0, 0, img.width, img.height);
+      // Convert to an RGB tensor so face-api uses extractFaceTensors instead of canvas extractFaces.
+      const inputTensor = faceapi.tf.tidy(() => {
+        // tfjs 1.x does not reliably accept Uint8ClampedArray here; normalize first.
+        const rgbaValues = Int32Array.from(imageData.data);
+        const rgba = faceapi.tf.tensor3d(rgbaValues, [img.height, img.width, 4], 'int32');
+        return rgba.slice([0, 0, 0], [img.height, img.width, 3]);
+      });
       
       // Run detection with each requested model
       const allDetections = [];
-      
-      for (const modelName of models) {
-        const detections = await this._detectWithModel(img, modelName, minConfidence);
-        if (detections && detections.length > 0) {
-          allDetections.push(...detections.map(d => ({ ...d, model: modelName })));
+
+      try {
+        for (const modelName of models) {
+          const detections = await this._detectWithModel(inputTensor, modelName, minConfidence);
+          if (detections && detections.length > 0) {
+            allDetections.push(...detections.map(d => ({ ...d, model: modelName })));
+          }
         }
+      } finally {
+        inputTensor.dispose();
       }
       
       if (allDetections.length === 0) {
@@ -150,8 +177,8 @@ export class FaceDetectionService {
 
       // Deduplicate overlapping faces if using multiple models
       const faces = models.length > 1 
-        ? this._deduplicateFaces(allDetections, img.width, img.height)
-        : this._convertToNormalizedFormat(allDetections, img.width, img.height);
+        ? this._deduplicateFaces(allDetections, detectionCanvas.width, detectionCanvas.height)
+        : this._convertToNormalizedFormat(allDetections, detectionCanvas.width, detectionCanvas.height);
 
       return faces;
 

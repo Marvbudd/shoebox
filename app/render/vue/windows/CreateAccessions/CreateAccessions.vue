@@ -150,6 +150,8 @@
               v-model:year="formData.dateYear"
               v-model:month="formData.dateMonth"
               v-model:day="formData.dateDay"
+              v-model:time="formData.dateTime"
+              :show-time="true"
             />
           </div>
 
@@ -222,6 +224,7 @@ const formData = ref({
   dateYear: '',
   dateMonth: '',
   dateDay: '',
+  dateTime: '',
   locationDetail: '',
   locationCity: '',
   locationState: ''
@@ -294,6 +297,10 @@ watch(() => formData.value.directory, async (newDir) => {
 window.electronAPI.onPersonSelected((personID) => {
   formData.value.sourcePersonID = personID;
   sourceMode.value = 'existing';
+  awaitingPersonSelection.value = false;
+});
+
+window.electronAPI.onPersonSelectionCanceled(() => {
   awaitingPersonSelection.value = false;
 });
 

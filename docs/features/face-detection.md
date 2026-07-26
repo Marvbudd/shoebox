@@ -10,6 +10,10 @@ audience: general
 
 Shoebox includes AI-powered face detection to help you identify and tag people in your photos.
 
+For high-volume archives, Shoebox also supports two batch workflows:
+- **Batch Face Detection (collection-based):** run phase 1 across many photos in one pass
+- **Batch Face Assignment (person-centric):** review and assign unresolved candidates descriptor-by-descriptor from Person Manager
+
 ## Face Detection Models
 
 Shoebox supports three face detection models. The default model (SSD MobileNet v1) is included with the application. Additional models can be downloaded separately if needed for specific use cases. 
@@ -97,9 +101,22 @@ Click **▶ Advanced Settings** to:
 - Change detection model (SSD, MTCNN, Tiny Face)
 - Adjust **Confidence Threshold** (0.20 default - lower = more faces detected, higher = fewer false positives)
 - Adjust **Auto‑Assign Threshold** (0.60 default - higher = fewer suggestions, more manual review)
+- Adjust **Phase 1 Match Threshold** (0.085 default - descriptor distance cutoff for strict same-photo re-match)
+- Adjust **Phase 1 Region Restore IoU** (0.72 default - geometry fallback when strict descriptor match misses)
+- Toggle **Face Matching Debug Logs (SHOEBOX_FACE_DEBUG)** for detailed stage 1 re-match diagnostics
 
-**Note:** These threshold settings are automatically saved and will be remembered across sessions.
+**Note:** These settings are automatically saved and will be remembered across sessions. If detected unresolved faces are already loaded, changing **Auto-Assign Threshold** immediately reapplies stage 2 selection for the current photo.
 :::
+
+### Phase 1 Parameter Guidance
+
+- **Phase 1 Match Threshold** controls strict descriptor matching for people already in this photo.
+   - Lower values are stricter and reduce false re-matches.
+   - Higher values tolerate more descriptor drift between runs.
+- **Phase 1 Region Restore IoU** controls geometry-based fallback when descriptor distance misses.
+   - IoU means Intersection over Union: overlap area divided by combined area.
+   - Higher values require tighter box overlap.
+   - Lower values allow more positional variance but can increase risk of wrong restores.
 
 ### Step 3: Add Person to Item (For Unassigned Faces)
 
@@ -164,14 +181,82 @@ For each remaining detected face that wasn't assigned:
 2. Your face tags are now saved to the archive
 3. Close Media Manager or move to next photo
 
+## Batch Face Processing (Phase 1)
+
+If you are working through a large collection, you can run phase 1 detection in batch mode and then review the results one descriptor at a time from Person Manager.
+
+### When to Use Batch Phase 1
+
+- You already have a collection selected and want to process many photos at once
+- You want to preserve existing approved matches, but defer new assignments
+- You want unresolved face candidates available for review later, either from Media Manager or from the Person Manager-driven Face Matching screen
+
+### Batch Workflow
+
+1. Open a collection in the main window and enable **Limit** to use queue mode.
+2. Open **Media Manager** from an item in that collection.
+3. Click **Run Batch Face Phase 1**.
+4. Confirm the run. Shoebox processes queue items one by one:
+   - non-photo items are skipped
+   - existing same-photo assignments are preserved (phase 1 re-match)
+   - only unmatched regions are stored as unresolved `candidatefaces`
+5. Watch progress in Media Manager. You can click **Cancel Batch** to stop after the current item finishes.
+6. Optional: create/refresh maintenance collections to build archive-wide review queues such as **Face Candidates: Unresolved**.
+7. Open **Person Manager** and use **Match Unassigned** to review the selected person’s descriptors one at a time.
+8. For each descriptor, Shoebox ranks unresolved face candidates nearest to that descriptor and presents only that descriptor group for review.
+9. Assign the best faces for that descriptor, then move to the next descriptor when ready.
+10. You can still continue photo-centric review in Media Manager if you prefer, but the newer person-centric workflow starts in Person Manager.
+
+### Batch Face Assignment (Person-Centric)
+
+After batch detection, use **Person Manager > Match Unassigned** to process unresolved candidates by descriptor group instead of by photo.
+
+1. Open **Person Manager** and click **Match Unassigned**.
+2. Shoebox loads one descriptor group at a time.
+3. Review ranked unresolved candidates for that descriptor.
+4. Select matches and click **Assign Selected**.
+5. Continue to the next descriptor until the review queue is complete.
+
+This workflow is ideal when you want to finish one person (or one descriptor source) across many items efficiently.
+
+### FaceMatching Review Controls
+
+When reviewing unresolved candidates from **Person Manager > Match Unassigned**:
+
+- The descriptor header shows descriptor confidence and descriptor source link context.
+- **Edit Media** in the descriptor header opens the descriptor's source item in Media Manager.
+- Each candidate row includes **Edit Media** so you can inspect that candidate item directly.
+- You can select/clear candidates per descriptor and use **Assign Selected** for that descriptor group.
+- **Exclude Descriptor** marks that descriptor as excluded from automated matching while keeping it visible for review/audit.
+
+::: info Queue Refresh Behavior
+Batch phase 1 is collection-driven and does not require maintenance collections to run. Maintenance collections are archive-wide hygiene views. The unresolved review queue is generated from `candidatefaces` when maintenance collections are created/refreshed. As you approve or discard candidates, re-run maintenance collection creation to rebuild that view. Person Manager's **Match Unassigned** action is descriptor-driven and asks Shoebox to fetch the next descriptor group on demand rather than loading the entire review set up front.
+:::
+
 ## Face Badge Shortcuts and Overlays
 
 Once you've tagged some faces in your archive:
 
+- In the main window and Media Manager, use the **Face Tags** control to cycle overlay modes:
+   **Off → On → Regions → All**
+    - **Off**: no labels or regions are shown by default; hovering a face region can still reveal that face label
+    - **On**: labels are shown without drawing face regions; label placement attempts to reduce collisions
+    - **Regions**: all face regions are shown; hovering isolates to the hovered face region and label
+    - **All**: regions and labels are shown; hovering isolates to the hovered face region and label
+
 - **Hover** over face badges to preview a single face region (even if overlays are enabled)
 - **Hover** over the face assignment field in the People list to preview that face
+- When a hovered face is already assigned, the preview also shows the matched person's name directly on the photo
+- This hover preview works even when **Face Labels** is set to **Off**, so you can keep a clean view and still identify faces on demand
+- Hover behavior is now aligned across Main Window and Media Manager for more predictable face review and assignment
 - **Click** face badges to search for similar faces in your library
 - This helps quickly identify people across multiple photos
+
+### Preview Click Shortcuts (Main Window and Media Manager)
+
+- **Single click** on a photo preview opens the original media in your system default viewer.
+- **Shift+click** on a photo preview opens a static snapshot image with the current face-overlay mode rendered into the image.
+- In face similarity search, **View reference photo** opens a snapshot-style view with the referenced face region and label when region metadata is available.
 
 ::: info First Time Using Face Badges
 When you click a face badge for the first time, you'll see a message explaining you need to tag faces first. This is expected - the search feature only works after you've created face descriptors by assigning faces to persons.
@@ -226,6 +311,14 @@ Access via **People > Manage Persons** or the 👤 button in Media Manager.
 2. Select different face from dropdown
 3. Click Assign
 
+**Reset False Detections Quickly:**
+1. In Media Manager unresolved faces section, click **Clear** to remove unresolved/excluded face candidate work for the current item.
+2. In the People section, click **Clear Unassigned** to remove person rows that do not currently have face assignments.
+3. Click **Save Changes** to commit the cleanup.
+4. Run **Detect Faces** again with your preferred settings if required.
+
+Use this when a photo with no real people (or heavy background patterns) generates many false positives and manual cleanup would be slow.
+
 ## Troubleshooting
 
 ### Too Many Incorrect Suggestions
@@ -254,9 +347,10 @@ If the system isn't suggesting faces you expect it to:
 ### Too Many False Positives
 
 - SSD can sometimes detect faces in patterns or objects
-- Turn off "Show Overlays" and then mouse over face badges to select a face
+- Set **Face Labels** to **Off** and then mouse over face badges to inspect one face at a time
 - Simply ignore faces that overlap or are not needed
 - **Increase the Confidence Threshold** in Advanced Settings before Face Detection
+- If a run is mostly bad detections, use **Clear**, optionally **Clear Unassigned**, save, then re-run detection with stricter settings
 
 ::: tip Settings Persistence
 All threshold settings (Confidence Threshold and Auto-Assign Threshold) are automatically saved to your configuration file (shoeboxConfig.json) and will persist across application restarts.

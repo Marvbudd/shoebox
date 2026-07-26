@@ -7,7 +7,7 @@ import { CollectionsClass } from './CollectionsClass.js';
 import { AccessionSorter } from './AccessionSorter.js';
 import { AccessionHTMLBuilder } from './AccessionHTMLBuilder.js';
 import { PersonService } from './PersonService.js';
-import { generateTimestamp } from './helpers.js';
+import { buildDateParts, enrichExistingDateWithTime, generateTimestamp, normalizeDateValue, resolveAccessionsFilePath } from './helpers.js';
 
 const subdirectories = {
   photo: 'photo',
@@ -54,16 +54,27 @@ export class AccessionClass {
       const tempDate = new Date();
       title = 'Accessions ' + tempDate.getFullYear() + tempDate.toLocaleString('default', { month: 'short' }) + tempDate.getDate();
     }
-    if (!fs.existsSync(accessionFilename)) {
-      console.error(`AccessionClass: Accessions don't exist in ${accessionFilename}`)
+
+    const resolvedAccessionFilename = accessionFilename
+      ? resolveAccessionsFilePath(accessionFilename)
+      : null;
+    const safeAccessionFilename = resolvedAccessionFilename || path.join(process.cwd(), 'accessions.json');
+
+    if (!resolvedAccessionFilename || !fs.existsSync(safeAccessionFilename)) {
+      console.warn(`AccessionClass: Accessions file not found at ${safeAccessionFilename}; creating a new archive structure.`);
       this.accessionJSON = {
         persons: {},
+        candidatefaces: [],
         accessions: {
-          title, 
+          title,
           item: []
-        }};
+        }
+      };
     } else {
-      this.accessionJSON = JSON.parse(fs.readFileSync(accessionFilename).toString())
+      this.accessionJSON = JSON.parse(fs.readFileSync(safeAccessionFilename).toString());
+      if (!Array.isArray(this.accessionJSON.candidatefaces)) {
+        this.accessionJSON.candidatefaces = [];
+      }
     }
     
     /**
@@ -73,7 +84,7 @@ export class AccessionClass {
      * @private
      */
     this.accessionsChanged = false
-    this.accessionFilename = accessionFilename
+    this.accessionFilename = safeAccessionFilename
     
     // Check if migration is needed and perform it
     const migrator = new PersonService(this.accessionJSON);
@@ -82,9 +93,9 @@ export class AccessionClass {
       // Create backup before migration
       const timestamp = generateTimestamp();      // Generate new file path with timestamp.
       // Don't want this to have a .json extension, so it is not mistaken as an active accession file.
-      const backupPath = accessionFilename.replace(/\.json$/, `.${timestamp}`);
+      const backupPath = safeAccessionFilename.replace(/\.json$/, `.${timestamp}`);
       try {
-        fs.copyFileSync(accessionFilename, backupPath);
+        fs.copyFileSync(safeAccessionFilename, backupPath);
         console.log(`AccessionClass: Backup created at ${backupPath}`);
       } catch (error) {
         console.error(`AccessionClass: Failed to create backup at ${backupPath}. Aborting migration.`, error);
@@ -123,7 +134,7 @@ export class AccessionClass {
      * @type {CollectionsClass}
      * @private
      */
-    this.collections = new CollectionsClass(path.dirname(accessionFilename))
+    this.collections = new CollectionsClass(path.dirname(safeAccessionFilename))
     this.collections.readCollections()
     this.accessionSorter = new AccessionSorter()
     this.accessionHTMLBuilder = new AccessionHTMLBuilder(this.collections, this)
@@ -320,12 +331,88 @@ export class AccessionClass {
     return path.resolve(path.dirname(this.accessionFilename), subdirectories[type], link);
   } // getMediaPath
 
+  getPhotoMetadata(filePath) {
+    return exifr.parse(filePath, {
+      tiff: true,
+      exif: true,
+      gps: true,
+      iptc: true,
+      xmp: true,
+      ifd0: true
+    });
+  }
+
+  getMetadataDateInfo(metadata, stats) {
+    const metadataCandidates = [
+      { value: metadata?.DateTimeOriginal, hasTime: true },
+      { value: metadata?.DateCreated, hasTime: false },
+      { value: metadata?.CreateDate, hasTime: true },
+      { value: metadata?.DateTimeDigitized, hasTime: true },
+      { value: metadata?.ModifyDate, hasTime: true },
+      { value: metadata?.DateTime, hasTime: true }
+    ];
+
+    for (const candidate of metadataCandidates) {
+      const normalizedDate = normalizeDateValue(candidate.value);
+      if (normalizedDate) {
+        return {
+          date: normalizedDate,
+          hasTime: candidate.hasTime,
+          fromMetadata: true
+        };
+      }
+    }
+
+    const fallbackCandidates = [stats?.mtime, stats?.birthtime];
+    for (const candidate of fallbackCandidates) {
+      const normalizedDate = normalizeDateValue(candidate);
+      if (normalizedDate) {
+        return {
+          date: normalizedDate,
+          hasTime: true,
+          fromMetadata: false
+        };
+      }
+    }
+
+    return {
+      date: new Date(),
+      hasTime: true,
+      fromMetadata: false
+    };
+  }
+
+  maybeAddTimeToExistingItem(existingItem, metadataDateInfo) {
+    if (!existingItem?.date || !metadataDateInfo?.fromMetadata) {
+      return false;
+    }
+
+    const updatedDate = enrichExistingDateWithTime(
+      existingItem.date,
+      metadataDateInfo.date,
+      metadataDateInfo.hasTime
+    );
+
+    if (!updatedDate) {
+      return false;
+    }
+
+    existingItem.date = updatedDate;
+    this.accessionsChanged = true;
+    return true;
+  }
+
   // addMediaFiles adds media files to the accessionJSON 
   async addMediaFiles(formJSON) {
     try {
       const subdirectoryKeys = Object.keys(subdirectories);
       await Promise.all(subdirectoryKeys.map(async (type) => {
         const directoryPath = path.join(formJSON.updateFocus, subdirectories[type]);
+        if (!fs.existsSync(directoryPath)) {
+          console.warn(`Skipping missing media directory for ${type}: ${directoryPath}`);
+          return;
+        }
+
         const files = fs.readdirSync(directoryPath);
         for (const file of files) {
           try {
@@ -348,44 +435,24 @@ export class AccessionClass {
     const stats = fs.statSync(filePath);
     const link = path.basename(file);
     // Use the exifr library to extract metadata
-    let linkExists = this.accessionJSON.accessions.item.some(item => item.link === link);
-    if (!linkExists) {
-      try {
-        let date;
-        let metadata;
-        if (type === 'photo') {
-          // Enhanced metadata extraction - supports EXIF, IPTC, XMP, TIFF
-          metadata = await exifr.parse(filePath, {
-            tiff: true,      // TIFF tags (common in many cameras)
-            exif: true,      // EXIF tags
-            gps: true,       // GPS tags
-            iptc: true,      // IPTC metadata (professional photography)
-            xmp: true,       // Adobe XMP (Lightroom/Photoshop)
-            ifd0: true       // Primary image data
-          });
-        }
-        
-        // Enhanced date extraction with multiple fallbacks
-        date = 
-          metadata?.DateTimeOriginal ||      // When photo was taken (best)
-          metadata?.DateCreated ||            // IPTC date created
-          metadata?.CreateDate ||             // XMP create date  
-          metadata?.DateTimeDigitized ||      // When digitized
-          metadata?.ModifyDate ||             // Last modified
-          metadata?.DateTime ||               // Generic date/time
-          stats.mtime ||                      // File modification
-          stats.birthtime;                    // File creation
-          
-        let dateProperty = {};
-        if (date.getFullYear()) {
-          dateProperty.year = date.getFullYear();
-        }
-        if (date.toLocaleString('default', { month: 'short' })) {
-          dateProperty.month = date.toLocaleString('default', { month: 'short' });
-        }
-        if (date.getDate()) {
-          dateProperty.day = date.getDate();
-        }
+    const existingItem = this.accessionJSON.accessions.item.find(item => item.link === link);
+
+    try {
+      let metadata;
+      if (type === 'photo') {
+        metadata = await this.getPhotoMetadata(filePath);
+      }
+
+      const metadataDateInfo = this.getMetadataDateInfo(metadata, stats);
+
+      if (existingItem) {
+        this.maybeAddTimeToExistingItem(existingItem, metadataDateInfo);
+        return;
+      }
+
+      const dateProperty = buildDateParts(metadataDateInfo.date, {
+        includeTime: metadataDateInfo.hasTime
+      });
         
         // GPS coordinates stored as separate latitude/longitude numeric fields
         let location = [];
@@ -438,10 +505,9 @@ export class AccessionClass {
         itemView.updateItem(formJSON) // update the item with the formJSON
         this.accessionJSON.accessions.item.push(itemView.itemJSON);
         this.accessionsChanged = true
-      }
-      catch (error) {
-        console.error('Error in createItem: ', error);
-      }
+    }
+    catch (error) {
+      console.error('Error in createItem: ', error);
     }
   } // End of createItem function
 
@@ -567,6 +633,31 @@ export class AccessionClass {
     return months.indexOf(monthAbbreviation) + 1;
   } // getMonthNumber
 
+  buildDateTimeKey(item) {
+    const date = item?.date;
+    if (!date || !date.time || typeof date.time !== 'string') {
+      return null;
+    }
+
+    // Reuse the same interpretation used by date sorting to avoid drift in behavior.
+    const normalizedTime = date.time.trim();
+    if (!normalizedTime.includes(':')) {
+      return null;
+    }
+
+    const interpretedDate = this.accessionSorter._createDateSort({
+      ...date,
+      time: normalizedTime
+    });
+
+    if (!(interpretedDate instanceof Date) || Number.isNaN(interpretedDate.getTime())) {
+      return null;
+    }
+
+    // Compare duplicate items by interpreted date/time.
+    return String(interpretedDate.getTime());
+  }
+
   // getItemView returns an ItemViewClass object for the given accession or link
   getItemView(accession, link) {
     let item;
@@ -655,7 +746,8 @@ export class AccessionClass {
           item.date = {
             year: updates.date.year || '',
             month: updates.date.month || '',
-            day: updates.date.day || ''
+            day: updates.date.day || '',
+            ...(item.date?.time ? { time: item.date.time } : {})
           };
           itemUpdated = true;
         }
@@ -768,6 +860,14 @@ export class AccessionClass {
     const persons = this.accessionJSON.persons || {};
     this.personService.removeAllDescriptorsForLink(persons, link);
 
+    // Clean up unresolved/excluded candidatefaces for this link so Face Manager
+    // cannot surface ghost candidate rows after the backing item is deleted.
+    const existingCandidates = this.getCandidateFaces();
+    const retainedCandidates = existingCandidates.filter(candidate => candidate?.link !== link);
+    if (retainedCandidates.length !== existingCandidates.length) {
+      this.accessionJSON.candidatefaces = retainedCandidates;
+    }
+
     // Remove the item from every collection that still references it.
     for (const collection of this.collections.collections) {
       if (collection.hasItem(link)) {
@@ -800,15 +900,46 @@ export class AccessionClass {
    * @returns {object|null} Person object with personID or null if not found
    */
   getPersonByTMGID(tmgid) {
+    const normalizedTMGID = this._normalizeTMGID(tmgid);
+    if (!normalizedTMGID) {
+      return null;
+    }
+
     if (!this.accessionJSON.persons) {
       return null;
     }
+
     for (const [personID, person] of Object.entries(this.accessionJSON.persons)) {
-      if (person.TMGID === tmgid) {
+      if (this._normalizeTMGID(person.TMGID) === normalizedTMGID) {
         return { personID, ...person };
       }
     }
     return null;
+  }
+
+  _normalizeTMGID(tmgid) {
+    if (tmgid === undefined || tmgid === null) {
+      return '';
+    }
+
+    return String(tmgid).trim();
+  }
+
+  _assertUniqueTMGID(personID, tmgid) {
+    const normalizedTMGID = this._normalizeTMGID(tmgid);
+    if (!normalizedTMGID || !this.accessionJSON.persons) {
+      return;
+    }
+
+    for (const [existingPersonID, existingPerson] of Object.entries(this.accessionJSON.persons)) {
+      if (existingPersonID === personID) {
+        continue;
+      }
+
+      if (this._normalizeTMGID(existingPerson.TMGID) === normalizedTMGID) {
+        throw new Error(`TMGID \"${normalizedTMGID}\" is already assigned to personID ${existingPersonID}`);
+      }
+    }
   }
 
   /**
@@ -835,15 +966,22 @@ export class AccessionClass {
     
     // Check if person already exists
     const existingPerson = this.accessionJSON.persons[personID];
-    if (existingPerson) {
-      // Merge with existing, preserving TMGID if present
-      this.accessionJSON.persons[personID] = {
-        ...person,
-        TMGID: person.TMGID || existingPerson.TMGID
-      };
+    const hasTMGIDField = Object.prototype.hasOwnProperty.call(person, 'TMGID');
+    const requestedTMGID = this._normalizeTMGID(person.TMGID);
+    const preservedTMGID = this._normalizeTMGID(existingPerson?.TMGID);
+    // Explicit blank means remove TMGID; preserve only when the field is omitted.
+    const tmgidToStore = hasTMGIDField ? requestedTMGID : preservedTMGID;
+
+    this._assertUniqueTMGID(personID, tmgidToStore);
+
+    const personToStore = { ...person };
+    if (tmgidToStore) {
+      personToStore.TMGID = tmgidToStore;
     } else {
-      this.accessionJSON.persons[personID] = person;
+      delete personToStore.TMGID;
     }
+
+    this.accessionJSON.persons[personID] = personToStore;
     
     this.accessionsChanged = true;
     return personID;
@@ -871,7 +1009,15 @@ export class AccessionClass {
       return false;
     }
     
-    this.accessionJSON.persons[personID].TMGID = tmgid;
+    const normalizedTMGID = this._normalizeTMGID(tmgid);
+    this._assertUniqueTMGID(personID, normalizedTMGID);
+
+    if (normalizedTMGID) {
+      this.accessionJSON.persons[personID].TMGID = normalizedTMGID;
+    } else {
+      delete this.accessionJSON.persons[personID].TMGID;
+    }
+
     this.accessionsChanged = true;
     return true;
   }
@@ -1049,6 +1195,200 @@ export class AccessionClass {
   }
 
   /**
+   * Get unresolved face candidates.
+   * @returns {Array<Object>} candidatefaces array from archive
+   */
+  getCandidateFaces() {
+    if (!Array.isArray(this.accessionJSON.candidatefaces)) {
+      this.accessionJSON.candidatefaces = [];
+    }
+    return this.accessionJSON.candidatefaces;
+  }
+
+  /**
+   * Replace all candidatefaces for a specific item link.
+   * This keeps batch runs idempotent for each photo and avoids duplicate unresolved entries.
+   * @param {string} link - Item link
+   * @param {Array<Object>} candidates - Candidate face objects for this link
+   * @returns {{removed:number,added:number,total:number}} mutation summary
+   */
+  replaceCandidateFacesForLink(link, candidates = []) {
+    if (!link) {
+      return {
+        removed: 0,
+        added: 0,
+        total: this.getCandidateFaces().length
+      };
+    }
+
+    const existing = this.getCandidateFaces();
+    const retained = existing.filter(candidate => candidate?.link !== link);
+    const removed = existing.length - retained.length;
+
+    const dedupedByID = new Map();
+    for (const candidate of candidates) {
+      if (!candidate || !candidate.link || !candidate.region || !Array.isArray(candidate.descriptor)) {
+        continue;
+      }
+
+      const x = Number(candidate.region.x || 0).toFixed(6);
+      const y = Number(candidate.region.y || 0).toFixed(6);
+      const w = Number(candidate.region.w || 0).toFixed(6);
+      const h = Number(candidate.region.h || 0).toFixed(6);
+      const model = candidate.model || 'ssd';
+      const candidateID = candidate.candidateID || `${candidate.link}:${model}:${x}:${y}:${w}:${h}`;
+
+      dedupedByID.set(candidateID, {
+        candidateID,
+        link: candidate.link,
+        accession: candidate.accession || null,
+        type: candidate.type || 'photo',
+        region: {
+          x: Number(candidate.region.x || 0),
+          y: Number(candidate.region.y || 0),
+          w: Number(candidate.region.w || 0),
+          h: Number(candidate.region.h || 0)
+        },
+        descriptor: Array.from(candidate.descriptor),
+        model,
+        confidence: typeof candidate.confidence === 'number' ? candidate.confidence : null,
+        quality: candidate.quality || null,
+        ExcludeFromMatching: candidate?.ExcludeFromMatching === true,
+        resolved: false,
+        detectedAt: candidate.detectedAt || new Date().toISOString()
+      });
+    }
+
+    const normalizedCandidates = Array.from(dedupedByID.values());
+    this.accessionJSON.candidatefaces = retained.concat(normalizedCandidates);
+
+    if (removed > 0 || normalizedCandidates.length > 0) {
+      this.accessionsChanged = true;
+    }
+
+    return {
+      removed,
+      added: normalizedCandidates.length,
+      total: this.accessionJSON.candidatefaces.length
+    };
+  }
+
+  /**
+   * Get unresolved candidatefaces for an item link.
+   * @param {string} link - Item link
+   * @returns {Array<Object>} Candidate faces for the link
+   */
+  getCandidateFacesForLink(link) {
+    if (!link) {
+      return [];
+    }
+
+    return this.getCandidateFaces().filter(candidate => (
+      candidate
+      && candidate.link === link
+      && candidate.resolved !== true
+      && candidate.ExcludeFromMatching !== true
+    ));
+  }
+
+  /**
+   * Remove one candidateface by candidateID.
+   * @param {string} candidateID - Candidate face identifier
+   * @returns {boolean} True if removed
+   */
+  removeCandidateFace(candidateID) {
+    if (!candidateID) {
+      return false;
+    }
+
+    const before = this.getCandidateFaces().length;
+    this.accessionJSON.candidatefaces = this.getCandidateFaces().filter(candidate => candidate?.candidateID !== candidateID);
+    const removed = before - this.accessionJSON.candidatefaces.length;
+
+    if (removed > 0) {
+      this.accessionsChanged = true;
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Clean up orphaned or invalid candidatefaces.
+   * Removes entries that cannot be resolved in Face Manager workflows.
+   * @returns {{totalRemoved:number, removedByReason:Object<string, number>}}
+   */
+  cleanupOrphanedCandidateFaces() {
+    const candidates = this.getCandidateFaces();
+    const items = this.accessionJSON.accessions?.item || [];
+    const itemsByLink = new Map();
+    items.forEach(item => {
+      if (item?.link) {
+        itemsByLink.set(item.link, item);
+      }
+    });
+
+    const isFiniteNumber = (value) => Number.isFinite(Number(value));
+    const removedByReason = {
+      invalidEntry: 0,
+      missingLink: 0,
+      missingItem: 0,
+      invalidRegion: 0,
+      invalidDescriptor: 0
+    };
+
+    const retained = [];
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== 'object') {
+        removedByReason.invalidEntry += 1;
+        continue;
+      }
+
+      const link = typeof candidate.link === 'string' ? candidate.link : '';
+      if (!link) {
+        removedByReason.missingLink += 1;
+        continue;
+      }
+
+      if (!itemsByLink.has(link)) {
+        removedByReason.missingItem += 1;
+        continue;
+      }
+
+      const region = candidate.region;
+      const validRegion = region
+        && isFiniteNumber(region.x)
+        && isFiniteNumber(region.y)
+        && isFiniteNumber(region.w)
+        && isFiniteNumber(region.h)
+        && Number(region.w) > 0
+        && Number(region.h) > 0;
+      if (!validRegion) {
+        removedByReason.invalidRegion += 1;
+        continue;
+      }
+
+      if (!Array.isArray(candidate.descriptor) || candidate.descriptor.length !== 128) {
+        removedByReason.invalidDescriptor += 1;
+        continue;
+      }
+
+      retained.push(candidate);
+    }
+
+    const totalRemoved = candidates.length - retained.length;
+    if (totalRemoved > 0) {
+      this.accessionJSON.candidatefaces = retained;
+      this.accessionsChanged = true;
+    }
+
+    return {
+      totalRemoved,
+      removedByReason
+    };
+  }
+
+  /**
    * Validate the entire archive
    * @returns {Promise<object>} Validation results and log file info
    */
@@ -1063,6 +1403,14 @@ export class AccessionClass {
     const orphanedDescriptors = results.warnings.filter(w => 
       w.type === 'ORPHANED_FACE_DESCRIPTOR' || w.type === 'ORPHANED_FACE_DESCRIPTOR_NO_ITEM'
     );
+
+    const orphanedCandidateFaces = results.warnings.filter(w => (
+      w.type === 'ORPHANED_CANDIDATE_FACE_NO_ITEM'
+      || w.type === 'CANDIDATE_FACE_NO_LINK'
+      || w.type === 'CANDIDATE_FACE_INVALID_REGION'
+      || w.type === 'CANDIDATE_FACE_INVALID_DESCRIPTOR'
+      || w.type === 'CANDIDATE_FACE_INVALID_ENTRY'
+    ));
     
     // Count unreferenced persons
     const unreferencedPersons = results.info.filter(i => 
@@ -1072,7 +1420,194 @@ export class AccessionClass {
     return {
       ...logInfo,
       orphanedDescriptorCount: orphanedDescriptors.length,
+      orphanedCandidateFaceCount: orphanedCandidateFaces.length,
       unreferencedPersonCount: unreferencedPersons.length
+    };
+  }
+
+  parseMklinksSourceDirectory() {
+    const archiveRoot = path.dirname(this.accessionFilename);
+    const mklinksConfigPath = path.join(archiveRoot, 'mklinks.conf');
+
+    if (!fs.existsSync(mklinksConfigPath)) {
+      return {
+        success: false,
+        warning: `mklinks.conf was not found at ${mklinksConfigPath}.` 
+      };
+    }
+
+    const lines = fs.readFileSync(mklinksConfigPath, 'utf8')
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'));
+
+    if (lines.length < 2 || !lines[1]) {
+      return {
+        success: false,
+        warning: 'mklinks.conf is missing line 2 (source directory to scan).'
+      };
+    }
+
+    const configuredSource = lines[1];
+    const resolvedSource = path.isAbsolute(configuredSource)
+      ? path.resolve(configuredSource)
+      : path.resolve(archiveRoot, configuredSource);
+
+    if (!fs.existsSync(resolvedSource) || !fs.statSync(resolvedSource).isDirectory()) {
+      return {
+        success: false,
+        warning: `Source directory from mklinks.conf line 2 does not exist or is not a directory: ${resolvedSource}`
+      };
+    }
+
+    return {
+      success: true,
+      sourceDirectory: resolvedSource,
+      configPath: mklinksConfigPath
+    };
+  }
+
+  buildCollectionKeyFromDirectoryName(directoryName) {
+    const noSpaces = String(directoryName || '').replace(/\s+/g, '');
+    const sanitized = noSpaces.replace(/[^A-Za-z0-9_-]/g, '');
+    return sanitized || 'symlinkCollection';
+  }
+
+  createSymlinkNamedCollections() {
+    const parseResult = this.parseMklinksSourceDirectory();
+    if (!parseResult.success) {
+      return {
+        success: false,
+        warning: parseResult.warning,
+        created: [],
+        updated: [],
+        skipped: []
+      };
+    }
+
+    const sourceDirectory = path.resolve(parseResult.sourceDirectory);
+    const groupMap = new Map();
+    let symlinkItemsProcessed = 0;
+
+    const items = this.accessionJSON?.accessions?.item || [];
+    for (const item of items) {
+      if (!item?.link || !item?.type || !subdirectories[item.type]) {
+        continue;
+      }
+
+      const mediaPath = this.getMediaPath(item.type, item.link);
+      let lstat;
+      try {
+        lstat = fs.lstatSync(mediaPath);
+      } catch (_error) {
+        continue;
+      }
+
+      if (!lstat.isSymbolicLink()) {
+        continue;
+      }
+
+      symlinkItemsProcessed++;
+
+      let symlinkTarget;
+      try {
+        const rawTarget = fs.readlinkSync(mediaPath);
+        symlinkTarget = path.isAbsolute(rawTarget)
+          ? path.resolve(rawTarget)
+          : path.resolve(path.dirname(mediaPath), rawTarget);
+      } catch (_error) {
+        continue;
+      }
+
+      const relativeTarget = path.relative(sourceDirectory, symlinkTarget);
+      if (!relativeTarget || relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget)) {
+        continue;
+      }
+
+      const pathParts = relativeTarget.split(path.sep).filter(Boolean);
+      if (pathParts.length < 2) {
+        // Target file is at source root, not in a source directory.
+        continue;
+      }
+
+      const topLevelDirectory = pathParts[0];
+      if (!groupMap.has(topLevelDirectory)) {
+        groupMap.set(topLevelDirectory, new Set());
+      }
+      groupMap.get(topLevelDirectory).add(item.link);
+    }
+
+    if (symlinkItemsProcessed === 0) {
+      return {
+        success: true,
+        created: [],
+        updated: [],
+        skipped: ['No symlink-backed archive items were found.']
+      };
+    }
+
+    const created = [];
+    const updated = [];
+    const skipped = [];
+    const generatedKeys = new Set();
+
+    const sortedGroups = Array.from(groupMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    for (const [directoryName, linksSet] of sortedGroups) {
+      const links = Array.from(linksSet);
+      if (links.length === 0) {
+        continue;
+      }
+
+      const text = directoryName;
+      const title = directoryName;
+
+      let key = this.buildCollectionKeyFromDirectoryName(directoryName);
+      let suffix = 2;
+      while (generatedKeys.has(key) && this.collections.getCollection(key)?.text !== text) {
+        key = `${this.buildCollectionKeyFromDirectoryName(directoryName)}_${suffix}`;
+        suffix++;
+      }
+      generatedKeys.add(key);
+
+      let collection = this.collections.getCollection(key);
+      let wasCreated = false;
+      if (!collection) {
+        collection = this.collections.createCollection(key, title, text);
+        wasCreated = true;
+      }
+
+      if (!collection) {
+        skipped.push(`${directoryName}: unable to create or load collection key ${key}`);
+        continue;
+      }
+
+      if (collection.text !== text) {
+        collection.setText(text);
+      }
+      if (collection.title !== title) {
+        collection.setTitle(title);
+      }
+
+      let addedCount = 0;
+      for (const link of links) {
+        if (!collection.hasItem(link)) {
+          collection.addItem(link);
+          addedCount++;
+        }
+      }
+
+      if (wasCreated) {
+        created.push(`${text} (${key}): ${links.length} item(s)`);
+      } else {
+        updated.push(`${text} (${key}): +${addedCount} item(s), ${links.length} total matched`);
+      }
+    }
+
+    return {
+      success: true,
+      created,
+      updated,
+      skipped
     };
   }
 
@@ -1087,7 +1622,9 @@ export class AccessionClass {
       { key: '_nopersons', text: 'Missing Person', title: 'Items Missing Person Data' },
       { key: '_nosource', text: 'Missing Source', title: 'Items Missing Source Data' },
       { key: '_nodescription', text: 'Missing Desc', title: 'Items Missing Description Data' },
-      { key: '_living', text: 'Living People', title: 'Items with Living People' }
+      { key: '_living', text: 'Living People', title: 'Items with Living People' },
+      { key: '_facecandidates', text: 'Face Candidates', title: 'Face Candidates: Unresolved' },
+      { key: '_samedatetime', text: 'Items with the same date/time', title: 'Items with the same date/time' }
     ];
     
     return maintenanceCollections
@@ -1107,7 +1644,9 @@ export class AccessionClass {
       { key: '_nopersons', text: 'Missing Person', title: 'Items Missing Person Data' },
       { key: '_nosource', text: 'Missing Source', title: 'Items Missing Source Data' },
       { key: '_nodescription', text: 'Missing Desc', title: 'Items Missing Description Data' },
-      { key: '_living', text: 'Living People', title: 'Items with Living People' }
+      { key: '_living', text: 'Living People', title: 'Items with Living People' },
+      { key: '_facecandidates', text: 'Face Candidates', title: 'Face Candidates: Unresolved' },
+      { key: '_samedatetime', text: 'Items with the same date/time', title: 'Items with the same date/time' }
     ];
     
     // Check if any maintenance collections already exist
@@ -1127,8 +1666,11 @@ export class AccessionClass {
       _nopersons: [],
       _nosource: [],
       _nodescription: [],
-      _living: []
+      _living: [],
+      _facecandidates: [],
+      _samedatetime: []
     };
+    const dateTimeGroups = new Map();
     
     for (const item of items) {
       // Missing location
@@ -1137,7 +1679,15 @@ export class AccessionClass {
       }
       
       // Missing persons
-      if (!item.person || item.person.length === 0) {
+      // Criteria: item has person data only if at least one person entry has a non-empty personID.
+      const hasValidPersonData = Array.isArray(item.person) && item.person.some((personRef) => {
+        const personID = typeof personRef?.personID === 'string'
+          ? personRef.personID.trim()
+          : '';
+        return personID !== '';
+      });
+
+      if (!hasValidPersonData) {
         missingData._nopersons.push(item.link);
       }
       
@@ -1165,7 +1715,30 @@ export class AccessionClass {
           missingData._living.push(item.link);
         }
       }
+
+      // Duplicate date/time match (requires date.time and complete date)
+      const dateTimeKey = this.buildDateTimeKey(item);
+      if (dateTimeKey && item.link) {
+        if (!dateTimeGroups.has(dateTimeKey)) {
+          dateTimeGroups.set(dateTimeKey, []);
+        }
+        dateTimeGroups.get(dateTimeKey).push(item.link);
+      }
     }
+
+    // Unresolved face candidates (single review queue driven by candidatefaces)
+    const unresolvedCandidateLinks = this.getCandidateFaces()
+      .filter(candidate => candidate && candidate.link && candidate.resolved !== true)
+      .map(candidate => candidate.link);
+    missingData._facecandidates = Array.from(new Set(unresolvedCandidateLinks));
+
+    const duplicateDateTimeLinks = [];
+    dateTimeGroups.forEach((links) => {
+      if (links.length > 1) {
+        duplicateDateTimeLinks.push(...links);
+      }
+    });
+    missingData._samedatetime = Array.from(new Set(duplicateDateTimeLinks));
     
     // Create new maintenance collections (skip empty ones)
     const created = [];

@@ -155,12 +155,14 @@ Face descriptors (`faceBioData`) contain references to specific items by their `
 
 - **Strip Face Descriptors (recommended)**: Clean person library without item references
 - **Include Face Descriptors**: Keeps face detection data, but descriptors will be orphaned until items imported
-  - Orphaned descriptors can be cleaned up later: Archive > Validate > Cleanup Orphaned Descriptors
+   - Orphaned descriptors can be cleaned up later: Archive > Validate > Cleanup Orphaned Descriptors
+   - Unresolved candidate face rows can also be cleaned up if orphaned/invalid: Archive > Validate > Cleanup Orphaned Face Candidates
 
 **After Import:**
 - Newly imported persons won't be assigned to any items initially (by design)
 - Assign them through Add Media Metadata or Edit Media windows
 - **Unreferenced persons** can be cleaned up: Archive > Validate > Cleanup Unreferenced Persons
+- **Orphaned/invalid unresolved face candidates** can be cleaned up: Archive > Validate > Cleanup Orphaned Face Candidates
 - **TMGID conflicts** should be reviewed: Archive > Validate
 
 ::: tip Best Practice
@@ -352,6 +354,11 @@ After importing, run **Archive > Validate** to check for:
 - May occur if face descriptors included but items not imported
 - Click "Cleanup Orphaned Descriptors" to remove
 
+**Orphaned/Invalid Face Candidates:**
+- Unresolved face candidate records (`candidatefaces`) with missing links, missing items, invalid regions, invalid descriptors, or invalid entries
+- May occur after imports, item deletion, or interrupted face review workflows
+- Click "Cleanup Orphaned Face Candidates" to remove
+
 **TMGID Conflicts:**
 - Different persons with same genealogy ID
 - May indicate duplicate person entries across archives
@@ -377,7 +384,7 @@ After importing, run **Archive > Validate** to check for:
 
 1. **Run Archive > Validate**: Check for data quality issues.
 2. **Resolve conflicts promptly**: Don't let _ImportConflicts collection accumulate.
-3. **Clean up unreferenced data**: Remove orphaned descriptors and unreferenced persons you don't need.
+3. **Clean up unreferenced data**: Remove orphaned descriptors, orphaned/invalid face candidates, and unreferenced persons you don't need.
 4. **Document your process**: Note which archives have been merged and when.
 
 ## Technical Considerations

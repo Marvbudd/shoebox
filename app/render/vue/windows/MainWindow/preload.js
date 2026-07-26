@@ -24,6 +24,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open media file in the system default external application
   openMediaExternal: (type, link) => ipcRenderer.invoke('media:openExternal', type, link),
 
+  // Open media snapshot (photo + face tags) in external browser window
+  openMediaSnapshotExternal: (payload) => ipcRenderer.invoke('media:openSnapshotExternal', payload),
+
+  // Open a renderer-generated snapshot image via OS default app
+  openMediaSnapshotImageExternal: (payload) => ipcRenderer.invoke('media:openSnapshotImageExternal', payload),
+
   // Prevent display sleep/screensaver during slideshow
   setSlideshowDisplaySleepBlock: (shouldBlock) => ipcRenderer.invoke('slideshow:setDisplaySleepBlock', shouldBlock),
   

@@ -11,6 +11,7 @@ const windowName = process.env.VUE_WINDOW || 'personManager';
 // Map window names to their source paths
 const windowPaths = {
   personManager: 'app/render/vue/windows/PersonManager/index.html',
+  faceMatching: 'app/render/vue/windows/FaceMatching/index.html',
   createAccessions: 'app/render/vue/windows/CreateAccessions/index.html',
   mediaManager: 'app/render/vue/windows/MediaManager/index.html',
   updateCollection: 'app/render/vue/windows/UpdateCollection/index.html',

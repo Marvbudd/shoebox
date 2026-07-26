@@ -28,7 +28,7 @@ features:
   
   - icon: 👤
     title: Face Detection
-    details: Automatically detect and tag faces in photos using advanced AI models.
+    details: Automatically detect and tag faces in photos, then use batch detection and person-centric batch face assignment for large collections.
   
   - icon: 🗂️
     title: Collections
@@ -71,6 +71,8 @@ Shoebox is a desktop application for organizing and curating your family's multi
 - **Offline-First**: All data stored locally on your computer
 - **Privacy-Focused**: No cloud upload, your memories stay with you
 - **Face Detection**: Built-in AI-powered face recognition
+- **Batch Face Detection**: Collection-wide phase 1 processing from Media Manager
+- **Batch Face Assignment**: Descriptor-by-descriptor unresolved review in Person Manager
 - **Flexible Organization**: Create collections and add rich metadata
 - **Playlists**: Attach playlist entries to items with automatic inverse references on related media
 - **Digital Photo Frame**: Auto-cycling slideshow mode for displays

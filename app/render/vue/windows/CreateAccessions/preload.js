@@ -10,5 +10,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPersonManagerForSelection: (assignedPersonIDs) => ipcRenderer.invoke('window:openPersonManagerForSelection', assignedPersonIDs),
   onPersonSelected: (callback) => {
     ipcRenderer.on('personManager:personSelected', (event, personID) => callback(personID));
+  },
+  onPersonSelectionCanceled: (callback) => {
+    ipcRenderer.on('personManager:selectionCanceled', () => callback());
   }
 });

@@ -19,6 +19,12 @@ const detailTemplate = '<table id="prevData" summary="preview data">' +
 '<tr class="detail"><td>Collections: </td><td id="collections">{{collections}}</td></tr>' +
 '<tr class="detail"><td>Accession:</td><td id="accession">{{accession}}</td></tr>' +
 '<tr class="detail"><td>Link:</td><td id="link">{{link}}</td></tr>' +
+'{{#if candidateFaceCount}}' +
+'<tr class="detail"><td>Candidate Faces:</td><td id="candidateFaceCount">{{candidateFaceCount}}</td></tr>' +
+'{{/if}}' +
+'{{#if symlinkDisplay}}' +
+'<tr class="detail"><td>Symlink:</td><td id="symlink">{{symlinkDisplay}}</td></tr>' +
+'{{/if}}' +
 '<tr class="detail"><td colspan="2"><button id="editMedia" title="Click to edit this item">Edit media</button></td></tr>' +
 '{{#playlist}}' +
 '{{#entry}}' +
@@ -57,14 +63,17 @@ export class ItemViewClass {
     return this.itemJSON.link;
   } // getLink
 
-  static dateText(oneNode) {
+  static dateText(oneNode, options = {}) {
+    const { includeTime = false } = options;
     var month;
     var day;
     var year;
+    var time;
 
     month = oneNode.month;
     day = oneNode.day;
     year = oneNode.year;
+    time = includeTime ? oneNode.time : '';
 
     if (day)
       day = day + " ";
@@ -79,7 +88,12 @@ export class ItemViewClass {
     else
       year = '';
 
-    return day + month + year;
+    if (time)
+      time = ' ' + time;
+    else
+      time = '';
+
+    return day + month + year + time;
   } //dateText
 
   static personText(oneNode, includePosition = true, accessionClass = null, makeLinks = true) {
@@ -212,14 +226,28 @@ export class ItemViewClass {
       return person.faceBioData.some(d => d.link === currentLink && d.region);
     });
     
+    let symlinkDisplay = '';
+    try {
+      const mediaPath = this.accessionClass.getMediaPath(this.itemJSON.type, this.itemJSON.link);
+      const archiveStats = fs.lstatSync(mediaPath);
+      if (archiveStats.isSymbolicLink()) {
+        symlinkDisplay = fs.readlinkSync(mediaPath);
+      }
+    } catch (_error) {
+      symlinkDisplay = '';
+    }
+
     let locationDisplay = ItemViewClass.showLocations(this.itemJSON.location)
+    const candidateFaceCount = this.accessionClass.getCandidateFacesForLink(currentLink).length;
     let dataObject = {
       'peopleDisplay': ItemViewClass.peopleList(this.itemJSON.person, this.accessionClass, true, hasFaceTags),
-      'dateDisplay': ItemViewClass.dateText(this.itemJSON.date),
+      'dateDisplay': ItemViewClass.dateText(this.itemJSON.date, { includeTime: true }),
       'locationDisplay': locationDisplay.locationString,
       'locationLinks': locationDisplay.locationLinks,
+      'candidateFaceCount': candidateFaceCount,
       'sourceDisplay': sourceText.string(),
       'receivedDisplay': receivedText.string(),
+      'symlinkDisplay': symlinkDisplay,
       'version': version,
       'copyright': copyright,
       'reflist': this.accessionClass.getReferencesForLink(this.getLink()),
@@ -319,7 +347,8 @@ export class ItemViewClass {
       itemJSON.date = {
         month: formJSON.dateMonth,
         day: formJSON.dateDay,
-        year: formJSON.dateYear
+        year: formJSON.dateYear,
+        ...((formJSON.dateTime || itemJSON.date?.time) ? { time: formJSON.dateTime || itemJSON.date.time } : {})
       };
     }
     if (formJSON.locationDetail || formJSON.locationCity || formJSON.locationState || 
@@ -365,6 +394,7 @@ export class ItemViewClass {
       dateYear:    itemJSON.date.year,
       dateMonth:   itemJSON.date.month,
       dateDay:     itemJSON.date.day,
+      dateTime:    itemJSON.date.time,
       locationDetail: itemJSON.location[0]?.detail,
       locationCity: itemJSON.location[0]?.city,
       locationState: itemJSON.location[0]?.state,
