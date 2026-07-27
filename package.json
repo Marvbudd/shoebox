@@ -52,6 +52,7 @@
         "provider": "github",
         "owner": "Marvbudd",
         "repo": "shoebox",
+        "releaseType": "release",
         "vPrefixedTagName": true,
         "publishAutoUpdate": true
       }
