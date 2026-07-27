@@ -106,6 +106,15 @@ Navigate efficiently without touching the mouse.
 
 [Complete Keyboard Reference](../guide/keyboard-shortcuts.md)
 
+## Documentation Map
+
+- [Face Detection Guide](./face-detection.md)
+- [Advanced Face Detection](./face-detection-advanced.md)
+- [Collections Guide](./collections.md)
+- [Collection Set Operations Implementation](./collection-set-operations.md)
+- [Metadata Guide](./metadata.md)
+- [Managing Multiple Archives](../guide/managing-multiple-archives.md)
+
 ## Platform Support
 
 Shoebox runs on all major desktop platforms:

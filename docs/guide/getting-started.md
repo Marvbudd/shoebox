@@ -69,6 +69,9 @@ Ready to import your own media? See the [Creating Your Archive](./creating-archi
 - [Explore the data structure](./data-structure.md)
 - [Try slideshow mode](../features/slideshow.md)
 - [Set up face detection](../features/face-detection.md)
+- [Review advanced face detection behavior](../features/face-detection-advanced.md)
+- [Use collection set operations](../features/collection-set-operations.md)
+- [Learn multi-archive workflows](./managing-multiple-archives.md)
 
 ## Getting Help
 

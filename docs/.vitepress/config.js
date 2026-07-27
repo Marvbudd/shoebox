@@ -57,7 +57,9 @@ export default defineConfig({
             { text: 'Overview', link: '/features/overview' },
             { text: 'Slideshow Mode', link: '/features/slideshow' },
             { text: 'Face Detection', link: '/features/face-detection' },
+            { text: 'Batch Face Workflows', link: '/features/face-detection#batch-face-processing-phase-1' },
             { text: 'Collections', link: '/features/collections' },
+            { text: 'Symlink-Named Collections', link: '/features/collections#symlink-named-collections' },
             { text: 'Metadata', link: '/features/metadata' }
           ]
         },

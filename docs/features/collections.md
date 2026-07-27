@@ -319,6 +319,12 @@ Backup all collections at once:
 1. Go to **Collections > Backup All Collections**
 2. Timestamped copies are created for each collection
 
+## Related Documentation
+
+- [Collection Set Operations Implementation](./collection-set-operations.md)
+- [Managing Multiple Archives](../guide/managing-multiple-archives.md)
+- [Archive Data Structure](../guide/data-structure.md)
+
 Backup files have the same name as the collection with a timestamp appended (no `.json` extension to prevent them from being loaded as active collections).
 
 ## Collections Menu Reference
