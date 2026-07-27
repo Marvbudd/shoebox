@@ -62,14 +62,25 @@ jobs:
         env:
           YARN_ENABLE_SCRIPTS: "false"
 
+      - name: Resolve release mode
+        id: release_mode
+        shell: bash
+        run: |
+          REF_INPUT="${{ github.event.inputs.ref || '' }}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]] || [[ "${REF_INPUT}" == v* ]] || [[ "${REF_INPUT}" == refs/tags/v* ]]; then
+            echo "is_tag_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_tag_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Electron app (branch/manual non-tag)
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ steps.release_mode.outputs.is_tag_release != 'true' }}
         run: yarn run dist --dir --publish never
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and publish release assets (tag)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ steps.release_mode.outputs.is_tag_release == 'true' }}
         run: yarn run dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
