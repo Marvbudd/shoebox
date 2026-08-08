@@ -215,6 +215,8 @@ export class ValidationService {
     const items = this.accessionClass.accessionJSON.accessions?.item || [];
     const validLinks = new Set(items.map(item => item.link).filter(link => link));
     const timeFormat = /^\d{1,2}:\d{2}:\d{2}\.\d$/;
+    const itemsByLink = new Map(items.map(item => [item.link, item]));
+    const sharedMediaCueMap = new Map();
 
     items.forEach((item, index) => {
       if (!item.playlist || !item.playlist.entry) {
@@ -286,8 +288,50 @@ export class ValidationService {
             value: entry.duration
           });
         }
+
+        // Track shared media cues (same media ref and starttime across different source items)
+        // so operators can review potentially conflicting playlist choreography.
+        if (entry.ref && entry.starttime && validLinks.has(entry.ref)) {
+          const targetItem = itemsByLink.get(entry.ref);
+          const targetType = targetItem?.type || null;
+          if (targetType === 'audio' || targetType === 'video') {
+            const cueKey = `${entry.ref}@@${entry.starttime}`;
+            if (!sharedMediaCueMap.has(cueKey)) {
+              sharedMediaCueMap.set(cueKey, {
+                ref: entry.ref,
+                starttime: entry.starttime,
+                targetType,
+                sources: new Map()
+              });
+            }
+
+            const sourceKey = item.link || `item-index-${index}`;
+            const sourceLabel = item.link || item.accession || `item index ${index}`;
+            const cue = sharedMediaCueMap.get(cueKey);
+            if (!cue.sources.has(sourceKey)) {
+              cue.sources.set(sourceKey, sourceLabel);
+            }
+          }
+        }
       });
     });
+
+    for (const cue of sharedMediaCueMap.values()) {
+      if (cue.sources.size <= 1) {
+        continue;
+      }
+
+      const sourceItems = Array.from(cue.sources.values());
+      this.warnings.push({
+        type: 'PLAYLIST_SHARED_MEDIA_CUE',
+        ref: cue.ref,
+        starttime: cue.starttime,
+        targetType: cue.targetType,
+        sourceCount: sourceItems.length,
+        sourceItems,
+        message: `Playlist cue ${cue.ref} @ ${cue.starttime} is referenced by multiple source items (${sourceItems.length}): ${sourceItems.join(', ')}`
+      });
+    }
   }
 
 

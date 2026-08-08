@@ -146,7 +146,6 @@
                     Discard
                   </button>
                   <button
-                    v-if="getCandidateIDForFaceIndex(face.faceIndex)"
                     class="face-badge-discard"
                     type="button"
                     :disabled="faceProcessingControlsDisabled"
@@ -489,14 +488,14 @@
                       type="text"
                       placeholder="00:01:30.0"
                       class="playlist-time"
-                      title="Duration (HH:MM:SS.s)"
+                      title="Duration (HH:MM:SS.s). Type it directly, or use End to calculate it from the current playback time."
                       @input="onPlaylistChange"
                     />
                     <button 
                       type="button" 
                       @click="setDuration(index)" 
                       class="btn-get-time"
-                      title="Calculate duration from start time to current playback time"
+                      title="Calculate duration from the start time to the current playback time"
                     >
                       🕐 End
                     </button>
@@ -2263,7 +2262,11 @@ const handleDetectFaces = async () => {
     });
     
     if (result.success) {
-      detectedFaces.value = result.faces || [];
+      detectedFaces.value = (result.faces || []).map(face => ({
+        ...face,
+        candidateID: face?.candidateID || null,
+        ExcludeFromMatching: face?.ExcludeFromMatching === true
+      }));
       lastUsedModel.value = modelNames; // Store for display
       
       if (detectedFaces.value.length === 0) {
@@ -2501,6 +2504,45 @@ const getCandidateIDForFaceIndex = (faceIndex) => {
   return null;
 };
 
+const generateCandidateID = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  const randomSuffix = Math.random().toString(36).slice(2, 10);
+  return `candidate-${Date.now()}-${randomSuffix}`;
+};
+
+const ensureCandidateIDForFaceIndex = (faceIndex, fallbackID = null) => {
+  const numericFaceIndex = Number(faceIndex);
+  if (Number.isNaN(numericFaceIndex)) {
+    return null;
+  }
+
+  const existing = getCandidateIDForFaceIndex(numericFaceIndex);
+  if (typeof existing === 'string' && existing.length > 0) {
+    return existing;
+  }
+
+  const resolved = (typeof fallbackID === 'string' && fallbackID.length > 0)
+    ? fallbackID
+    : generateCandidateID();
+
+  candidateFaceIDsByIndex.value[numericFaceIndex] = resolved;
+
+  const detected = detectedFaces.value[numericFaceIndex];
+  if (detected && (!detected.candidateID || detected.candidateID !== resolved)) {
+    detected.candidateID = resolved;
+  }
+
+  const unresolved = unmatchedFaces.value.find(face => Number(face.faceIndex) === numericFaceIndex);
+  if (unresolved && (!unresolved.candidateID || unresolved.candidateID !== resolved)) {
+    unresolved.candidateID = resolved;
+  }
+
+  return resolved;
+};
+
 const removeUnmatchedFaceFromUiState = (faceIndex, options = {}) => {
   const clearPendingAssignments = options.clearPendingAssignments !== false;
   const numericFaceIndex = Number(faceIndex);
@@ -2600,9 +2642,9 @@ const includeUnassignedFace = async (faceIndex) => {
     return;
   }
 
-  const candidateID = getCandidateIDForFaceIndex(numericFaceIndex);
+  const candidateID = ensureCandidateIDForFaceIndex(numericFaceIndex);
   if (!candidateID) {
-    statusMessage.value = { type: 'error', text: 'This face is not a persisted unresolved candidate.' };
+    statusMessage.value = { type: 'error', text: 'Unable to prepare this face candidate for inclusion.' };
     scheduleStatusMessageClear(2500);
     return;
   }
@@ -2657,9 +2699,9 @@ const excludeUnassignedFace = async (faceIndex) => {
     return;
   }
 
-  const candidateID = getCandidateIDForFaceIndex(numericFaceIndex);
+  const candidateID = ensureCandidateIDForFaceIndex(numericFaceIndex);
   if (!candidateID) {
-    statusMessage.value = { type: 'error', text: 'This face is not a persisted unresolved candidate.' };
+    statusMessage.value = { type: 'error', text: 'Unable to prepare this face candidate for exclusion.' };
     scheduleStatusMessageClear(2500);
     return;
   }
@@ -2790,43 +2832,64 @@ const clearUnassignedPersons = async () => {
 };
 
 // Assign face to person by personID (for inline assign)
-const assignFaceToPersonByID = async (personID) => {
+const assignFaceToPersonByID = async (personID, options = {}) => {
+  const silent = options?.silent === true;
+
   if (faceProcessingControlsDisabled.value) {
-    return;
+    return { success: false, reason: 'controls-disabled' };
   }
 
-  // Ensure numeric index (faceAssignments may come from select v-model)
-  const faceIndex = Number(faceAssignments.value[personID]);
-  
-  if (faceIndex === undefined || faceIndex === null || faceIndex === '') {
-    alert('Please select a face first');
-    return;
+  const selectedFace = faceAssignments.value[personID];
+  const faceIndex = Number(selectedFace);
+
+  if (selectedFace === undefined || selectedFace === null || selectedFace === '' || Number.isNaN(faceIndex)) {
+    if (!silent) {
+      alert('Please select a face first');
+    }
+    return { success: false, reason: 'no-selection' };
   }
   
   // Find the person
   const person = item.value.person.find(p => p.personID === personID);
   if (!person) {
-    alert('Person not found');
-    return;
+    if (!silent) {
+      alert('Person not found');
+    }
+    return { success: false, reason: 'person-not-found' };
   }
   
   // Check if this person already has a face assigned (prevent duplicates)
   if (person.faceTag && person.faceTag.region) {
-    alert('This person already has a face assigned. Please unmatch the existing face first.');
-    return;
+    if (!silent) {
+      alert('This person already has a face assigned. Please unmatch the existing face first.');
+    }
+    return { success: false, reason: 'already-assigned' };
   }
   
   const assignableFace = getAssignableFaceByIndex(faceIndex);
-  if (!assignableFace) {
-    alert('Face not found');
-    return;
+  const detectedFace = detectedFaces.value[faceIndex];
+  if (!assignableFace && !detectedFace) {
+    if (!silent) {
+      alert('Face not found');
+    }
+    return { success: false, reason: 'face-not-found' };
+  }
+
+  const effectiveFace = assignableFace || detectedFace;
+  if (!effectiveFace?.region) {
+    if (!silent) {
+      alert('Face region not found');
+    }
+    return { success: false, reason: 'face-region-not-found' };
   }
   
   // Get the full face data (with descriptor) from the original detectedFaces
-  const fullFace = detectedFaces.value[faceIndex];
+  const fullFace = detectedFace;
   if (!fullFace) {
-    alert('Face descriptor not found');
-    return;
+    if (!silent) {
+      alert('Face descriptor not found');
+    }
+    return { success: false, reason: 'descriptor-not-found' };
   }
   
   // Store face assignment in person.faceTag for pending save (UI only, not persisted yet)
@@ -2834,10 +2897,10 @@ const assignFaceToPersonByID = async (personID) => {
   
   // Create plain serializable objects
   const plainRegion = {
-    x: fullFace.region.x,
-    y: fullFace.region.y,
-    w: fullFace.region.w,
-    h: fullFace.region.h
+    x: effectiveFace.region.x,
+    y: effectiveFace.region.y,
+    w: effectiveFace.region.w,
+    h: effectiveFace.region.h
   };
   const plainDescriptor = Array.from(fullFace.descriptor);
   
@@ -2856,12 +2919,12 @@ const assignFaceToPersonByID = async (personID) => {
   matchedFaces.value.push({
     faceIndex,
     personID: person.personID,
-    confidence: assignableFace.confidence,
-    region: assignableFace.region
+    confidence: effectiveFace.confidence,
+    region: effectiveFace.region
   });
   
   // Remove from unmatched
-  unmatchedFaces.value = unmatchedFaces.value.filter(f => f.faceIndex !== faceIndex);
+  unmatchedFaces.value = unmatchedFaces.value.filter(f => Number(f.faceIndex) !== faceIndex);
   excludedFaceIndices.value.delete(faceIndex);
   excludedFaceIndices.value = new Set(excludedFaceIndices.value);
 
@@ -2889,6 +2952,8 @@ const assignFaceToPersonByID = async (personID) => {
   if (showFaceOverlays.value) {
     drawFaceOverlays();
   }
+
+  return { success: true };
 };
 
 // Assign all currently selected faces (no modal)
@@ -2898,14 +2963,43 @@ const assignSelectedFaces = async () => {
     const hasAssigned = p.faceTag && p.faceTag.region;
     return p.personID && hasSelected && !hasAssigned;
   });
-  
+
+  if (personsToAssign.length === 0) {
+    return;
+  }
+
+  let assignedCount = 0;
+  let skippedUnavailableCount = 0;
+  const assignedFaceIndices = new Set(matchedFaces.value.map(match => Number(match.faceIndex)));
+
   for (const person of personsToAssign) {
-    const selectedFaceIndex = faceAssignments.value[person.personID];
-    // Check if this face is still available (not already assigned to someone else in this loop)
-    const isFaceStillAvailable = unmatchedFaces.value.some(f => f.faceIndex === selectedFaceIndex);
-    if (isFaceStillAvailable) {
-      await assignFaceToPersonByID(person.personID);
+    const selectedFaceIndex = Number(faceAssignments.value[person.personID]);
+    if (Number.isNaN(selectedFaceIndex)) {
+      skippedUnavailableCount += 1;
+      continue;
     }
+
+    const detectedFace = detectedFaces.value[selectedFaceIndex];
+    if (!detectedFace?.region || assignedFaceIndices.has(selectedFaceIndex)) {
+      skippedUnavailableCount += 1;
+      continue;
+    }
+
+    const result = await assignFaceToPersonByID(person.personID, { silent: true });
+    if (result?.success) {
+      assignedCount += 1;
+      assignedFaceIndices.add(selectedFaceIndex);
+    } else {
+      skippedUnavailableCount += 1;
+    }
+  }
+
+  if (assignedCount > 0 || skippedUnavailableCount > 0) {
+    statusMessage.value = {
+      type: assignedCount > 0 ? 'success' : 'info',
+      text: `Assigned ${assignedCount} selected face(s)${skippedUnavailableCount > 0 ? `, skipped ${skippedUnavailableCount} unavailable` : ''}.`
+    };
+    scheduleStatusMessageClear(3000);
   }
 };
 
@@ -3753,7 +3847,7 @@ const buildUnresolvedCandidateFacesForSave = () => {
   }
 
   for (const candidate of Object.values(excludedCandidatesPendingByID.value)) {
-    if (!candidate || !candidate.candidateID) {
+    if (!candidate) {
       continue;
     }
     unresolved.push(candidate);

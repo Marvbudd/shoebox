@@ -5,6 +5,21 @@ All notable changes to Shoebox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [4.0.1] - 2026-08-07
+
+### Fixed
+- **Batch phase 1 IPC reply reliability on Windows**: Hardened `face-detection:batchPhaseOne` progress/event delivery so renderer teardown or sender lifecycle changes do not break the invoke reply path with "reply was never sent" failures.
+- **Assign Selected with excluded face candidates**: Fixed Media Manager bulk assignment so excluded faces can still be manually assigned (single assign and **Assign selected faces**) while exclusion continues to block only automated matching workflows.
+- **Exclude control for newly detected faces**: Fixed Media Manager so fresh detections (before first save) can be marked **Exclude from matching** immediately by ensuring unresolved faces always have assignable/excludable candidate identity in UI state.
+- **Media Manager duration tooltip clarity**: Clarified the playlist duration tooltip to explain that the field can be typed directly or filled by using **End** to calculate duration from the current playback position.
+- **Linux window restore position**: Fixed window reopening on Linux so saved coordinates are restored without an extra title-bar offset adjustment that could push windows under the system launch bar.
+- **MediaPlayer seek and reference start timing**: Fixed playback controls so skip buttons and referenced items seek after the media is ready, preventing starts at the beginning when a specific time was selected.
+- **Main Window selection continuity after Media Manager**: Fixed nav-row restoration so returning from Edit Media keeps the current item selected, and when that item is deleted it selects the prior row for continuous up/down navigation.
+- **Playlist cue collision validation**: Archive validation now warns when the same audio/video target at the same start time is referenced by multiple source item playlists, helping operators detect potentially conflicting playback choreography.
+- **Edit Media behavior while viewing MediaPlayer references**: Main Window now prioritizes the displayed referenced photo as the edit target and can prompt to remove **Limit** so the navigation list can be synchronized to that displayed item.
+
 ## [4.0.0] - 2026-07-26
 
 ### Added

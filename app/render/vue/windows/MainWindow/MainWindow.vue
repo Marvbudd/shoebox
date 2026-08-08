@@ -241,12 +241,12 @@ let resizeTimeout = null;
 let wasAutoCyclingBeforeBlur = false;
 
 // Load items from main process
-const loadItems = async (preserveSort = false) => {
+const loadItems = async (preserveSort = false, restoreState = null) => {
   try {
     // Always send the current sortBy value, unless it's initial load where we want server's saved value
     const requestParams = preserveSort ? {} : { sort: sortBy.value };
     const response = await window.electronAPI.getItemsList(requestParams);
-    renderItems(response, preserveSort); // Pass preserveSort through to renderItems
+    renderItems(response, preserveSort, restoreState); // Pass preserveSort and optional selection restoration through to renderItems
     
     // Save sort selection
     const controls = {
@@ -281,7 +281,7 @@ const handleSortChange = async (event) => {
 };
 
 // Render items received from main process
-const renderItems = (listObject, preserveSort = false) => {
+const renderItems = (listObject, preserveSort = false, restoreState = null) => {
   document.title = listObject.accessionTitle;
   
   // Use ?? to provide defaults for undefined values
@@ -312,8 +312,32 @@ const renderItems = (listObject, preserveSort = false) => {
   lastMouseY.value = -1;
   
   // Apply filters after DOM updates
-  nextTick(() => {
+  nextTick(async () => {
     hideHighlightFilter();
+
+    const restoreLink = restoreState?.link || null;
+    const restoreIndex = Number.isInteger(restoreState?.index) ? restoreState.index : null;
+
+    if (restoreLink || restoreIndex !== null) {
+      const visibleRows = getVisibleRows();
+      let nextIndex = -1;
+
+      if (restoreLink) {
+        nextIndex = visibleRows.findIndex(row => getRowLink(row) === restoreLink);
+      }
+
+      // If the original item was deleted, fall back to the prior visible row.
+      if (nextIndex < 0 && restoreIndex !== null && visibleRows.length > 0) {
+        nextIndex = Math.max(0, Math.min(visibleRows.length - 1, restoreIndex - 1));
+      }
+
+      if (nextIndex >= 0) {
+        isKeyboardNavigating = true;
+        keyboardNavTimestamp = Date.now();
+        highlightRow(nextIndex);
+        await selectCurrentRow();
+      }
+    }
   });
 };
 
@@ -614,6 +638,24 @@ const showItemDetail = (itemObject) => {
   });
 };
 
+const selectRowByLink = async (targetLink) => {
+  if (!targetLink) {
+    return false;
+  }
+
+  const visibleRows = getVisibleRows();
+  const rowIndex = visibleRows.findIndex(row => getRowLink(row) === targetLink);
+  if (rowIndex < 0) {
+    return false;
+  }
+
+  isKeyboardNavigating = true;
+  keyboardNavTimestamp = Date.now();
+  highlightRow(rowIndex);
+  await selectCurrentRow();
+  return true;
+};
+
 // Handle edit media action (from button or menu)
 const handleEditMedia = async () => {
   const tableDiv = document.querySelector('#tableDiv');
@@ -623,6 +665,32 @@ const handleEditMedia = async () => {
 
   const linkEl = document.getElementById('link');
   const detailLink = linkEl?.innerText?.trim();
+
+  // When preview is showing a MediaPlayer reference, edit the displayed item.
+  if (referenceInfo.value.isViewing && detailLink) {
+    let navSynchronized = await selectRowByLink(detailLink);
+
+    if (!navSynchronized && limitChecked.value && selectedCollection.value) {
+      const removeLimit = window.confirm(
+        'This referenced photo is outside the current limited collection view.\n\nRemove Limit now so the photo can be selected in the navigation list?'
+      );
+
+      if (removeLimit) {
+        limitChecked.value = false;
+        await handleControlsChanged();
+        await nextTick();
+        navSynchronized = await selectRowByLink(detailLink);
+
+        if (!navSynchronized) {
+          console.warn('[Edit Media] Could not select referenced photo in navigation after removing Limit:', detailLink);
+        }
+      }
+    }
+
+    await window.electronAPI.editItem(detailLink, null, false, null);
+    return;
+  }
+
   const link = selectedRowLink || detailLink;
 
   if (!link) {
@@ -696,6 +764,28 @@ const setupDetailEventListeners = () => {
     entry.addEventListener('click', handlePlayEntry);
     entry.style.cursor = 'pointer';
   });
+};
+
+const getCurrentNavigationState = () => {
+  const visibleRows = getVisibleRows();
+  const selectedRow = selectedRowIndex.value >= 0 ? visibleRows[selectedRowIndex.value] : null;
+  const selectedRowLink = getRowLink(selectedRow);
+  if (selectedRowLink) {
+    return {
+      link: selectedRowLink,
+      index: selectedRowIndex.value
+    };
+  }
+
+  const detailLink = document.getElementById('link')?.innerText?.trim();
+  const detailIndex = detailLink
+    ? visibleRows.findIndex(row => getRowLink(row) === detailLink)
+    : -1;
+
+  return {
+    link: detailLink || null,
+    index: detailIndex >= 0 ? detailIndex : null
+  };
 };
 
 // Handle playlist entry click (changed from mouseover)
@@ -1791,7 +1881,8 @@ onMounted(() => {
     
     // If it's a reload signal, reload items with current sort
     if (listObject && listObject.reload) {
-      loadItems();
+      const restoreState = getCurrentNavigationState();
+      loadItems(true, restoreState);
     } else {
       // Otherwise render the provided list
       renderItems(listObject);

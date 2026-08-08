@@ -47,11 +47,12 @@
  * - New menu item? Add to menuTemplates.js
  */
 
-import { app, BrowserWindow, dialog, ipcMain, shell, Menu, powerSaveBlocker, protocol } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell, Menu, powerSaveBlocker, protocol, webContents } from 'electron';
 import fs from 'fs';
 import electron from 'electron';
 import os from 'os';
 import path from 'path';
+import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { getMimeType } from './utils/mimeTypes.js';
@@ -1076,6 +1077,27 @@ const createWindow = () => {
 
   // Batch phase 1: detect faces for queue items, preserve existing matches, persist unresolved to candidatefaces.
     ipcMain.handle('face-detection:batchPhaseOne', async (event, payload = {}) => {
+    const senderId = event?.sender?.id ?? null;
+
+    const sendBatchProgress = (progressPayload) => {
+      if (!Number.isInteger(senderId)) {
+        return false;
+      }
+
+      const senderContents = webContents.fromId(senderId);
+      if (!senderContents || senderContents.isDestroyed()) {
+        return false;
+      }
+
+      try {
+        senderContents.send('face-detection:batchProgress', progressPayload);
+        return true;
+      } catch (sendError) {
+        console.warn('Unable to send batch phase 1 progress update:', sendError?.message || sendError);
+        return false;
+      }
+    };
+
     try {
       verifyAccessions();
       const service = await initFaceDetection();
@@ -1085,7 +1107,10 @@ const createWindow = () => {
       const minConfidence = Number.isFinite(payload.minConfidence) ? payload.minConfidence : 0.2;
 
       const uniqueLinks = Array.from(new Set(links.filter(Boolean)));
-      const senderId = event.sender.id;
+      if (!Number.isInteger(senderId)) {
+        throw new Error('Batch phase 1 request missing valid sender context.');
+      }
+
       activeBatchSenderId = senderId;
       batchFaceCancelState.set(senderId, false);
 
@@ -1114,7 +1139,7 @@ const createWindow = () => {
         if (!itemView) {
           skippedOther += 1;
           itemResults.push({ link, skipped: true, reason: 'Item not found' });
-          event.sender.send('face-detection:batchProgress', {
+          sendBatchProgress({
             processed,
             total: uniqueLinks.length,
             link,
@@ -1127,7 +1152,7 @@ const createWindow = () => {
         if (itemView.getType() !== 'photo') {
           skippedOther += 1;
           itemResults.push({ link, skipped: true, reason: 'Not a photo' });
-          event.sender.send('face-detection:batchProgress', {
+          sendBatchProgress({
             processed,
             total: uniqueLinks.length,
             link,
@@ -1150,7 +1175,7 @@ const createWindow = () => {
               reason: 'Media file missing on disk'
             });
 
-            event.sender.send('face-detection:batchProgress', {
+            sendBatchProgress({
               processed,
               total: uniqueLinks.length,
               link,
@@ -1169,7 +1194,7 @@ const createWindow = () => {
               reason: 'Media file is unreadable'
             });
 
-            event.sender.send('face-detection:batchProgress', {
+            sendBatchProgress({
               processed,
               total: uniqueLinks.length,
               link,
@@ -1224,7 +1249,7 @@ const createWindow = () => {
             removedExistingCandidates: saved.removed
           });
 
-          event.sender.send('face-detection:batchProgress', {
+          sendBatchProgress({
             processed,
             total: uniqueLinks.length,
             link,
@@ -1240,7 +1265,7 @@ const createWindow = () => {
             reason: itemError.message || String(itemError)
           });
 
-          event.sender.send('face-detection:batchProgress', {
+          sendBatchProgress({
             processed,
             total: uniqueLinks.length,
             link,
@@ -1328,8 +1353,11 @@ const createWindow = () => {
       };
     } catch (error) {
       console.error('Batch face phase 1 error:', error);
-      if (activeBatchSenderId === event.sender.id) {
+      if (activeBatchSenderId === senderId) {
         activeBatchSenderId = null;
+      }
+      if (Number.isInteger(senderId)) {
+        batchFaceCancelState.delete(senderId);
       }
       return {
         success: false,
@@ -1377,15 +1405,59 @@ app.whenReady().then(async () => {
       
       const baseDir = path.dirname(accessionClass.accessionFilename);
       const filePath = path.resolve(baseDir, type, link);
-      
-      // Read file
-      const fileBuffer = await fs.promises.readFile(filePath);
-      
+
       // Determine MIME type from shared utility (single source of truth)
       const mimeType = getMimeType(type, link);
-      
-      return new Response(fileBuffer, {
-        headers: { 'Content-Type': mimeType }
+
+      const fileStats = await fs.promises.stat(filePath);
+      const totalSize = Number(fileStats.size || 0);
+      const rangeHeader = request.headers.get('range');
+      const supportsRange = type === 'audio' || type === 'video';
+
+      if (supportsRange && rangeHeader && /^bytes=/i.test(rangeHeader)) {
+        const match = /bytes=(\d*)-(\d*)/i.exec(rangeHeader);
+        if (match) {
+          const start = match[1] === '' ? 0 : Number.parseInt(match[1], 10);
+          const requestedEnd = match[2] === '' ? totalSize - 1 : Number.parseInt(match[2], 10);
+          const end = Math.min(requestedEnd, totalSize - 1);
+
+          if (
+            Number.isFinite(start)
+            && Number.isFinite(end)
+            && start >= 0
+            && end >= start
+            && start < totalSize
+          ) {
+            const chunkSize = (end - start) + 1;
+            const stream = fs.createReadStream(filePath, { start, end });
+
+            return new Response(Readable.toWeb(stream), {
+              status: 206,
+              headers: {
+                'Content-Type': mimeType,
+                'Accept-Ranges': 'bytes',
+                'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+                'Content-Length': String(chunkSize)
+              }
+            });
+          }
+        }
+
+        return new Response('Requested range not satisfiable', {
+          status: 416,
+          headers: {
+            'Content-Range': `bytes */${totalSize}`
+          }
+        });
+      }
+
+      const stream = fs.createReadStream(filePath);
+      return new Response(Readable.toWeb(stream), {
+        headers: {
+          'Content-Type': mimeType,
+          'Content-Length': String(totalSize),
+          ...(supportsRange ? { 'Accept-Ranges': 'bytes' } : {})
+        }
       });
     } catch (error) {
       console.error('Protocol handler error:', error);

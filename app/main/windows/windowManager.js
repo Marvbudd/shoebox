@@ -188,6 +188,10 @@ export function newWindow(confname, preload, parentWindow, show, nconf) {
   // See https://github.com/electron/electron/issues/10388 for why this adjustment is needed.
   // If that bug is ever fixed, this code can be removed.
   win.once('move', () => {
+    if (process.platform !== 'win32') {
+      return;
+    }
+
     const windowBoundsShow = win.getBounds();
     const titleBarHeight = windowBoundsShow.y - windowBounds.y;
     const newY = windowBoundsShow.y - titleBarHeight - titleBarHeight;

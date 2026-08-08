@@ -26,9 +26,7 @@
         @loadedmetadata="checkVideoCodec"
         @canplay="checkVideoCodec"
         @error="videoError = true"
-        @click="openMediaInWindow"
-        style="cursor: pointer;"
-        title="Click to open in external player"
+        title="Use built-in playback controls"
       ></video>
       <audio 
         v-else-if="itemType === 'audio' && mediaPreviewPath"
@@ -38,9 +36,7 @@
         controls
         @error="videoError = true"
         @loadeddata="videoError = false"
-        @click="openMediaInWindow"
-        style="cursor: pointer;"
-        title="Click to open in external player"
+        title="Use built-in playback controls"
       ></audio>
       <div v-else-if="itemType && !mediaPreviewPath">
         Loading media...
@@ -65,7 +61,7 @@
           Open in External Player
         </button>
         <div class="format-error-hint">
-          Or click anywhere on the preview above
+          Use this button if in-app playback is unavailable
         </div>
       </div>
     </div>
@@ -97,6 +93,9 @@ const videoError = ref(false); // Track if video has unsupported codec
 const videoElement = ref(null);
 const audioElement = ref(null);
 let mediaElement = null;
+let pendingSeekSeconds = null;
+let pendingAutoPlayDurationSeconds = null;
+let pendingAutoPlay = false;
 let updateInterval = null;
 let durationTimer = null;  // Store timeout for playlist duration auto-pause
 let currentMediaLink = null;
@@ -154,11 +153,58 @@ const updateCurrentTime = () => {
   }
 };
 
+const applyPendingPlaybackState = () => {
+  if (!mediaElement) {
+    return;
+  }
+
+  if (pendingSeekSeconds !== null && pendingSeekSeconds !== undefined && Number.isFinite(pendingSeekSeconds) && mediaElement.readyState >= 1) {
+    mediaElement.currentTime = Math.max(0, pendingSeekSeconds);
+    pendingSeekSeconds = null;
+    updateCurrentTime();
+  }
+
+  if (pendingAutoPlay && mediaElement.readyState >= 1) {
+    pendingAutoPlay = false;
+    mediaElement.play();
+
+    if (durationTimer) {
+      clearTimeout(durationTimer);
+      durationTimer = null;
+    }
+
+    if (Number.isFinite(pendingAutoPlayDurationSeconds) && pendingAutoPlayDurationSeconds > 0) {
+      durationTimer = setTimeout(() => {
+        durationTimer = null;
+        if (mediaElement) {
+          mediaElement.pause();
+        }
+      }, pendingAutoPlayDurationSeconds * 1000);
+    }
+
+    pendingAutoPlayDurationSeconds = null;
+  }
+};
+
+const seekToTime = (targetSeconds, { autoPlay = false, autoPlayDurationSeconds = null } = {}) => {
+  const nextTarget = Number(targetSeconds);
+  if (!Number.isFinite(nextTarget)) {
+    return;
+  }
+
+  pendingSeekSeconds = nextTarget;
+  pendingAutoPlay = autoPlay === true;
+  pendingAutoPlayDurationSeconds = Number.isFinite(autoPlayDurationSeconds) ? autoPlayDurationSeconds : null;
+
+  if (mediaElement && mediaElement.readyState >= 1) {
+    applyPendingPlaybackState();
+  }
+};
+
 // Seek backward 10 seconds
 const seekBackward = () => {
   if (mediaElement) {
-    mediaElement.currentTime = Math.max(0, mediaElement.currentTime - 10);
-    updateCurrentTime();
+    seekToTime(Math.max(0, mediaElement.currentTime - 10));
     
     // Clear duration timer when seeking - user is manually controlling playback
     if (durationTimer) {
@@ -171,8 +217,8 @@ const seekBackward = () => {
 // Seek forward 10 seconds
 const seekForward = () => {
   if (mediaElement) {
-    mediaElement.currentTime = Math.min(mediaElement.duration || 0, mediaElement.currentTime + 10);
-    updateCurrentTime();
+    const targetSeconds = mediaElement.duration ? Math.min(mediaElement.duration, mediaElement.currentTime + 10) : mediaElement.currentTime + 10;
+    seekToTime(targetSeconds);
     
     // Clear duration timer when seeking - user is manually controlling playback
     if (durationTimer) {
@@ -267,6 +313,9 @@ const handleMediaDisplay = async (mediaData) => {
     durationTimer = null;
   }
   detachMediaElementListeners();
+  pendingSeekSeconds = null;
+  pendingAutoPlayDurationSeconds = null;
+  pendingAutoPlay = false;
   
   // Wait for DOM update to find media element
   nextTick(() => {
@@ -288,21 +337,24 @@ const handleMediaDisplay = async (mediaData) => {
       };
       
       mediaElement.addEventListener('pause', pauseListener);
+
+      const readyListener = () => {
+        applyPendingPlaybackState();
+      };
+
+      mediaElement.addEventListener('loadedmetadata', readyListener);
+      mediaElement.addEventListener('loadeddata', readyListener);
+      mediaElement.addEventListener('canplay', readyListener);
       
       // Handle auto-play with start time and duration
       if (itemObject.entry) {
-        mediaElement.currentTime = itemObject.entry.startSeconds;
-        mediaElement.play();
-        
-        // Store timer ID so it can be cleared later
-        durationTimer = setTimeout(() => {
-          // Clear timer ID before pausing to avoid race with pause event listener
-          durationTimer = null;
-          if (mediaElement) {
-            mediaElement.pause();
-          }
-        }, itemObject.entry.durationSeconds * 1000);
+        seekToTime(itemObject.entry.startSeconds, {
+          autoPlay: true,
+          autoPlayDurationSeconds: itemObject.entry.durationSeconds
+        });
       }
+
+      applyPendingPlaybackState();
     } else {
       currentTimeDisplay.value = '00:00:00.0';
     }
