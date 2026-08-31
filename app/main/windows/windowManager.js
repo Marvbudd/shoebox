@@ -128,6 +128,21 @@ function getSafeWindowBounds(confname, nconf, targetDisplay, defaults = {}) {
   };
 }
 
+function applyWindowsTitleBarPositionWorkaround(window, initialBounds) {
+  if (process.platform !== 'win32') {
+    return;
+  }
+
+  // See https://github.com/electron/electron/issues/10388 for why this adjustment is needed.
+  // If that bug is ever fixed, this code can be removed.
+  window.once('move', () => {
+    const windowBounds = window.getBounds();
+    const titleBarHeight = windowBounds.y - initialBounds.y;
+    const newY = windowBounds.y - titleBarHeight - titleBarHeight;
+    window.setPosition(windowBounds.x, newY);
+  });
+}
+
 /**
  * Save window position and size to config
  */
@@ -184,19 +199,7 @@ export function newWindow(confname, preload, parentWindow, show, nconf) {
       }
     }
   );
-  
-  // See https://github.com/electron/electron/issues/10388 for why this adjustment is needed.
-  // If that bug is ever fixed, this code can be removed.
-  win.once('move', () => {
-    if (process.platform !== 'win32') {
-      return;
-    }
-
-    const windowBoundsShow = win.getBounds();
-    const titleBarHeight = windowBoundsShow.y - windowBounds.y;
-    const newY = windowBoundsShow.y - titleBarHeight - titleBarHeight;
-    win.setPosition(windowBoundsShow.x, newY);
-  });
+  applyWindowsTitleBarPositionWorkaround(win, windowBounds);
   
   return win;
 }
@@ -446,14 +449,7 @@ export function createMediaManagerWindow(identifier, queueData, windowRef, nconf
     
     const shouldMaximize = nconf.get('ui:mediaManager:isMaximized');
 
-    // Position adjustment fix for Electron bug https://github.com/electron/electron/issues/10388
-    const initialBounds = windowRef.value.getBounds();
-    windowRef.value.once('move', () => {
-      const windowBoundsShow = windowRef.value.getBounds();
-      const titleBarHeight = windowBoundsShow.y - initialBounds.y;
-      const newY = windowBoundsShow.y - titleBarHeight - titleBarHeight;
-      windowRef.value.setPosition(windowBoundsShow.x, newY);
-    });
+    applyWindowsTitleBarPositionWorkaround(windowRef.value, windowBounds);
 
     // Build URL params
     let searchParams = `link=${encodeURIComponent(identifier)}`;

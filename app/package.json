@@ -1,7 +1,8 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "4.0.1",
+  "desktopName": "com.gmail.marvbudd.shoebox.desktop",
+  "version": "4.0.2",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",
@@ -25,6 +26,6 @@
     "minimatch": "^10.2.5"
   },
   "devDependencies": {
-    "electron": "^40.10.6"
+    "electron": "^41.10.3"
   }
 }

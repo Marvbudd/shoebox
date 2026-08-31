@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-08-30
+
+### Fixed
+- **Linux Media Manager window positioning**: Prevented a Windows-only title-bar adjustment from moving Media Manager windows into the Ubuntu desktop panel area when they first open.
+
+### Security
+- **Electron, Undici, and native rebuild metadata updates**: Updated Electron to `41.10.7` and Undici to `7.29.0` to address reported vulnerabilities. Added a `node-abi` `4.35.0` resolution so native dependency rebuilds recognize the Electron 41 ABI.
+
 ## [4.0.1] - 2026-08-07
 
 ### Fixed

@@ -2123,16 +2123,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"electron@npm:^40.10.6":
-  version: 40.10.6
-  resolution: "electron@npm:40.10.6"
+"electron@npm:^41.10.3":
+  version: 41.10.7
+  resolution: "electron@npm:41.10.7"
   dependencies:
     "@electron-internal/extract-zip": "npm:^1.0.1"
     "@electron/get": "npm:^5.0.0"
     "@types/node": "npm:^24.9.0"
   bin:
     electron: cli.js
-  checksum: 10c0/1026222c44d48e76c3e9990e587f25f51131fd9d68983634445cadd03438c4a2583007284a8d4233ad68c12cabadde9173b400b33f9b5940ba3360ea9e011783
+  checksum: 10c0/538d7f449fb7237c30f376384036bdee282f8f8fe5805dc39d7231b83a71f086077db92de386576a2c23ffcc5734b2cbb04045367fe5084c9d5c6140b3e6e2aa
   languageName: node
   linkType: hard
 
@@ -3438,21 +3438,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-abi@npm:^3.3.0":
-  version: 3.85.0
-  resolution: "node-abi@npm:3.85.0"
-  dependencies:
-    semver: "npm:^7.3.5"
-  checksum: 10c0/d51b5718b6ebfcb23858e5429b74798c05fe3ab436d8afd8480b4809706bc53d6af3a60714ecc85e8c943f4e06e6378ca1935725c7611f3d1febdd3fc3bb5fe3
-  languageName: node
-  linkType: hard
-
-"node-abi@npm:^4.2.0":
-  version: 4.24.0
-  resolution: "node-abi@npm:4.24.0"
+"node-abi@npm:4.35.0":
+  version: 4.35.0
+  resolution: "node-abi@npm:4.35.0"
   dependencies:
     semver: "npm:^7.6.3"
-  checksum: 10c0/9bf9f4e79c875b98f8026f2ad80150b2d5077f48529444232c9574cfd82e45d42a3ab2dcf6fb374cf7775becbf58e7c1b8704596ad3bef27cdeab7bc93eca7a3
+  checksum: 10c0/5b83a74866888bbced1d2286551168ce006e3e1fc1ac41dc79cab213a39669bba3d67f500a1a964aab3f4b4692b8a7eda69e0a67256b307fca6c8d8f5fd1f9be
   languageName: node
   linkType: hard
 
@@ -4225,7 +4216,7 @@ __metadata:
     "@vitejs/plugin-vue": "npm:^6.0.8"
     algoliasearch: "npm:^5.57.0"
     canvas: "npm:^3.2.3"
-    electron: "npm:^40.10.6"
+    electron: "npm:^41.10.3"
     electron-builder: "npm:^26.15.3"
     electron-builder-squirrel-windows: "npm:26.15.3"
     electron-updater: "npm:^6.8.9"
@@ -4608,10 +4599,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici@npm:7.28.0":
-  version: 7.28.0
-  resolution: "undici@npm:7.28.0"
-  checksum: 10c0/fe781983a26098795e99bb1f64906cbb7d0bcaa029a26baade007b53ea67f2631d189b8f9671a31f4c8d0cb3773b7559608628ba54452fef51fec90e7c78bb0d
+"undici@npm:7.29.0":
+  version: 7.29.0
+  resolution: "undici@npm:7.29.0"
+  checksum: 10c0/85ea96e91e7f3de24de678cbbc54230fdd641a3b0643005f2aef044af1f1a2db8fbecb88b28e6fa78bb41ffeafda4479b57075b6b6ab92beac4b7b5ab53f9b10
   languageName: node
   linkType: hard
 

@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",
@@ -66,7 +66,8 @@
     },
     "linux": {
       "target": "AppImage",
-      "category": "Utility"
+      "category": "Utility",
+      "syncDesktopName": true
     }
   },
   "scripts": {
@@ -130,17 +131,14 @@
   "packageManager": "yarn@4.17.1",
   "resolutions": {
     "minimatch": "^10.2.5",
-    "rollup": "^4.60.1",
-    "esbuild": "^0.28.1",
-    "undici": "7.28.0",
-    "@electron/get>undici": "7.28.0",
-    "node-gyp>undici": "7.28.0"
+    "node-abi": "4.35.0",
+    "undici": "7.29.0"
   },
   "devDependencies": {
     "@algolia/client-search": "^5.57.0",
     "@vitejs/plugin-vue": "^6.0.8",
     "algoliasearch": "^5.57.0",
-    "electron": "^40.10.6",
+    "electron": "^41.10.3",
     "electron-builder-squirrel-windows": "26.15.3",
     "search-insights": "^2.17.3"
   }
