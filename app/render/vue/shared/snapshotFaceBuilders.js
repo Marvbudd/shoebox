@@ -23,10 +23,14 @@ export function buildSnapshotFacesFromDetected({
   detectedFaces = [],
   matchedFaces = [],
   unmatchedFaces = [],
+  excludedFaceIndices = new Set(),
   getLabelForFaceIndex
 }) {
   const matchedIndexSet = new Set((matchedFaces || []).map((m) => Number(m.faceIndex)));
   const unmatchedIndexSet = new Set((unmatchedFaces || []).map((u) => Number(u.faceIndex)));
+  const excludedIndexSet = excludedFaceIndices instanceof Set
+    ? excludedFaceIndices
+    : new Set(excludedFaceIndices || []);
 
   return (detectedFaces || [])
     .map((face, index) => {
@@ -36,7 +40,8 @@ export function buildSnapshotFacesFromDetected({
 
       const isMatched = matchedIndexSet.has(Number(index));
       const isUnmatched = unmatchedIndexSet.has(Number(index));
-      if (!isMatched && !isUnmatched) {
+      const isExcluded = excludedIndexSet.has(Number(index));
+      if (!isMatched && !isUnmatched && !isExcluded) {
         return null;
       }
 
@@ -45,8 +50,8 @@ export function buildSnapshotFacesFromDetected({
         numberText: String(index + 1),
         label: isMatched && typeof getLabelForFaceIndex === 'function'
           ? (getLabelForFaceIndex(index) || null)
-          : null,
-        state: isMatched ? 'matched' : 'unmatched',
+          : (isExcluded ? 'Excluded' : null),
+        state: isMatched ? 'matched' : (isExcluded ? 'excluded' : 'unmatched'),
         region: {
           x: Number(face.region.x || 0),
           y: Number(face.region.y || 0),

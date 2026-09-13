@@ -244,3 +244,59 @@ export function computeFaceOverlayLayout({
     };
   });
 }
+
+/**
+ * Draw face overlay layout entries onto a 2D canvas context.
+ * Shared by on-screen overlay canvas (scale = 1) and full-resolution snapshot rendering (scale >= 1).
+ */
+export function drawFaceOverlaysToCanvas(ctx, entriesToDraw = [], { scale = 1 } = {}) {
+  if (!ctx || !Array.isArray(entriesToDraw)) {
+    return;
+  }
+
+  const s = Number.isFinite(scale) && scale > 0 ? scale : 1;
+
+  for (const entry of entriesToDraw) {
+    if (!entry) continue;
+
+    const color = entry.state === 'matched'
+      ? '#0080ff'
+      : (entry.state === 'excluded' ? '#f59e0b' : '#00ff00');
+
+    if (entry.regionVisible && entry.rect) {
+      const rx = entry.rect.x * s;
+      const ry = entry.rect.y * s;
+      const rw = entry.rect.w * s;
+      const rh = entry.rect.h * s;
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = FACE_OVERLAY_STYLE.borderWidth * s;
+      ctx.strokeRect(rx, ry, rw, rh);
+
+      ctx.font = `bold ${Math.max(1, Math.round(FACE_OVERLAY_STYLE.numberFontSize * s))}px sans-serif`;
+      const faceNumMetrics = ctx.measureText(String(entry.numberText || ''));
+      const numBoxW = faceNumMetrics.width + (8 * s);
+      const numBoxH = FACE_OVERLAY_STYLE.numberBoxHeight * s;
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(rx + (2 * s), ry + (2 * s), numBoxW, numBoxH);
+
+      ctx.fillStyle = color;
+      ctx.fillText(String(entry.numberText || ''), rx + (6 * s), ry + (FACE_OVERLAY_STYLE.numberTextYOffset * s));
+    }
+
+    if (entry.labelVisible && entry.labelText && entry.labelRect) {
+      const lx = entry.labelRect.x * s;
+      const ly = entry.labelRect.y * s;
+      const lw = entry.labelRect.w * s;
+      const lh = entry.labelRect.h * s;
+
+      ctx.font = `${Math.max(1, Math.round(FACE_OVERLAY_STYLE.labelFontSize * s))}px sans-serif`;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+      ctx.fillRect(lx, ly, lw, lh);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(String(entry.labelText), lx + (5 * s), ly + (FACE_OVERLAY_STYLE.labelTextYOffset * s));
+    }
+  }
+}

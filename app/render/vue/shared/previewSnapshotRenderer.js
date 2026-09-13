@@ -1,4 +1,4 @@
-import { computeFaceOverlayLayout, FACE_OVERLAY_STYLE } from './faceOverlayEngine.js';
+import { computeFaceOverlayLayout, drawFaceOverlaysToCanvas, FACE_OVERLAY_STYLE } from './faceOverlayEngine.js';
 
 function getSourceDimensions(imageSource) {
   const naturalWidth = Number(imageSource?.naturalWidth || imageSource?.width || 0);
@@ -11,6 +11,31 @@ function getSourceDimensions(imageSource) {
   return {
     naturalWidth: Math.max(1, Math.round(naturalWidth)),
     naturalHeight: Math.max(1, Math.round(naturalHeight))
+  };
+}
+
+export function getDisplayedImageSize(imageElement) {
+  const dims = getSourceDimensions(imageElement);
+  if (!dims) {
+    return null;
+  }
+
+  const rect = imageElement?.getBoundingClientRect ? imageElement.getBoundingClientRect() : null;
+  const rectWidth = Number(rect?.width || 0);
+  const rectHeight = Number(rect?.height || 0);
+
+  if (Number.isFinite(rectWidth) && Number.isFinite(rectHeight) && rectWidth > 0 && rectHeight > 0) {
+    // Calculate uniform scale under object-fit: contain
+    const scale = Math.min(rectWidth / dims.naturalWidth, rectHeight / dims.naturalHeight);
+    return {
+      width: Math.max(1, Math.round(dims.naturalWidth * scale)),
+      height: Math.max(1, Math.round(dims.naturalHeight * scale))
+    };
+  }
+
+  return {
+    width: dims.naturalWidth,
+    height: dims.naturalHeight
   };
 }
 
@@ -38,16 +63,25 @@ export function renderSnapshotDataUrlFromImageSource({
   const naturalWidth = dims.naturalWidth;
   const naturalHeight = dims.naturalHeight;
 
-  const resolvedLayoutWidth = Number.isFinite(layoutWidth) && layoutWidth > 0
-    ? Math.max(1, Math.round(layoutWidth))
-    : naturalWidth;
-  const resolvedLayoutHeight = Number.isFinite(layoutHeight) && layoutHeight > 0
-    ? Math.max(1, Math.round(layoutHeight))
-    : naturalHeight;
+  // Derive uniform layout dimensions preserving natural image aspect ratio
+  let resolvedLayoutWidth = naturalWidth;
+  let resolvedLayoutHeight = naturalHeight;
 
-  const scaleX = naturalWidth / resolvedLayoutWidth;
-  const scaleY = naturalHeight / resolvedLayoutHeight;
-  const fontScale = Math.min(scaleX, scaleY);
+  if (Number.isFinite(layoutWidth) && layoutWidth > 0 && Number.isFinite(layoutHeight) && layoutHeight > 0) {
+    const scale = Math.min(layoutWidth / naturalWidth, layoutHeight / naturalHeight);
+    resolvedLayoutWidth = Math.max(1, Math.round(naturalWidth * scale));
+    resolvedLayoutHeight = Math.max(1, Math.round(naturalHeight * scale));
+  } else if (Number.isFinite(layoutWidth) && layoutWidth > 0) {
+    const scale = layoutWidth / naturalWidth;
+    resolvedLayoutWidth = Math.max(1, Math.round(layoutWidth));
+    resolvedLayoutHeight = Math.max(1, Math.round(naturalHeight * scale));
+  } else if (Number.isFinite(layoutHeight) && layoutHeight > 0) {
+    const scale = layoutHeight / naturalHeight;
+    resolvedLayoutWidth = Math.max(1, Math.round(naturalWidth * scale));
+    resolvedLayoutHeight = Math.max(1, Math.round(layoutHeight));
+  }
+
+  const uniformScale = naturalWidth / resolvedLayoutWidth;
 
   const canvas = document.createElement('canvas');
   canvas.width = naturalWidth;
@@ -76,48 +110,7 @@ export function renderSnapshotDataUrlFromImageSource({
 
   ctx.textBaseline = 'alphabetic';
 
-  const scaleRect = (rectValue) => {
-    return {
-      x: rectValue.x * scaleX,
-      y: rectValue.y * scaleY,
-      w: rectValue.w * scaleX,
-      h: rectValue.h * scaleY
-    };
-  };
-
-  layout.forEach((entry) => {
-    if (entry.regionVisible) {
-      const regionRect = scaleRect(entry.rect);
-      ctx.strokeStyle = '#ff6600';
-      ctx.lineWidth = FACE_OVERLAY_STYLE.borderWidth * fontScale;
-      ctx.strokeRect(regionRect.x, regionRect.y, regionRect.w, regionRect.h);
-
-      const numberText = String(entry.numberText || '');
-      ctx.font = `bold ${Math.max(1, Math.round(FACE_OVERLAY_STYLE.numberFontSize * fontScale))}px sans-serif`;
-      const numberWidth = Math.ceil(ctx.measureText(numberText).width) + (10 * fontScale);
-      const numberHeight = FACE_OVERLAY_STYLE.numberBoxHeight * fontScale;
-      const numberX = regionRect.x + (2 * scaleX);
-      const numberY = regionRect.y - numberHeight;
-
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
-      ctx.fillRect(numberX, numberY, numberWidth, numberHeight);
-      ctx.fillStyle = '#ff6600';
-      ctx.fillText(numberText, numberX + (4 * scaleX), numberY + (FACE_OVERLAY_STYLE.numberTextYOffset * fontScale));
-    }
-
-    if (entry.labelVisible && entry.labelText && entry.labelRect) {
-      const labelRect = scaleRect(entry.labelRect);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
-      ctx.fillRect(labelRect.x, labelRect.y, labelRect.w, labelRect.h);
-      ctx.font = `${Math.max(1, Math.round(FACE_OVERLAY_STYLE.labelFontSize * fontScale))}px sans-serif`;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(
-        String(entry.labelText),
-        labelRect.x + (5 * scaleX),
-        labelRect.y + (FACE_OVERLAY_STYLE.labelTextYOffset * fontScale)
-      );
-    }
-  });
+  drawFaceOverlaysToCanvas(ctx, layout, { scale: uniformScale });
 
   return {
     success: true,
@@ -143,14 +136,14 @@ export function renderPreviewSnapshotDataUrl({
     return { success: false, error: 'Image is still loading.' };
   }
 
-  const rect = imageElement.getBoundingClientRect();
+  const displayed = getDisplayedImageSize(imageElement);
 
   return renderSnapshotDataUrlFromImageSource({
     imageSource: imageElement,
     faces,
     mode,
     hoveredFaceIndex,
-    layoutWidth: rect.width,
-    layoutHeight: rect.height
+    layoutWidth: displayed?.width,
+    layoutHeight: displayed?.height
   });
 }

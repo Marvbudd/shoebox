@@ -80,11 +80,13 @@ function clampNumber(value, min, max) {
 }
 
 function getSafeWindowBounds(confname, nconf, targetDisplay, defaults = {}) {
-  const workArea = targetDisplay.workArea || targetDisplay.bounds;
+  const bounds = targetDisplay.bounds || { x: 0, y: 0, width: 1920, height: 1080 };
+  const workArea = targetDisplay.workArea || bounds;
+
   const defaultWidth = defaults.width || 800;
   const defaultHeight = defaults.height || 600;
-  const minWidth = defaults.minWidth || 400;
-  const minHeight = defaults.minHeight || 300;
+  const minWidth = defaults.minWidth || 300;
+  const minHeight = defaults.minHeight || 200;
 
   const savedX = nconf.get(`ui:${confname}:x`);
   const savedY = nconf.get(`ui:${confname}:y`);
@@ -94,37 +96,44 @@ function getSafeWindowBounds(confname, nconf, targetDisplay, defaults = {}) {
   const width = clampNumber(
     Number.isFinite(savedWidth) ? savedWidth : defaultWidth,
     minWidth,
-    Math.max(minWidth, workArea.width)
+    Math.max(minWidth, bounds.width)
   );
 
   const height = clampNumber(
     Number.isFinite(savedHeight) ? savedHeight : defaultHeight,
     minHeight,
-    Math.max(minHeight, workArea.height)
+    Math.max(minHeight, bounds.height)
   );
 
-  const maxX = workArea.x + workArea.width - width;
-  const maxY = workArea.y + workArea.height - height;
-  const fallbackX = workArea.x + Math.max(0, Math.floor((workArea.width - width) / 2));
-  const fallbackY = workArea.y + Math.max(0, Math.floor((workArea.height - height) / 2));
+  let x;
+  let y;
 
-  const x = clampNumber(
-    Number.isFinite(savedX) ? savedX : fallbackX,
-    workArea.x,
-    Math.max(workArea.x, maxX)
-  );
+  if (Number.isFinite(savedX) && Number.isFinite(savedY)) {
+    // Check if saved position is on or near the target display
+    const isOnTargetDisplay =
+      savedX >= bounds.x - 50 &&
+      savedX < bounds.x + bounds.width - 50 &&
+      savedY >= bounds.y - 20 &&
+      savedY < bounds.y + bounds.height - 50;
 
-  const y = clampNumber(
-    Number.isFinite(savedY) ? savedY : fallbackY,
-    workArea.y,
-    Math.max(workArea.y, maxY)
-  );
+    if (isOnTargetDisplay) {
+      x = savedX;
+      y = savedY;
+    } else {
+      x = workArea.x + 100;
+      y = workArea.y + 100;
+    }
+  } else {
+    // First run fallback: 100px inset from target display workArea (safe from dock/top bar)
+    x = workArea.x + 100;
+    y = workArea.y + 100;
+  }
 
   return {
-    x,
-    y,
-    width,
-    height
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height)
   };
 }
 
@@ -141,6 +150,20 @@ function applyWindowsTitleBarPositionWorkaround(window, initialBounds) {
     const newY = windowBounds.y - titleBarHeight - titleBarHeight;
     window.setPosition(windowBounds.x, newY);
   });
+}
+
+function createPersistedWindow(confname, nconf, defaults, options = {}) {
+  const targetDisplay = resolveTargetDisplay(confname, nconf, `createPersistedWindow(${confname})`);
+  const initialBounds = getSafeWindowBounds(confname, nconf, targetDisplay, defaults);
+  const window = new BrowserWindow({
+    ...initialBounds,
+    autoHideMenuBar: true,
+    ...options
+  });
+
+  applyWindowsTitleBarPositionWorkaround(window, initialBounds);
+
+  return window;
 }
 
 /**
@@ -173,35 +196,22 @@ export function saveWindowState(window, confname, nconf) {
  * Create a new window with saved position/size
  */
 export function newWindow(confname, preload, parentWindow, show, nconf) {
-  let targetDisplay = resolveTargetDisplay(confname, nconf, `newWindow(${confname})`);
-  let modalValue = parentWindow ? true : false;
-
-  let windowBounds = getSafeWindowBounds(confname, nconf, targetDisplay, {
+  return createPersistedWindow(confname, nconf, {
     width: 400,
     height: 300,
     minWidth: 300,
     minHeight: 200
-  });
-
-  const mainWindow = parentWindow; // For parent reference
-  const win = new BrowserWindow(
-    {
-      ...windowBounds,
-      autoHideMenuBar: true,
-      show: show,
-      parent: parentWindow || null,
-      modal: modalValue,
-      webPreferences: {
-        webtools: true,
-        preload: path.resolve(__dirname, '..', preload),
-        nodeIntegration: false,
-        contextIsolation: true
-      }
+  }, {
+    show,
+    parent: parentWindow || null,
+    modal: Boolean(parentWindow),
+    webPreferences: {
+      webtools: true,
+      preload: path.resolve(__dirname, '..', preload),
+      nodeIntegration: false,
+      contextIsolation: true
     }
-  );
-  applyWindowsTitleBarPositionWorkaround(win, windowBounds);
-  
-  return win;
+  });
 }
 
 /**
@@ -235,18 +245,12 @@ export function createMediaWindow(mediaInfo, windowRef, nconf) {
  */
 export function createPersonManagerWindow(windowRef, nconf) {
   if (!windowRef.value) {
-    let targetDisplay = resolveTargetDisplay('personManager', nconf, 'createPersonManagerWindow');
-
-    let windowBounds = getSafeWindowBounds('personManager', nconf, targetDisplay, {
+    windowRef.value = createPersistedWindow('personManager', nconf, {
       width: 1000,
       height: 700,
       minWidth: 800,
       minHeight: 600
-    });
-    
-    windowRef.value = new BrowserWindow({
-      ...windowBounds,
-      autoHideMenuBar: true,
+    }, {
       show: false,
       webPreferences: {
         preload: path.resolve(__dirname, '../../render/vue/windows/PersonManager/preload.js'),
@@ -303,18 +307,12 @@ export function createPersonManagerWindow(windowRef, nconf) {
  */
 export function createFaceMatchingWindow(payload, windowRef, nconf) {
   if (!windowRef.value) {
-    let targetDisplay = resolveTargetDisplay('faceMatching', nconf, 'createFaceMatchingWindow');
-
-    let windowBounds = getSafeWindowBounds('faceMatching', nconf, targetDisplay, {
+    windowRef.value = createPersistedWindow('faceMatching', nconf, {
       width: 1100,
       height: 760,
       minWidth: 900,
       minHeight: 600
-    });
-
-    windowRef.value = new BrowserWindow({
-      ...windowBounds,
-      autoHideMenuBar: true,
+    }, {
       show: false,
       webPreferences: {
         preload: path.resolve(__dirname, '../../render/vue/windows/FaceMatching/preload.js'),
@@ -368,18 +366,12 @@ export function createFaceMatchingWindow(payload, windowRef, nconf) {
  */
 export function createCreateAccessionsWindow(windowRef, nconf) {
   if (!windowRef.value) {
-    let targetDisplay = resolveTargetDisplay('createAccessions', nconf, 'createCreateAccessionsWindow');
-
-    let windowBounds = getSafeWindowBounds('createAccessions', nconf, targetDisplay, {
+    windowRef.value = createPersistedWindow('createAccessions', nconf, {
       width: 800,
       height: 700,
       minWidth: 700,
       minHeight: 600
-    });
-    
-    windowRef.value = new BrowserWindow({
-      ...windowBounds,
-      autoHideMenuBar: true,
+    }, {
       show: false,
       webPreferences: {
         preload: path.resolve(__dirname, '../../render/vue/windows/CreateAccessions/preload.js'),
@@ -425,18 +417,12 @@ export function createCreateAccessionsWindow(windowRef, nconf) {
  */
 export function createMediaManagerWindow(identifier, queueData, windowRef, nconf) {
   if (!windowRef.value) {
-    let targetDisplay = resolveTargetDisplay('mediaManager', nconf, 'createMediaManagerWindow');
-
-    let windowBounds = getSafeWindowBounds('mediaManager', nconf, targetDisplay, {
+    windowRef.value = createPersistedWindow('mediaManager', nconf, {
       width: 1000,
       height: 800,
       minWidth: 900,
       minHeight: 700
-    });
-    
-    windowRef.value = new BrowserWindow({
-      ...windowBounds,
-      autoHideMenuBar: true,
+    }, {
       show: false,
       webPreferences: {
         preload: path.resolve(__dirname, '../../render/vue/windows/MediaManager/preload.js'),
@@ -448,8 +434,6 @@ export function createMediaManagerWindow(identifier, queueData, windowRef, nconf
     const vueDistPath = path.resolve(__dirname, '../../render/vue-dist/mediaManager/index.html');
     
     const shouldMaximize = nconf.get('ui:mediaManager:isMaximized');
-
-    applyWindowsTitleBarPositionWorkaround(windowRef.value, windowBounds);
 
     // Build URL params
     let searchParams = `link=${encodeURIComponent(identifier)}`;
@@ -509,18 +493,12 @@ export function createMediaManagerWindow(identifier, queueData, windowRef, nconf
  */
 export function createUpdateCollectionWindow(windowRef, nconf) {
   if (!windowRef.value) {
-    let targetDisplay = resolveTargetDisplay('updateCollection', nconf, 'createUpdateCollectionWindow');
-
-    let windowBounds = getSafeWindowBounds('updateCollection', nconf, targetDisplay, {
+    windowRef.value = createPersistedWindow('updateCollection', nconf, {
       width: 800,
       height: 700,
       minWidth: 700,
       minHeight: 600
-    });
-    
-    windowRef.value = new BrowserWindow({
-      ...windowBounds,
-      autoHideMenuBar: true,
+    }, {
       show: false,
       webPreferences: {
         preload: path.resolve(__dirname, '../../render/vue/windows/UpdateCollection/preload.js'),
@@ -567,18 +545,12 @@ export function createUpdateCollectionWindow(windowRef, nconf) {
 export function createCollectionSetOperationsWindow(operation, targetCollection, windowRef, nconf) {
   console.log('Creating Collection Set Operations window...', { operation, targetCollection });
   if (!windowRef.value) {
-    let targetDisplay = resolveTargetDisplay('collectionSetOperations', nconf, 'createCollectionSetOperationsWindow');
-
-    let windowBounds = getSafeWindowBounds('collectionSetOperations', nconf, targetDisplay, {
+    windowRef.value = createPersistedWindow('collectionSetOperations', nconf, {
       width: 700,
       height: 600,
       minWidth: 650,
       minHeight: 500
-    });
-    
-    windowRef.value = new BrowserWindow({
-      ...windowBounds,
-      autoHideMenuBar: true,
+    }, {
       show: false,
       webPreferences: {
         preload: path.resolve(__dirname, '../../render/vue/windows/CollectionSetOperations/preload.js'),
@@ -635,18 +607,12 @@ export function createCollectionSetOperationsWindow(operation, targetCollection,
 export function createCollectionManagerWindow(mode, windowRef, modeRef, nconf) {
   modeRef.value = mode;
   if (!windowRef.value) {
-    let targetDisplay = resolveTargetDisplay('collectionManager', nconf, 'createCollectionManagerWindow');
-
-    let windowBounds = getSafeWindowBounds('collectionManager', nconf, targetDisplay, {
+    windowRef.value = createPersistedWindow('collectionManager', nconf, {
       width: 600,
       height: 600,
       minWidth: 550,
       minHeight: 500
-    });
-    
-    windowRef.value = new BrowserWindow({
-      ...windowBounds,
-      autoHideMenuBar: true,
+    }, {
       show: false,
       webPreferences: {
         preload: path.resolve(__dirname, '../../render/vue/windows/CollectionManager/preload.js'),

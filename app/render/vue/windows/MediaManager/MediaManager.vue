@@ -988,7 +988,7 @@ import { formatPersonName, expandPersonsByLastName, getPersonDisplayName } from 
 import DateInput from '../../components/DateInput.vue';
 import PersonSelectButton from '../../components/PersonSelectButton.vue';
 import { hasUnsupportedCodec } from '../../shared/videoCodecDetection.js';
-import { computeFaceOverlayLayout, FACE_OVERLAY_MODE, FACE_OVERLAY_STYLE, getNextFaceOverlayMode, normalizeFaceOverlayMode } from '../../shared/faceOverlayEngine.js';
+import { computeFaceOverlayLayout, drawFaceOverlaysToCanvas, FACE_OVERLAY_MODE, FACE_OVERLAY_STYLE, getNextFaceOverlayMode, normalizeFaceOverlayMode } from '../../shared/faceOverlayEngine.js';
 import { renderPreviewSnapshotDataUrl, renderSnapshotDataUrlFromImageSource } from '../../shared/previewSnapshotRenderer.js';
 import { buildSnapshotFacesFromDetected, buildSingleSnapshotFace } from '../../shared/snapshotFaceBuilders.js';
 import { mergeAssignedFacesIntoCurrent } from './faceMergeHelper.js';
@@ -1161,6 +1161,7 @@ const clearFaceHoverState = () => {
     clearTimeout(hoverClearTimeout);
     hoverClearTimeout = null;
   }
+  drawFaceOverlays();
 };
 
 const isValidFaceOverlayMode = (mode) => {
@@ -1494,18 +1495,12 @@ const removePerson = async (index) => {
             confidence: matchedFace.confidence
           });
           matchedFaces.value.splice(matchIndex, 1);
-          
-          // Redraw face overlays to update colors
-          if (showFaceOverlays.value) {
-            setTimeout(() => {
-              drawFaceOverlays();
-            }, 50);
-          }
         }
       }
     }
     
     item.value.person.splice(index, 1);
+    drawFaceOverlays();
   } catch (err) {
     console.error('Error removing person:', err);
   }
@@ -1917,6 +1912,7 @@ const openMediaSnapshotWindow = async () => {
       detectedFaces: detectedFaces.value,
       matchedFaces: matchedFaces.value,
       unmatchedFaces: unmatchedFaces.value,
+      excludedFaceIndices: excludedFaceIndices.value,
       getLabelForFaceIndex: getPersonLabelForFaceIndex
     });
 
@@ -2473,6 +2469,7 @@ const unmatchFace = async (match) => {
 
 // Unmatch by personID (for inline unmatch button)
 const unmatchPersonFace = (personID) => {
+  clearFaceHoverState();
   // Find the match directly from matchedFaces (no faceTag anymore)
   const match = matchedFaces.value.find(m => m.personID === personID);
   if (match) {
@@ -3779,34 +3776,7 @@ const drawFaceOverlays = () => {
       entriesToDraw = hoveredEntries.length > 0 ? hoveredEntries : layout;
     }
 
-    for (const entry of entriesToDraw) {
-      const color = entry.state === 'matched'
-        ? '#0080ff'
-        : (entry.state === 'excluded' ? '#f59e0b' : '#00ff00');
-
-      if (entry.regionVisible) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = FACE_OVERLAY_STYLE.borderWidth;
-        ctx.strokeRect(entry.rect.x, entry.rect.y, entry.rect.w, entry.rect.h);
-
-        ctx.font = FACE_OVERLAY_STYLE.numberFont;
-        const faceNumMetrics = ctx.measureText(entry.numberText);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(entry.rect.x + 2, entry.rect.y + 2, faceNumMetrics.width + 8, FACE_OVERLAY_STYLE.numberBoxHeight);
-
-        ctx.fillStyle = color;
-        ctx.fillText(entry.numberText, entry.rect.x + 6, entry.rect.y + FACE_OVERLAY_STYLE.numberTextYOffset);
-      }
-
-      if (entry.labelVisible && entry.labelText && entry.labelRect) {
-        ctx.font = FACE_OVERLAY_STYLE.labelFont;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
-        ctx.fillRect(entry.labelRect.x, entry.labelRect.y, entry.labelRect.w, entry.labelRect.h);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(entry.labelText, entry.labelRect.x + 5, entry.labelRect.y + FACE_OVERLAY_STYLE.labelTextYOffset);
-      }
-    }
+    drawFaceOverlaysToCanvas(ctx, entriesToDraw);
   } catch (err) {
     console.error('Error drawing face overlays:', err);
   }
