@@ -104,10 +104,10 @@ Archive (Master)
 
 ### From Main Window
 
-1. Select items you want to include
-2. Go to **Collections > Create New Collection**
-3. Name your collection
-4. Save
+1. Select or create a collection from the collection controls.
+2. Use **Click**, **Shift+Click**, and **Ctrl+Click** / **Cmd+Click** in the navigation list to select the items you want to include.
+3. Double-click any selected item to toggle the whole selection into or out of the active collection.
+4. Use **Collections > Create New Collection** when you need a new collection, then select it before toggling items.
 
 See [Collections Feature Guide](../features/collections.md) for detailed instructions.
 

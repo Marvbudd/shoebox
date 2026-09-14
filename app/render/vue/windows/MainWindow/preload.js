@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Toggle item's membership in currently selected collection
   toggleItemInCollection: (link) => ipcRenderer.invoke('item:setCollection', link),
+
+  // Toggle multiple items' membership in currently selected collection
+  toggleItemsInCollectionBatch: (links) => ipcRenderer.invoke('items:setCollectionBatch', links),
   
   // Update filter controls (photo/audio/video checkboxes, collection selection)
   updateControls: (controls) => ipcRenderer.invoke('items:collection', controls),

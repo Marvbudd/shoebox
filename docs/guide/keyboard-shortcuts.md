@@ -25,6 +25,22 @@ Comprehensive guide to all keyboard shortcuts available in Shoebox.
 Hover your mouse over any item in the navigation list (left side) to instantly preview it without changing selection. Click to select and view full details.
 :::
 
+### Multi-Selecting Items
+
+The Main Window supports Windows-style multi-selection in the navigation list:
+
+- **Click**: Select one item and set the range anchor.
+- **Ctrl+Click** (Windows/Linux) or **Cmd+Click** (macOS): Add or remove an individual item from the selection.
+- **Shift+Click**: Select the range from the anchor item through the clicked item.
+- **Ctrl+Shift+Click** or **Cmd+Shift+Click**: Add that range to the existing selection.
+- **Ctrl+A** or **Cmd+A**: Select all visible items.
+- **Escape**: Clear the selection.
+- **Shift+Arrow Up/Down**, **Shift+Page Up/Down**, **Shift+Home**, or **Shift+End**: Extend the selection with the keyboard.
+
+Selected rows use a solid highlighted background. The current hover/preview row keeps a dashed outline, so it remains distinct from the selected set. The selection count appears beside the main controls.
+
+With a collection selected, double-click any row in a multi-selection to toggle all selected items in or out of that collection at once. The selection clears after the batch operation. A double-click with no multi-selection still toggles only the clicked item.
+
 ::: tip
 Use **Ctrl+Shift+P/A/V** keyboard shortcuts or the checkboxes at the top of the window to filter by media type. Use the Sort dropdown to change sort order.
 :::

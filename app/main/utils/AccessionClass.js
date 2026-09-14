@@ -272,6 +272,37 @@ export class AccessionClass {
       console.error('AccessionClass:toggleItemIncollection - Collection not found: ' + collectionKey)
     }
   } // toggleItemInCollection
+
+  // adds or removes multiple items from a collection
+  toggleItemsInCollection(collectionKey, links) {
+    if (!Array.isArray(links) || links.length === 0) return;
+    const collection = this.collections.getCollection(collectionKey);
+    if (!collection) {
+      console.error('AccessionClass:toggleItemsInCollection - Collection not found: ' + collectionKey);
+      return;
+    }
+
+    const validLinks = links.filter(link => Boolean(this.getItemView(null, link)));
+    if (validLinks.length === 0) return;
+
+    // If every item is already in the collection, remove them all.
+    // Otherwise, add all missing items to the collection.
+    const allInCollection = validLinks.every(link => collection.hasItem(link));
+    if (allInCollection) {
+      validLinks.forEach(link => {
+        if (collection.hasItem(link)) {
+          collection.removeItem(link);
+        }
+      });
+    } else {
+      validLinks.forEach(link => {
+        if (!collection.hasItem(link)) {
+          collection.addItem(link);
+        }
+      });
+    }
+    this.accessionsChanged = true;
+  } // toggleItemsInCollection
     /**
    * Check if an item (by link) is referenced in any playlist
    * @param {string} link - The item's link to check

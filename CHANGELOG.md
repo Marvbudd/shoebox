@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.3] - 2026-09-14
+
+### Added
+- **Multi-item selection and batch collection toggling in Main Window**: Supported Windows-style multi-selection on the main navigation table using `Shift+Click` for range selection, `Ctrl+Click` (or `Cmd+Click`) for toggling individual items, and `Ctrl+A` for selecting all visible items. Double-clicking any item in an active multi-selection toggles all selected items in the active collection in a single batch operation, with a live selection counter badge in the bottom controls and persistent selection across window focus and Media Manager updates.
+
 ### Fixed
+- **Selection continuity when removing items from limited collection**: Fixed an issue in Main Window where removing an item from a limited collection view caused the selection/preview to jump to the row above instead of selecting the row that slid into place under the cursor.
 - **Photo snapshot face label proportions and centralized overlay rendering**: Fixed an issue where opening a snapshot with face overlays on MainWindow produced disproportionately tall black label boxes on non-square preview containers by calculating uniform scaling based on actual displayed image dimensions. Centralized 2D canvas face overlay drawing across Media Manager and snapshot rendering for unified visuals and styling.
 - **Face overlay redraw after removing person in Media Manager**: Fixed an issue where hovering over a person's face dropdown isolated that single face region on the preview, and subsequent removal of the person row or inline unassign left remaining face regions hidden until another hover event occurred.
 - **Window position persistence and initial placement**: Restored exact window position restoration when reopening windows so saved coordinates are not shifted away from desktop edges, while ensuring safe initial placement on first launch.

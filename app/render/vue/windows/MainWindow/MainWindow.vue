@@ -56,6 +56,15 @@
           >
             Face Labels: {{ faceTagsModeLabel }}
           </button>
+
+          <span
+            v-if="selectedLinks.size > 0"
+            class="selection-count-badge"
+            :title="selectedCollection ? ('Double-click any selected row to toggle in ' + selectedCollectionText) : 'Select a collection to toggle items'"
+          >
+            {{ selectedLinks.size }} selected
+            <button type="button" class="btn-clear-selection" @click.stop="clearSelection" title="Clear selection (Esc)">×</button>
+          </span>
         </form>
       </div>
     </div>
@@ -119,6 +128,10 @@ const videoChecked = ref(true);
 const limitChecked = ref(false);
 const selectedCollection = ref('');
 const collections = ref([]);
+const selectedCollectionText = computed(() => {
+  if (collections.value.length === 0 || !selectedCollection.value) return '';
+  return collections.value.find(c => c.value === selectedCollection.value)?.text || '';
+});
 const faceTagsMode = ref(FACE_OVERLAY_MODE.OFF);
 const faceTagsModeLabel = computed(() => {
   switch (faceTagsMode.value) {
@@ -153,6 +166,8 @@ const referenceInfo = ref({
 
 // Keyboard navigation state
 const selectedRowIndex = ref(-1); // Track currently selected row for keyboard nav
+const selectedLinks = ref(new Set()); // Track multi-selected item links
+const selectionAnchorIndex = ref(-1); // Anchor index for Shift-click range selections
 const lastMouseX = ref(-1); // Track mouse position to detect actual movement
 const lastMouseY = ref(-1);
 let isKeyboardNavigating = false; // Track when user is actively using keyboard navigation
@@ -164,6 +179,28 @@ let mouseoverDebounceTimer = null; // Debounce timer to avoid excessive requests
 let mouseoverDebounceLink = null; // Track which item the current timer is for
 const overlayMeasureCanvas = document.createElement('canvas');
 const overlayMeasureContext = overlayMeasureCanvas.getContext('2d');
+
+// Sync multi-selected styling to table DOM rows
+const updateMultiSelectVisuals = () => {
+  const tableDiv = document.querySelector('#tableDiv');
+  if (!tableDiv) return;
+  const allRows = tableDiv.getElementsByTagName('tr');
+  for (let i = 0; i < allRows.length; i++) {
+    const row = allRows[i];
+    const link = getRowLink(row);
+    if (link && selectedLinks.value.has(link)) {
+      row.classList.add('multi-selected');
+    } else {
+      row.classList.remove('multi-selected');
+    }
+  }
+};
+
+const clearSelection = () => {
+  selectedLinks.value = new Set();
+  selectionAnchorIndex.value = -1;
+  updateMultiSelectVisuals();
+};
 
 const openSnapshotForPreview = async (type, link) => {
   if (type !== 'photo') {
@@ -315,6 +352,16 @@ const renderItems = (listObject, preserveSort = false, restoreState = null) => {
   nextTick(async () => {
     hideHighlightFilter();
 
+    // Prune any selected links that no longer exist in the table DOM, then refresh selection styling
+    const currentTableLinks = new Set(
+      Array.from(document.querySelectorAll('#tableDiv tr[link]'))
+        .map(r => getRowLink(r))
+        .filter(Boolean)
+    );
+    const validSelected = new Set([...selectedLinks.value].filter(l => currentTableLinks.has(l)));
+    selectedLinks.value = validSelected;
+    updateMultiSelectVisuals();
+
     const restoreLink = restoreState?.link || null;
     const restoreIndex = Number.isInteger(restoreState?.index) ? restoreState.index : null;
 
@@ -326,15 +373,17 @@ const renderItems = (listObject, preserveSort = false, restoreState = null) => {
         nextIndex = visibleRows.findIndex(row => getRowLink(row) === restoreLink);
       }
 
-      // If the original item was deleted, fall back to the prior visible row.
+      // If the original item was deleted/removed from view, select the item that took its place
+      // (or the last item if the removed item was at the end of the list).
       if (nextIndex < 0 && restoreIndex !== null && visibleRows.length > 0) {
-        nextIndex = Math.max(0, Math.min(visibleRows.length - 1, restoreIndex - 1));
+        nextIndex = Math.max(0, Math.min(visibleRows.length - 1, restoreIndex));
       }
 
       if (nextIndex >= 0) {
         isKeyboardNavigating = true;
         keyboardNavTimestamp = Date.now();
         highlightRow(nextIndex);
+        selectionAnchorIndex.value = nextIndex;
         await selectCurrentRow();
       }
     }
@@ -418,6 +467,8 @@ const hideHighlightFilter = () => {
   for (let i = 0; i < allRows.length; i++) {
     allRows[i].classList.remove('keyboard-selected');
   }
+
+  updateMultiSelectVisuals();
 };
 
 // Handle mouseover on table rows
@@ -558,31 +609,89 @@ const handleMouseMove = (event) => {
   }
 };
 
-// Handle click on table rows (for audio/video items)
+// Handle click on table rows (for multi-selection and audio/video items)
 const handleTableClick = async (event) => {
   const target = event.target;
   if (target.nodeName === 'DIV' && target.parentElement.nodeName === 'TD') {
     const row = target.closest('tr');
     const itemLink = getRowLink(row);
-    if (row && itemLink) {
-      // Check if this is an audio or video item
-      const isAudioOrVideo = row.classList.contains('audio') || row.classList.contains('video');
-      
-      if (isAudioOrVideo) {
-        // Increment counter and capture current value for this request
-        mouseoverRequestCounter++;
-        const thisRequestId = mouseoverRequestCounter;
-        
-        try {
-          const itemData = await window.electronAPI.getItemDetail(itemLink);
-          
-          // Only show detail if this is still the latest request
-          if (thisRequestId === mouseoverRequestCounter && itemData) {
-            showItemDetail(itemData);
-          }
-        } catch (error) {
-          console.error('Error getting item detail:', error);
+    if (!row || !itemLink) return;
+
+    const visibleRows = getVisibleRows();
+    const clickedIndex = visibleRows.indexOf(row);
+    if (clickedIndex < 0) return;
+
+    // Shift-Click (or Ctrl-Shift-Click): range selection
+    if (event.shiftKey) {
+      event.preventDefault();
+      const anchor = (selectionAnchorIndex.value >= 0 && selectionAnchorIndex.value < visibleRows.length)
+        ? selectionAnchorIndex.value
+        : (selectedRowIndex.value >= 0 ? selectedRowIndex.value : clickedIndex);
+
+      const start = Math.min(anchor, clickedIndex);
+      const end = Math.max(anchor, clickedIndex);
+
+      const nextSet = (event.ctrlKey || event.metaKey)
+        ? new Set(selectedLinks.value)
+        : new Set();
+
+      for (let i = start; i <= end; i++) {
+        const link = getRowLink(visibleRows[i]);
+        if (link) {
+          nextSet.add(link);
         }
+      }
+
+      selectedLinks.value = nextSet;
+      selectionAnchorIndex.value = anchor;
+      updateMultiSelectVisuals();
+      highlightRow(clickedIndex);
+      await selectCurrentRow();
+      return;
+    }
+
+    // Ctrl/Cmd-Click (without Shift): toggle individual item selection
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      const nextSet = new Set(selectedLinks.value);
+      if (nextSet.has(itemLink)) {
+        nextSet.delete(itemLink);
+      } else {
+        nextSet.add(itemLink);
+      }
+      selectedLinks.value = nextSet;
+      selectionAnchorIndex.value = clickedIndex;
+      updateMultiSelectVisuals();
+      highlightRow(clickedIndex);
+      await selectCurrentRow();
+      return;
+    }
+
+    // Plain click (no modifier):
+    // If the clicked row is already part of an active multi-selection, preserve the selection
+    // so a subsequent double-click (or batch action) operates on the entire selection.
+    if (selectedLinks.value.has(itemLink) && selectedLinks.value.size > 1) {
+      // Keep existing multi-selection intact for double-click
+    } else {
+      // In standard desktop lists, clicking an unselected row selects just that row (multi-selection of 1)
+      // and establishes it as the anchor for subsequent Shift-clicks.
+      selectionAnchorIndex.value = clickedIndex;
+      selectedLinks.value = new Set([itemLink]);
+      updateMultiSelectVisuals();
+    }
+
+    // Check if this is an audio or video item
+    const isAudioOrVideo = row.classList.contains('audio') || row.classList.contains('video');
+    if (isAudioOrVideo) {
+      mouseoverRequestCounter++;
+      const thisRequestId = mouseoverRequestCounter;
+      try {
+        const itemData = await window.electronAPI.getItemDetail(itemLink);
+        if (thisRequestId === mouseoverRequestCounter && itemData) {
+          showItemDetail(itemData);
+        }
+      } catch (error) {
+        console.error('Error getting item detail:', error);
       }
     }
   }
@@ -593,15 +702,39 @@ const handleDoubleClick = async (event) => {
   const target = event.target;
   if (target.nodeName === 'DIV' && target.parentElement.nodeName === 'TD') {
     const row = target.closest('tr');
-    if (row && row.hasAttribute('link')) {
-      try {
-        const link = row.getAttribute('link');
+    const link = getRowLink(row);
+    if (!row || !link) return;
+
+    const visibleRows = getVisibleRows();
+    const clickedIndex = visibleRows.indexOf(row);
+    const navState = {
+      link,
+      index: clickedIndex >= 0 ? clickedIndex : selectedRowIndex.value
+    };
+
+    try {
+      if (selectedLinks.value.size > 1 && selectedLinks.value.has(link)) {
+        // Double-clicked on an item within an active multi-selection: batch toggle all!
+        const linksToToggle = Array.from(selectedLinks.value);
+        if (window.electronAPI.toggleItemsInCollectionBatch) {
+          await window.electronAPI.toggleItemsInCollectionBatch(linksToToggle);
+        } else {
+          for (const l of linksToToggle) {
+            await window.electronAPI.toggleItemInCollection(l);
+          }
+        }
+      } else {
+        // Single item toggle
         await window.electronAPI.toggleItemInCollection(link);
-        // Reload items to update collection status
-        await loadItems();
-      } catch (error) {
-        console.error('Error toggling collection:', error);
       }
+
+      // Clear the multi-selection after the toggle action is performed
+      clearSelection();
+
+      // Reload items to update collection status while preserving navigation state
+      await loadItems(true, navState);
+    } catch (error) {
+      console.error('Error toggling collection:', error);
     }
   }
 };
@@ -1577,8 +1710,13 @@ const handleKeyDown = async (event) => {
     return;
   }
   
-  // Escape key - exit photo frame mode (and stop slideshow if active)
+  // Escape key - clear multi-selection, or exit photo frame mode (and stop slideshow if active)
   if (event.key === 'Escape') {
+    if (selectedLinks.value.size > 0) {
+      event.preventDefault();
+      clearSelection();
+      return;
+    }
     if (isPhotoFrameMode.value || isAutoCycling.value) {
       event.preventDefault();
       if (isAutoCycling.value) {
@@ -1586,6 +1724,25 @@ const handleKeyDown = async (event) => {
       } else {
         isPhotoFrameMode.value = false;
       }
+      return;
+    }
+  }
+
+  // Ctrl+A for Select All visible items
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'a') {
+    const visibleRows = getVisibleRows();
+    if (visibleRows.length > 0) {
+      event.preventDefault();
+      const nextSet = new Set();
+      visibleRows.forEach(r => {
+        const l = getRowLink(r);
+        if (l) nextSet.add(l);
+      });
+      selectedLinks.value = nextSet;
+      if (selectionAnchorIndex.value < 0) {
+        selectionAnchorIndex.value = 0;
+      }
+      updateMultiSelectVisuals();
       return;
     }
   }
@@ -1690,6 +1847,7 @@ const handleKeyDown = async (event) => {
         break;
       }
       if (selectedRowIndex.value < visibleRows.length - 1) {
+        const nextIdx = selectedRowIndex.value + 1;
         isKeyboardNavigating = true;
         keyboardNavTimestamp = Date.now();
         // Cancel any pending mouseover timer
@@ -1698,7 +1856,29 @@ const handleKeyDown = async (event) => {
           mouseoverDebounceTimer = null;
           mouseoverDebounceLink = null;
         }
-        highlightRow(selectedRowIndex.value + 1);
+
+        if (event.shiftKey) {
+          const anchor = (selectionAnchorIndex.value >= 0 && selectionAnchorIndex.value < visibleRows.length)
+            ? selectionAnchorIndex.value
+            : selectedRowIndex.value;
+          selectionAnchorIndex.value = anchor;
+          const start = Math.min(anchor, nextIdx);
+          const end = Math.max(anchor, nextIdx);
+          const nextSet = (event.ctrlKey || event.metaKey) ? new Set(selectedLinks.value) : new Set();
+          for (let i = start; i <= end; i++) {
+            const l = getRowLink(visibleRows[i]);
+            if (l) nextSet.add(l);
+          }
+          selectedLinks.value = nextSet;
+          updateMultiSelectVisuals();
+        } else {
+          if (selectedLinks.value.size > 0 && !event.ctrlKey && !event.metaKey) {
+            clearSelection();
+          }
+          selectionAnchorIndex.value = nextIdx;
+        }
+
+        highlightRow(nextIdx);
         await selectCurrentRow();
       }
       break;
@@ -1710,6 +1890,7 @@ const handleKeyDown = async (event) => {
         break;
       }
       if (selectedRowIndex.value > 0) {
+        const prevIdx = selectedRowIndex.value - 1;
         isKeyboardNavigating = true;
         keyboardNavTimestamp = Date.now();
         // Cancel any pending mouseover timer
@@ -1718,7 +1899,29 @@ const handleKeyDown = async (event) => {
           mouseoverDebounceTimer = null;
           mouseoverDebounceLink = null;
         }
-        highlightRow(selectedRowIndex.value - 1);
+
+        if (event.shiftKey) {
+          const anchor = (selectionAnchorIndex.value >= 0 && selectionAnchorIndex.value < visibleRows.length)
+            ? selectionAnchorIndex.value
+            : selectedRowIndex.value;
+          selectionAnchorIndex.value = anchor;
+          const start = Math.min(anchor, prevIdx);
+          const end = Math.max(anchor, prevIdx);
+          const nextSet = (event.ctrlKey || event.metaKey) ? new Set(selectedLinks.value) : new Set();
+          for (let i = start; i <= end; i++) {
+            const l = getRowLink(visibleRows[i]);
+            if (l) nextSet.add(l);
+          }
+          selectedLinks.value = nextSet;
+          updateMultiSelectVisuals();
+        } else {
+          if (selectedLinks.value.size > 0 && !event.ctrlKey && !event.metaKey) {
+            clearSelection();
+          }
+          selectionAnchorIndex.value = prevIdx;
+        }
+
+        highlightRow(prevIdx);
         await selectCurrentRow();
       } else if (selectedRowIndex.value === -1 && visibleRows.length > 0) {
         isKeyboardNavigating = true;
@@ -1729,6 +1932,7 @@ const handleKeyDown = async (event) => {
           mouseoverDebounceTimer = null;
           mouseoverDebounceLink = null;
         }
+        selectionAnchorIndex.value = 0;
         highlightRow(0);
         await selectCurrentRow();
       }
@@ -1745,6 +1949,26 @@ const handleKeyDown = async (event) => {
         mouseoverDebounceLink = null;
       }
       const nextIndex = Math.min(selectedRowIndex.value + 15, visibleRows.length - 1);
+      if (event.shiftKey) {
+        const anchor = (selectionAnchorIndex.value >= 0 && selectionAnchorIndex.value < visibleRows.length)
+          ? selectionAnchorIndex.value
+          : Math.max(0, selectedRowIndex.value);
+        selectionAnchorIndex.value = anchor;
+        const start = Math.min(anchor, nextIndex);
+        const end = Math.max(anchor, nextIndex);
+        const nextSet = (event.ctrlKey || event.metaKey) ? new Set(selectedLinks.value) : new Set();
+        for (let i = start; i <= end; i++) {
+          const l = getRowLink(visibleRows[i]);
+          if (l) nextSet.add(l);
+        }
+        selectedLinks.value = nextSet;
+        updateMultiSelectVisuals();
+      } else {
+        if (selectedLinks.value.size > 0 && !event.ctrlKey && !event.metaKey) {
+          clearSelection();
+        }
+        selectionAnchorIndex.value = nextIndex;
+      }
       highlightRow(nextIndex);
       await selectCurrentRow();
       break;
@@ -1760,6 +1984,26 @@ const handleKeyDown = async (event) => {
         mouseoverDebounceLink = null;
       }
       const prevIndex = Math.max(selectedRowIndex.value - 15, 0);
+      if (event.shiftKey) {
+        const anchor = (selectionAnchorIndex.value >= 0 && selectionAnchorIndex.value < visibleRows.length)
+          ? selectionAnchorIndex.value
+          : Math.max(0, selectedRowIndex.value);
+        selectionAnchorIndex.value = anchor;
+        const start = Math.min(anchor, prevIndex);
+        const end = Math.max(anchor, prevIndex);
+        const nextSet = (event.ctrlKey || event.metaKey) ? new Set(selectedLinks.value) : new Set();
+        for (let i = start; i <= end; i++) {
+          const l = getRowLink(visibleRows[i]);
+          if (l) nextSet.add(l);
+        }
+        selectedLinks.value = nextSet;
+        updateMultiSelectVisuals();
+      } else {
+        if (selectedLinks.value.size > 0 && !event.ctrlKey && !event.metaKey) {
+          clearSelection();
+        }
+        selectionAnchorIndex.value = prevIndex;
+      }
       highlightRow(prevIndex);
       await selectCurrentRow();
       break;
@@ -1773,6 +2017,26 @@ const handleKeyDown = async (event) => {
         clearTimeout(mouseoverDebounceTimer);
         mouseoverDebounceTimer = null;
         mouseoverDebounceLink = null;
+      }
+      if (event.shiftKey) {
+        const anchor = (selectionAnchorIndex.value >= 0 && selectionAnchorIndex.value < visibleRows.length)
+          ? selectionAnchorIndex.value
+          : Math.max(0, selectedRowIndex.value);
+        selectionAnchorIndex.value = anchor;
+        const start = 0;
+        const end = Math.max(0, anchor);
+        const nextSet = (event.ctrlKey || event.metaKey) ? new Set(selectedLinks.value) : new Set();
+        for (let i = start; i <= end; i++) {
+          const l = getRowLink(visibleRows[i]);
+          if (l) nextSet.add(l);
+        }
+        selectedLinks.value = nextSet;
+        updateMultiSelectVisuals();
+      } else {
+        if (selectedLinks.value.size > 0 && !event.ctrlKey && !event.metaKey) {
+          clearSelection();
+        }
+        selectionAnchorIndex.value = 0;
       }
       highlightRow(0);
       await selectCurrentRow();
@@ -1788,7 +2052,28 @@ const handleKeyDown = async (event) => {
         mouseoverDebounceTimer = null;
         mouseoverDebounceLink = null;
       }
-      highlightRow(visibleRows.length - 1);
+      const lastIndex = visibleRows.length - 1;
+      if (event.shiftKey) {
+        const anchor = (selectionAnchorIndex.value >= 0 && selectionAnchorIndex.value < visibleRows.length)
+          ? selectionAnchorIndex.value
+          : Math.max(0, selectedRowIndex.value);
+        selectionAnchorIndex.value = anchor;
+        const start = Math.min(anchor, lastIndex);
+        const end = Math.max(anchor, lastIndex);
+        const nextSet = (event.ctrlKey || event.metaKey) ? new Set(selectedLinks.value) : new Set();
+        for (let i = start; i <= end; i++) {
+          const l = getRowLink(visibleRows[i]);
+          if (l) nextSet.add(l);
+        }
+        selectedLinks.value = nextSet;
+        updateMultiSelectVisuals();
+      } else {
+        if (selectedLinks.value.size > 0 && !event.ctrlKey && !event.metaKey) {
+          clearSelection();
+        }
+        selectionAnchorIndex.value = lastIndex;
+      }
+      highlightRow(lastIndex);
       await selectCurrentRow();
       break;
       
@@ -2301,10 +2586,63 @@ A:visited {
   position: relative;
 }
 
-/* Keyboard/mouse navigation highlight */
+/* Keyboard/mouse navigation highlight (hover / current focus) */
 .keyboard-selected {
-  outline: 2px solid #4A90E2 !important;
+  outline: 2px dashed #3182ce !important;
   outline-offset: -2px;
+}
+
+/* Multi-selection rows in table */
+#tableDiv tr.multi-selected {
+  background-color: #b8d8ff !important;
+  box-shadow: inset 0 0 0 1px #70a8e8;
+}
+
+#tableDiv tr.multi-selected.photo {
+  background-color: #c4defc !important;
+}
+
+#tableDiv tr.multi-selected.audio {
+  background-color: #eeddb0 !important;
+}
+
+#tableDiv tr.multi-selected.video {
+  background-color: #f7a8b0 !important;
+}
+
+#tableDiv tr.multi-selected td {
+  background: transparent !important;
+}
+
+/* Selection counter badge in bottom controls */
+.selection-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #3182ce;
+  color: #ffffff;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: bold;
+  vertical-align: middle;
+  cursor: default;
+  user-select: none;
+}
+
+.selection-count-badge .btn-clear-selection {
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.selection-count-badge .btn-clear-selection:hover {
+  color: #fed7d7;
 }
 
 /* Remove focus outline from main container */

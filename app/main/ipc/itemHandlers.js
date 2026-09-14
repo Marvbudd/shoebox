@@ -278,6 +278,22 @@ export function registerItemHandlers(
     return { success: true };
   }); // item:setCollection
 
+  // Toggle multiple items in/out of collection in batch
+  ipcMain.handle('items:setCollectionBatch', async (_, links) => {
+    verifyAccessions();
+    const accessionClass = getAccessionClass();
+    const collectionKey = nconf.get('controls:selectedCollection');
+    if (accessionClass.toggleItemsInCollection) {
+      accessionClass.toggleItemsInCollection(collectionKey, links);
+    } else {
+      for (const link of (links || [])) {
+        accessionClass.toggleItemInCollection(collectionKey, link);
+      }
+    }
+    notifyCollectionItemsUpdated(collectionKey, Array.isArray(links) ? links[0] : null);
+    return { success: true };
+  }); // items:setCollectionBatch
+
   // Play media item (with optional time position for references)
   ipcMain.handle('item:Play', async (event, entry) => {
     // This fires when requesting AV for a filename attached to a photo

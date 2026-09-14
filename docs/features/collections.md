@@ -39,9 +39,20 @@ The collection is immediately created and ready to use. You can now add items to
 
 1. Load a collection from the collection dropdown at the bottom of the main window
 2. Browse your full archive (or limit to collection items only—see Loading Collections below)
-3. **Double-click** items to toggle them in/out of the loaded collection
+3. **Double-click** an individual item to toggle it in/out of the loaded collection
    - Items in the collection appear with **green background** in the navigation column
    - Items also show their collection membership in the metadata panel
+
+### Multi-Select Method
+
+Use the Main Window navigation list to update several items efficiently:
+
+1. Click the first item to set the selection anchor.
+2. Use **Shift+Click** to select a contiguous range, or **Ctrl+Click** (Windows/Linux) / **Cmd+Click** (macOS) to add or remove individual items.
+3. Use **Ctrl+A** / **Cmd+A** to select all visible items when appropriate.
+4. With the collection selected, double-click any selected row to toggle the entire selection in or out of the collection.
+
+Selected rows remain visibly highlighted while you move the mouse. The dashed outline identifies the current preview row, while the solid background identifies the multi-selection. The selection count appears beside the main controls and clears after the batch toggle.
 
 ### Manual Selection
 
