@@ -2,7 +2,7 @@
   "name": "shoebox",
   "productName": "shoebox",
   "desktopName": "com.gmail.marvbudd.shoebox.desktop",
-  "version": "4.0.3",
+  "version": "4.0.4",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",

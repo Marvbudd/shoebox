@@ -369,8 +369,24 @@ const renderItems = (listObject, preserveSort = false, restoreState = null) => {
       const visibleRows = getVisibleRows();
       let nextIndex = -1;
 
-      if (restoreLink) {
-        nextIndex = visibleRows.findIndex(row => getRowLink(row) === restoreLink);
+      // Under "By Person" sort, the same link can appear on multiple rows (once per
+      // person/name-variant), so prefer the exact original row when it still matches.
+      if (restoreLink && restoreIndex !== null
+        && restoreIndex >= 0 && restoreIndex < visibleRows.length
+        && getRowLink(visibleRows[restoreIndex]) === restoreLink) {
+        nextIndex = restoreIndex;
+      } else if (restoreLink) {
+        // Otherwise pick the matching-link row closest to the original index,
+        // instead of always jumping to the first match in the list.
+        let bestDistance = Infinity;
+        visibleRows.forEach((row, index) => {
+          if (getRowLink(row) !== restoreLink) return;
+          const distance = restoreIndex === null ? index : Math.abs(index - restoreIndex);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            nextIndex = index;
+          }
+        });
       }
 
       // If the original item was deleted/removed from view, select the item that took its place
@@ -444,13 +460,14 @@ const hideHighlightFilter = () => {
     if (selectedColl && row.hasAttribute('collections')) {
       const rowCollections = row.getAttribute('collections').split(',');
       if (rowCollections.some(c => c === selectedColl)) {
-        row.firstChild.style.color = 'green';
+        row.classList.add('in-collection');
         row.hidden = !showClass;
       } else {
-        row.firstChild.style.color = '';
+        row.classList.remove('in-collection');
         row.hidden = limit || !showClass;
       }
     } else {
+      row.classList.remove('in-collection');
       row.hidden = !showClass;
     }
   }
@@ -2590,6 +2607,17 @@ A:visited {
 .keyboard-selected {
   outline: 2px dashed #3182ce !important;
   outline-offset: -2px;
+}
+
+/* Item is in the currently selected collection: use a darker green plus a
+   checkmark icon so the indicator does not rely on color alone. */
+#tableDiv tr.in-collection > td:first-child {
+  color: #146c2e;
+  font-weight: 600;
+}
+
+#tableDiv tr.in-collection > td:first-child > div::before {
+  content: '✓ ';
 }
 
 /* Multi-selection rows in table */

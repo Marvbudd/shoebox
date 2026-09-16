@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.4] - 2026-09-16
+
+### Changed
+- **Collection membership indicator in Main Window**: Replaced the plain green text used to mark items in the currently selected collection with a darker, bolder green plus a checkmark icon, improving visibility without relying on color alone.
+
+### Fixed
+- **Navigation position jumping under "By Person" sort**: Fixed an issue where toggling collection membership or returning from Edit Media could scroll the Main Window navigation list to an unrelated row (a different person or a married/maiden name variant of the same item) instead of staying on the exact row that was acted on. Position restoration now prefers the original row index and falls back to the closest matching row rather than always jumping to the first match.
+
 ## [4.0.3] - 2026-09-14
 
 ### Added
