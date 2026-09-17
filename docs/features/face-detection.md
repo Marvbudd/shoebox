@@ -196,16 +196,18 @@ If you are working through a large collection, you can run phase 1 detection in 
 1. Open a collection in the main window and enable **Limit** to use queue mode.
 2. Open **Media Manager** from an item in that collection.
 3. Click **Run Batch Face Phase 1**.
-4. Confirm the run. Shoebox processes queue items one by one:
+4. Confirm the run. If a previous batch on this collection was canceled or interrupted before finishing, the confirmation prompt instead offers **Resume (N remaining)** or **Start Over** so you don't have to reprocess items already completed. Resuming always uses the currently selected models and confidence threshold, even if they differ from the interrupted run.
+5. Shoebox processes queue items one by one:
    - non-photo items are skipped
    - existing same-photo assignments are preserved (phase 1 re-match)
    - only unmatched regions are stored as unresolved `candidatefaces`
-5. Watch progress in Media Manager. You can click **Cancel Batch** to stop after the current item finishes.
-6. Optional: create/refresh maintenance collections to build archive-wide review queues such as **Face Candidates: Unresolved**.
-7. Open **Person Manager** and use **Match Unassigned** to review the selected person’s descriptors one at a time.
-8. For each descriptor, Shoebox ranks unresolved face candidates nearest to that descriptor and presents only that descriptor group for review.
-9. Assign the best faces for that descriptor, then move to the next descriptor when ready.
-10. You can still continue photo-centric review in Media Manager if you prefer, but the newer person-centric workflow starts in Person Manager.
+   - oversized photos are downscaled before detection, and any single item that stalls for more than 60 seconds is skipped and logged rather than blocking the rest of the batch
+6. Watch progress in Media Manager. You can click **Cancel Batch** to stop after the current item finishes; canceling leaves a resume point in place so you can pick up where you left off the next time you run batch phase 1 on that same collection. Letting the batch run to full completion clears the resume point.
+7. Optional: create/refresh maintenance collections to build archive-wide review queues such as **Face Candidates: Unresolved**.
+8. Open **Person Manager** and use **Match Unassigned** to review the selected person’s descriptors one at a time.
+9. For each descriptor, Shoebox ranks unresolved face candidates nearest to that descriptor and presents only that descriptor group for review.
+10. Assign the best faces for that descriptor, then move to the next descriptor when ready.
+11. You can still continue photo-centric review in Media Manager if you prefer, but the newer person-centric workflow starts in Person Manager.
 
 ### Batch Face Assignment (Person-Centric)
 
@@ -374,6 +376,7 @@ All threshold settings (Confidence Threshold and Auto-Assign Threshold) are auto
 - Processing done locally (no cloud upload)
 - Face descriptors stored in accessions.json
 - Models stored in `app/models/` directory
+- Batch phase 1 progress is checkpointed to a small `<collectionKey>.facedetection-checkpoint.json` file alongside that collection's data, so a canceled or interrupted batch can resume without recomputing completed items; the checkpoint is removed automatically once a batch runs to full completion
 
 ## Advanced: Downloading Additional Face Detection Models
 

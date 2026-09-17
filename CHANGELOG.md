@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.5] - 2026-09-16
+
+### Added
+- **Resume interrupted batch face detection**: A canceled or interrupted batch face detection run now leaves a per-collection checkpoint of completed items. Starting the batch again on the same collection prompts to either resume the remaining items or start over from the beginning, avoiding recomputation of already-processed photos.
+
+### Fixed
+- **Batch face detection hang/crash on large photos**: Large source photos (24MP+) could cause a `RangeError: Array buffer allocation failed` deep inside TensorFlow.js during batch face detection, which surfaced only as an unhandled promise rejection and left the entire batch operation (and its IPC reply) hung indefinitely, eventually failing with "reply was never sent". Images are now downscaled (longest edge capped at 1600px) before tensor conversion to bound peak memory use, and each per-item detection in the batch is now guarded by a 60-second timeout so a stuck or failing item is skipped and logged instead of blocking the rest of the batch.
+
 ## [4.0.4] - 2026-09-16
 
 ### Changed

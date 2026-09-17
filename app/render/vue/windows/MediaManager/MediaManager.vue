@@ -11,6 +11,7 @@
         </div>
         <div class="modal-footer">
           <button @click="handleModalOk" class="btn-modal-ok">{{ confirmOkText }}</button>
+          <button v-if="confirmExtraText" @click="handleModalExtra" class="btn-modal-extra">{{ confirmExtraText }}</button>
           <button @click="handleModalCancel" class="btn-modal-cancel">{{ confirmCancelText }}</button>
         </div>
       </div>
@@ -1048,6 +1049,7 @@ const batchPhaseOneSummary = ref('');
 // Custom modal state
 const showConfirmModal = ref(false);
 const confirmModalTitle = ref('');
+const confirmExtraText = ref('');
 const confirmModalMessage = ref('');
 const confirmOkText = ref('OK');
 const confirmCancelText = ref('Cancel');
@@ -1580,13 +1582,15 @@ const getSourcePersonName = (personID) => {
   return person ? getPersonDisplayName(person) : `Person ${personID}`;
 };
 
-// Custom confirm dialog to avoid Electron focus bug
-const showConfirm = (title, message, okText = 'OK', cancelText = 'Cancel') => {
+// Custom confirm dialog to avoid Electron focus bug.
+// Resolves true (OK), false (Cancel), or 'extra' when the optional third button is clicked.
+const showConfirm = (title, message, okText = 'OK', cancelText = 'Cancel', extraText = '') => {
   return new Promise((resolve) => {
     confirmModalTitle.value = title;
     confirmModalMessage.value = message;
     confirmOkText.value = okText;
     confirmCancelText.value = cancelText;
+    confirmExtraText.value = extraText;
     confirmResolve = resolve;
     showConfirmModal.value = true;
   });
@@ -1594,14 +1598,25 @@ const showConfirm = (title, message, okText = 'OK', cancelText = 'Cancel') => {
 
 const handleModalOk = () => {
   showConfirmModal.value = false;
+  confirmExtraText.value = '';
   if (confirmResolve) {
     confirmResolve(true);
     confirmResolve = null;
   }
 };
 
+const handleModalExtra = () => {
+  showConfirmModal.value = false;
+  confirmExtraText.value = '';
+  if (confirmResolve) {
+    confirmResolve('extra');
+    confirmResolve = null;
+  }
+};
+
 const handleModalCancel = () => {
   showConfirmModal.value = false;
+  confirmExtraText.value = '';
   if (confirmResolve) {
     confirmResolve(false);
     confirmResolve = null;
@@ -4059,15 +4074,37 @@ const runBatchFacePhaseOne = async () => {
     return;
   }
 
-  const proceed = await showConfirm(
-    'Run Batch Face Detection (Phase 1)',
-    `Run phase 1 face detection for ${queueLinks.length} queue item(s)? This stores unmatched regions in candidatefaces and keeps existing person assignments untouched.`,
-    'Run Batch',
-    'Cancel'
-  );
+  const collectionKey = queueData.value?.collectionKey || null;
+  let resume = false;
 
-  if (!proceed) {
-    return;
+  const checkpoint = collectionKey
+    ? await window.electronAPI.getBatchFaceCheckpoint(collectionKey)
+    : { exists: false };
+
+  if (checkpoint?.exists) {
+    const choice = await showConfirm(
+      'Run Batch Face Detection (Phase 1)',
+      `A previous batch for this collection was interrupted with ${checkpoint.completedCount} of ${queueLinks.length} item(s) already processed. Resume the remaining items, or start over from the beginning?`,
+      'Start Over',
+      'Cancel',
+      `Resume (${queueLinks.length - checkpoint.completedCount} remaining)`
+    );
+
+    if (choice === false) {
+      return;
+    }
+    resume = choice === 'extra';
+  } else {
+    const proceed = await showConfirm(
+      'Run Batch Face Detection (Phase 1)',
+      `Run phase 1 face detection for ${queueLinks.length} queue item(s)? This stores unmatched regions in candidatefaces and keeps existing person assignments untouched.`,
+      'Run Batch',
+      'Cancel'
+    );
+
+    if (!proceed) {
+      return;
+    }
   }
 
   batchPhaseOneRunning.value = true;
@@ -4082,7 +4119,9 @@ const runBatchFacePhaseOne = async () => {
     const result = await window.electronAPI.runBatchFacePhaseOne({
       links: [...queueLinks],
       models: [...selectedModels.value].map(model => String(model)),
-      minConfidence: Number(confidenceThreshold.value)
+      minConfidence: Number(confidenceThreshold.value),
+      collectionKey,
+      resume
     });
 
     if (!result.success) {
@@ -6430,6 +6469,22 @@ header h1 {
 
 .btn-modal-ok:hover {
   background: #c82333;
+}
+
+.btn-modal-extra {
+  padding: 0.75rem 1.5rem;
+  background: #0d6efd;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-modal-extra:hover {
+  background: #0b5ed7;
 }
 
 .btn-modal-alt-danger {

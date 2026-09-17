@@ -33,6 +33,11 @@ export class FaceDetectionService {
     };
     this.MATCH_THRESHOLD = 0.6; // Distance threshold for face matching (lower = more similar)
     this.IOU_THRESHOLD = 0.5; // Intersection over Union threshold for deduplication
+    // Cap the longest edge fed into tensor conversion. Full-resolution photos (24MP+) can
+    // require huge contiguous ArrayBuffer allocations (RGBA -> int32 -> RGB tensor) that fail
+    // or accumulate memory pressure over long batch runs; detection accuracy is unaffected
+    // since faces are far smaller than this in virtually all source photos.
+    this.MAX_DETECTION_DIMENSION = 1600;
   }
 
   /**
@@ -144,17 +149,22 @@ export class FaceDetectionService {
       }
 
       // Use a concrete canvas surface to avoid "Not an image canvas" errors from face-api internals.
-      const detectionCanvas = canvas.createCanvas(img.width, img.height);
-      const ctx = detectionCanvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, img.width, img.height);
+      // Downscale oversized images before tensor conversion to bound peak memory use.
+      const scale = Math.min(1, this.MAX_DETECTION_DIMENSION / Math.max(img.width, img.height));
+      const targetWidth = Math.max(1, Math.round(img.width * scale));
+      const targetHeight = Math.max(1, Math.round(img.height * scale));
 
-      const imageData = ctx.getImageData(0, 0, img.width, img.height);
+      const detectionCanvas = canvas.createCanvas(targetWidth, targetHeight);
+      const ctx = detectionCanvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
       // Convert to an RGB tensor so face-api uses extractFaceTensors instead of canvas extractFaces.
       const inputTensor = faceapi.tf.tidy(() => {
         // tfjs 1.x does not reliably accept Uint8ClampedArray here; normalize first.
         const rgbaValues = Int32Array.from(imageData.data);
-        const rgba = faceapi.tf.tensor3d(rgbaValues, [img.height, img.width, 4], 'int32');
-        return rgba.slice([0, 0, 0], [img.height, img.width, 3]);
+        const rgba = faceapi.tf.tensor3d(rgbaValues, [targetHeight, targetWidth, 4], 'int32');
+        return rgba.slice([0, 0, 0], [targetHeight, targetWidth, 3]);
       });
       
       // Run detection with each requested model

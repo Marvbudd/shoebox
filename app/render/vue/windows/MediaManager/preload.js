@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   discardFaceCandidate: (candidateID) => ipcRenderer.invoke('face-detection:discardCandidate', candidateID),
   runBatchFacePhaseOne: (payload) => ipcRenderer.invoke('face-detection:batchPhaseOne', payload),
   cancelBatchFacePhaseOne: () => ipcRenderer.invoke('face-detection:cancelBatchPhaseOne'),
+  getBatchFaceCheckpoint: (collectionKey) => ipcRenderer.invoke('face-detection:getBatchCheckpoint', { collectionKey }),
   createMaintenanceCollections: () => ipcRenderer.invoke('maintenance:create'),
   reverseGeocode: (latitude, longitude) => ipcRenderer.invoke('geocoding:reverse', latitude, longitude),
   getCurrentPlaybackTime: () => ipcRenderer.invoke('mediaPlayer:getCurrentTime'),

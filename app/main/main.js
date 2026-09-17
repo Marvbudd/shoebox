@@ -1075,6 +1075,67 @@ const createWindow = () => {
     }
     });
 
+  // Batch face detection checkpoints let an interrupted/canceled run resume without
+  // recomputing already-completed items. One checkpoint file per collection, stored
+  // alongside that collection's own JSON file.
+  function getBatchCheckpointPath(collectionKey) {
+    if (!collectionKey) {
+      return null;
+    }
+    const safeKey = String(collectionKey).replace(/[^a-zA-Z0-9_-]/g, '_');
+    return path.join(accessionClass.collections.collectionsDir, `${safeKey}.facedetection-checkpoint.json`);
+  }
+
+  function readBatchCheckpoint(collectionKey) {
+    const checkpointPath = getBatchCheckpointPath(collectionKey);
+    if (!checkpointPath || !fs.existsSync(checkpointPath)) {
+      return null;
+    }
+    try {
+      const data = JSON.parse(fs.readFileSync(checkpointPath, 'utf8'));
+      return Array.isArray(data?.completedLinks) ? data : null;
+    } catch (err) {
+      console.warn('Unable to read batch face detection checkpoint:', err.message || err);
+      return null;
+    }
+  }
+
+  async function writeBatchCheckpoint(collectionKey, completedLinksSet) {
+    const checkpointPath = getBatchCheckpointPath(collectionKey);
+    if (!checkpointPath) {
+      return;
+    }
+    try {
+      await fs.promises.writeFile(
+        checkpointPath,
+        JSON.stringify({ completedLinks: Array.from(completedLinksSet), updatedAt: new Date().toISOString() }, null, 2),
+        'utf8'
+      );
+    } catch (err) {
+      console.warn('Unable to write batch face detection checkpoint:', err.message || err);
+    }
+  }
+
+  async function deleteBatchCheckpoint(collectionKey) {
+    const checkpointPath = getBatchCheckpointPath(collectionKey);
+    if (!checkpointPath || !fs.existsSync(checkpointPath)) {
+      return;
+    }
+    try {
+      await fs.promises.unlink(checkpointPath);
+    } catch (err) {
+      console.warn('Unable to delete batch face detection checkpoint:', err.message || err);
+    }
+  }
+
+  ipcMain.handle('face-detection:getBatchCheckpoint', async (event, payload = {}) => {
+    const checkpoint = readBatchCheckpoint(payload?.collectionKey);
+    return {
+      exists: !!checkpoint,
+      completedCount: checkpoint ? checkpoint.completedLinks.length : 0
+    };
+  });
+
   // Batch phase 1: detect faces for queue items, preserve existing matches, persist unresolved to candidatefaces.
     ipcMain.handle('face-detection:batchPhaseOne', async (event, payload = {}) => {
     const senderId = event?.sender?.id ?? null;
@@ -1106,16 +1167,55 @@ const createWindow = () => {
       const models = Array.isArray(payload.models) && payload.models.length > 0 ? payload.models : ['ssd'];
       const minConfidence = Number.isFinite(payload.minConfidence) ? payload.minConfidence : 0.2;
 
+      // Guard against a single image (huge resolution, corrupt decode, tensor allocation
+      // failure) hanging indefinitely and never letting this handler send its reply.
+      const DETECTION_TIMEOUT_MS = 60000;
+      const detectFacesWithTimeout = (imagePathArg, modelsArg, confidenceArg) => {
+        return new Promise((resolve, reject) => {
+          let settled = false;
+          const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            reject(new Error(`Face detection timed out after ${DETECTION_TIMEOUT_MS / 1000}s (possible memory allocation issue)`));
+          }, DETECTION_TIMEOUT_MS);
+
+          service.detectFaces(imagePathArg, modelsArg, confidenceArg)
+            .then((result) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              resolve(result);
+            })
+            .catch((error) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              reject(error);
+            });
+        });
+      };
+
       const uniqueLinks = Array.from(new Set(links.filter(Boolean)));
       if (!Number.isInteger(senderId)) {
         throw new Error('Batch phase 1 request missing valid sender context.');
       }
 
+      const collectionKey = payload.collectionKey || null;
+      let completedLinksThisRun;
+      if (payload.resume === true) {
+        const checkpoint = readBatchCheckpoint(collectionKey);
+        completedLinksThisRun = new Set(checkpoint ? checkpoint.completedLinks : []);
+      } else {
+        await deleteBatchCheckpoint(collectionKey);
+        completedLinksThisRun = new Set();
+      }
+      const linksToProcess = uniqueLinks.filter(link => !completedLinksThisRun.has(link));
+
       activeBatchSenderId = senderId;
       batchFaceCancelState.set(senderId, false);
 
       const itemResults = [];
-      let processed = 0;
+      let processed = uniqueLinks.length - linksToProcess.length;
       let photosProcessed = 0;
       let totalCandidatesAdded = 0;
       let totalFacesDetected = 0;
@@ -1124,7 +1224,7 @@ const createWindow = () => {
       let skippedOther = 0;
       let canceled = false;
 
-      for (const link of uniqueLinks) {
+      for (const link of linksToProcess) {
         // Yield to the event loop so cancel requests can be processed before next item starts.
         await new Promise(resolve => setImmediate(resolve));
 
@@ -1134,37 +1234,38 @@ const createWindow = () => {
         }
 
         processed += 1;
-
-        const itemView = accessionClass.getItemView(null, link);
-        if (!itemView) {
-          skippedOther += 1;
-          itemResults.push({ link, skipped: true, reason: 'Item not found' });
-          sendBatchProgress({
-            processed,
-            total: uniqueLinks.length,
-            link,
-            skipped: true,
-            reason: 'Item not found'
-          });
-          continue;
-        }
-
-        if (itemView.getType() !== 'photo') {
-          skippedOther += 1;
-          itemResults.push({ link, skipped: true, reason: 'Not a photo' });
-          sendBatchProgress({
-            processed,
-            total: uniqueLinks.length,
-            link,
-            skipped: true,
-            reason: 'Not a photo'
-          });
-          continue;
-        }
-
-        photosProcessed += 1;
+        let markLinkComplete = true;
 
         try {
+          const itemView = accessionClass.getItemView(null, link);
+          if (!itemView) {
+            skippedOther += 1;
+            itemResults.push({ link, skipped: true, reason: 'Item not found' });
+            sendBatchProgress({
+              processed,
+              total: uniqueLinks.length,
+              link,
+              skipped: true,
+              reason: 'Item not found'
+            });
+            continue;
+          }
+
+          if (itemView.getType() !== 'photo') {
+            skippedOther += 1;
+            itemResults.push({ link, skipped: true, reason: 'Not a photo' });
+            sendBatchProgress({
+              processed,
+              total: uniqueLinks.length,
+              link,
+              skipped: true,
+              reason: 'Not a photo'
+            });
+            continue;
+          }
+
+          photosProcessed += 1;
+
           const imagePath = accessionClass.getMediaPath(itemView.getType(), itemView.getLink());
 
           if (!imagePath || !fs.existsSync(imagePath)) {
@@ -1204,10 +1305,11 @@ const createWindow = () => {
             continue;
           }
 
-          const faces = await service.detectFaces(imagePath, models, minConfidence);
+          const faces = await detectFacesWithTimeout(imagePath, models, minConfidence);
 
           if (batchFaceCancelState.get(senderId) === true) {
             canceled = true;
+            markLinkComplete = false;
             break;
           }
 
@@ -1272,12 +1374,23 @@ const createWindow = () => {
             skipped: true,
             reason: itemError.message || String(itemError)
           });
+        } finally {
+          if (markLinkComplete) {
+            completedLinksThisRun.add(link);
+            await writeBatchCheckpoint(collectionKey, completedLinksThisRun);
+          }
         }
       }
 
       batchFaceCancelState.delete(senderId);
       if (activeBatchSenderId === senderId) {
         activeBatchSenderId = null;
+      }
+
+      // Only a full, uncanceled run clears the checkpoint; a canceled run leaves it so the
+      // operator can resume the remaining items later.
+      if (!canceled) {
+        await deleteBatchCheckpoint(collectionKey);
       }
 
       const totalSkipped = skippedMissingFiles + skippedUnreadableFiles + skippedOther;
