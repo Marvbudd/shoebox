@@ -324,7 +324,7 @@ export class AccessionClass {
   getCollections() {
     let collections = [];
     this.collections.collections.forEach(collection => {
-      collections.push({value: collection.key, text: collection.text});
+      collections.push({value: collection.key, text: collection.text, title: collection.title});
     })
     // Sort collections alphabetically by their display text
     collections.sort((a, b) => a.text.localeCompare(b.text));

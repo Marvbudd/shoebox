@@ -132,6 +132,11 @@ const selectedCollectionText = computed(() => {
   if (collections.value.length === 0 || !selectedCollection.value) return '';
   return collections.value.find(c => c.value === selectedCollection.value)?.text || '';
 });
+const selectedCollectionTitle = computed(() => {
+  if (collections.value.length === 0 || !selectedCollection.value) return '';
+  const collection = collections.value.find(c => c.value === selectedCollection.value);
+  return collection?.title || collection?.text || '';
+});
 const faceTagsMode = ref(FACE_OVERLAY_MODE.OFF);
 const faceTagsModeLabel = computed(() => {
   switch (faceTagsMode.value) {
@@ -253,6 +258,7 @@ const handlePreviewInteraction = async ({ type, link, shiftKey = false, event = 
 };
 
 // Slideshow state
+const normalWindowTitle = ref('Shoebox');
 const isAutoCycling = ref(false);
 const cycleInterval = ref(5); // seconds
 const cycleTimer = ref(null);
@@ -319,7 +325,10 @@ const handleSortChange = async (event) => {
 
 // Render items received from main process
 const renderItems = (listObject, preserveSort = false, restoreState = null) => {
-  document.title = listObject.accessionTitle;
+  normalWindowTitle.value = listObject.accessionTitle || 'Shoebox';
+  if (!isPhotoFrameMode.value) {
+    document.title = normalWindowTitle.value;
+  }
   
   // Use ?? to provide defaults for undefined values
   photoChecked.value = listObject.photoChecked ?? true;
@@ -1545,6 +1554,9 @@ const startAutoCycle = () => {
   
   isAutoCycling.value = true;
   isPhotoFrameMode.value = true; // Enter photo frame mode
+  if (limitChecked.value && selectedCollection.value && selectedCollectionTitle.value) {
+    document.title = selectedCollectionTitle.value;
+  }
   showSlideshowIndicator.value = true;
 
   if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
@@ -1566,6 +1578,7 @@ const startAutoCycle = () => {
 const stopAutoCycle = () => {
   isAutoCycling.value = false;
   isPhotoFrameMode.value = false; // Exit photo frame mode
+  document.title = normalWindowTitle.value;
   showSlideshowIndicator.value = true;
 
   if (window.electronAPI?.setSlideshowDisplaySleepBlock) {
@@ -2789,5 +2802,12 @@ A:visited {
 
 .photo-frame-mode #prevDataDiv {
   height: 15%;
+}
+
+/* Hide website button, heading, and copyright line during slideshow/photo frame mode */
+.photo-frame-mode #openWebsite,
+.photo-frame-mode .prevDataCaption,
+.photo-frame-mode .copyright {
+  display: none;
 }
 </style>

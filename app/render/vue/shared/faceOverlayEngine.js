@@ -60,6 +60,12 @@ function rectsOverlap(a, b) {
   );
 }
 
+function overlapArea(a, b) {
+  const width = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+  const height = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  return width * height;
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -73,33 +79,69 @@ function tryPlaceLabelRect(baseRect, placedLabels, faceRects, renderBounds, ownF
     return null;
   }
 
+  const maxX = Math.max(renderBounds.minX, renderBounds.maxX - baseRect.w);
+  const maxY = Math.max(renderBounds.minY, renderBounds.maxY - baseRect.h);
   const candidateRects = [];
-  const verticalOffsets = [0, -8, 8, -16, 16, -24, 24, -32, 32];
-  const horizontalOffsets = [0, -10, 10, -18, 18];
+  const seen = new Set();
+  const addCandidate = (x, y) => {
+    const candidate = {
+      x: clamp(x, renderBounds.minX, maxX),
+      y: clamp(y, renderBounds.minY, maxY),
+      w: baseRect.w,
+      h: baseRect.h
+    };
+    const key = `${candidate.x}:${candidate.y}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      candidateRects.push(candidate);
+    }
+  };
 
-  for (const yOffset of verticalOffsets) {
-    for (const xOffset of horizontalOffsets) {
-      candidateRects.push({
-        x: clamp(baseRect.x + xOffset, renderBounds.minX, renderBounds.maxX - baseRect.w),
-        y: clamp(baseRect.y + yOffset, renderBounds.minY, renderBounds.maxY - baseRect.h),
-        w: baseRect.w,
-        h: baseRect.h
-      });
+  const labelCenterX = ownFaceRect.x + (ownFaceRect.w / 2) - (baseRect.w / 2);
+  const gap = 10;
+  addCandidate(labelCenterX, ownFaceRect.y - baseRect.h - gap);
+  addCandidate(labelCenterX, ownFaceRect.y + ownFaceRect.h + gap);
+  addCandidate(ownFaceRect.x - baseRect.w - gap, ownFaceRect.y + (ownFaceRect.h / 2) - (baseRect.h / 2));
+  addCandidate(ownFaceRect.x + ownFaceRect.w + gap, ownFaceRect.y + (ownFaceRect.h / 2) - (baseRect.h / 2));
+
+  const horizontalSearchRadius = Math.max(128, ownFaceRect.w * 2);
+  const verticalSearchRadius = Math.max(320, ownFaceRect.h * 6);
+  for (let yOffset = -verticalSearchRadius; yOffset <= verticalSearchRadius; yOffset += 16) {
+    for (let xOffset = -horizontalSearchRadius; xOffset <= horizontalSearchRadius; xOffset += 16) {
+      addCandidate(baseRect.x + xOffset, baseRect.y + yOffset);
     }
   }
 
-  for (const rect of candidateRects) {
-    const overlapsLabel = placedLabels.some(existing => rectsOverlap(existing, rect));
-    const overlapsOtherFace = faceRects.some(faceRect => faceRect !== ownFaceRect && rectsOverlap(faceRect, rect));
-    if (!overlapsLabel && !overlapsOtherFace) {
-      return rect;
+  for (const yOffset of [-verticalSearchRadius, verticalSearchRadius]) {
+    for (const xOffset of [-horizontalSearchRadius, 0, horizontalSearchRadius]) {
+      addCandidate(baseRect.x + xOffset, baseRect.y + yOffset);
     }
   }
 
-  return {
+  const scoredCandidates = candidateRects.map(rect => {
+    const overlappingLabels = placedLabels.filter(label => rectsOverlap(label, rect));
+    const overlappingFaces = faceRects.filter(faceRect => rectsOverlap(faceRect, rect));
+    const overlapScore = overlappingFaces.reduce((score, faceRect) => score + overlapArea(faceRect, rect), 0);
+    return {
+      rect,
+      overlappingLabels: overlappingLabels.length,
+      overlappingFaces: overlappingFaces.length,
+      overlapScore,
+      distance: Math.abs(rect.x - baseRect.x) + Math.abs(rect.y - baseRect.y)
+    };
+  });
+
+  scoredCandidates.sort((a, b) =>
+    a.overlappingFaces - b.overlappingFaces
+    || a.overlappingLabels - b.overlappingLabels
+    || a.overlapScore - b.overlapScore
+    || a.distance - b.distance
+  );
+
+  return scoredCandidates[0]?.rect || {
     ...baseRect,
-    x: clamp(baseRect.x, renderBounds.minX, renderBounds.maxX - baseRect.w),
-    y: clamp(baseRect.y, renderBounds.minY, renderBounds.maxY - baseRect.h)
+    x: clamp(baseRect.x, renderBounds.minX, maxX),
+    y: clamp(baseRect.y, renderBounds.minY, maxY)
   };
 }
 

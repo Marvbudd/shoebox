@@ -3208,14 +3208,18 @@ async function buildCollection() {
             message: `Collection "${collection.text}" has validation issues`,
             detail: `Errors: ${validationResults.results.errorCount}\n` +
                     `Warnings: ${validationResults.results.warningCount}\n\n` +
-                    `A detailed log has been saved to:\n${validationResults.logInfo.path}\n\n` +
-                    `Do you want to continue with the export?`,
-            buttons: ['Continue Export', 'Cancel'],
-            defaultId: 1,
-            cancelId: 1
+                    `The full validation results are available in the log file.`,
+            buttons: ['Open Log File', 'Continue Export', 'Cancel'],
+            defaultId: 2,
+            cancelId: 2
           });
-          
-          if (continueResponse === 1) {
+
+          if (continueResponse === 0) {
+            await shell.openPath(validationResults.logInfo.path);
+            return;
+          }
+
+          if (continueResponse === 2) {
             return; // User cancelled
           }
         } else {
@@ -3247,13 +3251,18 @@ async function buildCollection() {
           ? `${result.message}\n\nWarnings:\n${result.warnings}`
           : result.message;
         
-        dialog.showMessageBoxSync(mainWindow, {
+        const buttons = result.warningsLogPath ? ['OK', 'Open Log File'] : ['OK'];
+        const response = dialog.showMessageBoxSync(mainWindow, {
           type: 'info',
           title: 'Export Completed',
           message: `Collection exported successfully`,
           detail: detailMessage,
-          buttons: ['OK']
+          buttons
         });
+
+        if (response === 1) {
+          await shell.openPath(result.warningsLogPath);
+        }
       } else {
         dialog.showMessageBoxSync(mainWindow, {
           type: 'error',

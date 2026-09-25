@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.6] - 2026-09-25
+
+### Fixed
+- **Slideshow detail cleanup**: Hidden the Media Details heading, Pedigree Website button, and copyright line while Photo Frame/Slideshow mode is active so the slideshow detail panel starts with the description.
+- **Collection export validation dialog**: Replaced long validation error lists with error and warning counts plus an **Open Log File** action; users can continue the export or cancel without the dialog growing beyond the screen.
+- **Collection export retry behavior**: Re-running an export now skips media files already present in the destination instead of attempting to recreate existing symlinks and reporting each one as an error.
+- **Collection export error reporting**: Full media-export error details are written to a log file while the completion dialog shows only a concise summary and offers to open the log.
+- **Face-label placement**: Improved name-label positioning to search farther above, below, and around faces while avoiding face regions and previously placed labels whenever possible.
+- **Collection-limited slideshow title**: The slideshow title now uses the collection's full **Title (Full Name)** value and returns to the archive title when the slideshow ends.
+
 ## [4.0.5] - 2026-09-16
 
 ### Added

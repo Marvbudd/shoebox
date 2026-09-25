@@ -282,6 +282,7 @@ async function exportCollectionMedia(accessionClass, selectedCollection, sourceD
     symlinks: 0,
     hardlinks: 0,
     copies: 0,
+    skipped: 0,
     errors: []
   };
   
@@ -318,6 +319,12 @@ async function exportCollectionMedia(accessionClass, selectedCollection, sourceD
   for (const item of sortedItems) {
     const sourcePath = path.join(sourceDir, item.type, item.link);
     const destPath = path.join(destDir, item.type, item.link);
+
+    // Skip files already exported by a previous run (re-running export is idempotent)
+    if (fs.existsSync(destPath)) {
+      stats.skipped++;
+      continue;
+    }
     
     try {
       // If method not determined yet, try in order: symlink → hardlink → copy
@@ -443,7 +450,8 @@ export async function buildCollection(accessionClass, selectedCollection, access
       `Location: ${collectionDir}\n` +
       `Items: ${itemCount}\n` +
       `Persons: ${personCount}\n` +
-      `${methodMessage}`;
+      `${methodMessage}` +
+      (mediaResult.stats.skipped > 0 ? `\n${mediaResult.stats.skipped} file(s) already present, skipped` : '');
     
     console.log(`Collection exported: ${itemCount} items, ${personCount} persons, method: ${mediaResult.method}`);
     
@@ -461,8 +469,17 @@ export async function buildCollection(accessionClass, selectedCollection, access
     
     // Add warnings if there were errors (missing items, failed copies, etc.)
     if (mediaResult.stats.errors.length > 0) {
-      result.warnings = `${mediaResult.stats.errors.length} item(s) could not be exported:\n` +
-        mediaResult.stats.errors.map(e => `  ${e.type}/${e.file}: ${e.error}`).join('\n');
+      // Always write full details to a log file - the dialog only shows a summary
+      const logFilename = `export-collection-errors-${generateTimestamp()}.log`;
+      const logPath = path.join(sourceDir, logFilename);
+      const logContent = mediaResult.stats.errors
+        .map(e => `${e.type}/${e.file}: ${e.error}`)
+        .join('\n');
+      await fsPromises.writeFile(logPath, logContent, 'utf8');
+
+      result.warnings = `${mediaResult.stats.errors.length} item(s) could not be exported.\n` +
+        `Full list saved to: ${logFilename}`;
+      result.warningsLogPath = logPath;
     }
     
     return result;
