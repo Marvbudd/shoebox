@@ -350,7 +350,7 @@ const handleCreate = async () => {
     if (result.success) {
       statusMessage.value = { 
         type: 'success', 
-        text: `Success! Created accessions.json with ${result.itemsAdded || 0} items.` 
+        text: `Success! Added ${result.itemsAdded || 0} new media item(s) to the archive.`
       };
       
       // Close window after short delay

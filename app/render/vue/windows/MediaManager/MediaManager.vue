@@ -94,6 +94,10 @@
         <strong>Error:</strong> {{ error }}
       </div>
 
+      <div v-else-if="queueComplete" class="queue-complete">
+        <p>No items in this collection.</p>
+      </div>
+
       <form v-else @submit.prevent="handleSave" class="media-form">
         <div class="two-column-layout">
           <!-- LEFT COLUMN: Form Fields and People -->
@@ -768,7 +772,7 @@
     </form>
 
     <!-- Bottom Action Bar -->
-    <div v-if="!loading && !error" class="action-bar" :class="{ 'action-bar-batch-locked': faceProcessingControlsDisabled }">
+    <div v-if="!loading && !error && !queueComplete" class="action-bar" :class="{ 'action-bar-batch-locked': faceProcessingControlsDisabled }">
       <div v-if="hasQueue" class="action-group queue-action-group">
         <span class="action-group-label">Processing Collection:</span>
         <span class="collection-name" :title="processingCollectionTitle">{{ processingCollectionTitleShort }}</span>
@@ -1011,6 +1015,7 @@ const personListKey = ref(0); // Used to force re-render of person dropdowns
 const loading = ref(true);
 const saving = ref(false);
 const deleting = ref(false);
+const queueComplete = ref(false);
 const fileExists = ref(true);
 const isReferencedInPlaylists = ref(false); // Track if item is referenced in playlists
 const error = ref(null);
@@ -1631,13 +1636,21 @@ const closeDeleteModal = () => {
 };
 
 const navigateAfterDelete = async () => {
-  if (hasQueue.value && queueData.value?.queue) {
+  if (queueData.value && Array.isArray(queueData.value.queue)) {
+    const deletedIndex = currentQueueIndex.value;
     queueData.value.queue = queueData.value.queue.filter(link => link !== item.value.link);
 
-    if (queueData.value.queue.length > 0 && currentQueueIndex.value < queueData.value.queue.length) {
-      navigateToQueueItem(currentQueueIndex.value);
+    if (queueData.value.queue.length > 0) {
+      const nextIndex = Math.min(Math.max(deletedIndex, 0), queueData.value.queue.length - 1);
+      navigateToQueueItem(nextIndex);
       return;
     }
+
+    queueComplete.value = true;
+    loading.value = false;
+    deleting.value = false;
+    statusMessage.value = null;
+    return;
   }
 
   setTimeout(async () => {

@@ -26,7 +26,6 @@ import { FACE_OVERLAY_STYLE } from '../../render/vue/shared/faceOverlayEngine.js
  * @param {Function} setAccessionClass - Function to set the AccessionClass instance
  * @param {Function} verifyAccessions - Function to ensure AccessionClass is initialized
  * @param {Function} resetAccessions - Function to reload accessions
- * @param {Function} getCreateAccessionsWindow - Function that returns create accessions window
  * @param {Object} nconf - Configuration object
  * @param {Electron.Shell} shell - The Electron shell module
  */
@@ -37,7 +36,6 @@ export function registerAccessionsHandlers(
   setAccessionClass,
   verifyAccessions,
   resetAccessions,
-  getCreateAccessionsWindow,
   nconf,
   shell
 ) {
@@ -147,26 +145,17 @@ export function registerAccessionsHandlers(
       }
 
       // Add media files
+      const previousItemCount = accessionClass.accessionJSON.accessions?.item?.length || 0;
       await accessionClass.addMediaFiles(mediaFormData);
 
       // Save the accessions
       accessionClass.saveAccessions();
 
-      // Get item count
       const itemCount = accessionClass.accessionJSON.accessions?.item?.length || 0;
 
-      // Close window first, then reset (avoid race condition during window destruction)
-      const createAccessionsWindow = getCreateAccessionsWindow();
-      if (createAccessionsWindow && !createAccessionsWindow.isDestroyed()) {
-        createAccessionsWindow.close();
-        // Wait for window to fully close before resetting
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      // Now safe to reset and send IPC messages
       resetAccessions();
 
-      return { success: true, itemsAdded: itemCount };
+      return { success: true, itemsAdded: itemCount - previousItemCount };
     } catch (error) {
       console.error('Failed to create accessions:', error);
       return { success: false, error: error.message || String(error) };
@@ -197,6 +186,18 @@ export function registerAccessionsHandlers(
     } catch (error) {
       console.error('Failed to get media path:', error);
       return null;
+    }
+  });
+
+  ipcMain.handle('media:fileExists', async (_event, type, link) => {
+    try {
+      verifyAccessions();
+      const accessionClass = getAccessionClass();
+      const mediaPath = accessionClass.getMediaPath(type, link);
+      await fs.promises.access(mediaPath, fs.constants.F_OK);
+      return true;
+    } catch {
+      return false;
     }
   });
 

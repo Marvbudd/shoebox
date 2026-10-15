@@ -11,8 +11,11 @@
     
     <!-- Media preview section (using template binding like Media Manager) -->
     <div id="previewDiv">
+      <div v-if="itemMissing" class="media-missing-message">
+        This item is missing from the archive's media folders.
+      </div>
       <img 
-        v-if="itemType === 'photo' && mediaPreviewPath" 
+        v-else-if="itemType === 'photo' && mediaPreviewPath" 
         :src="mediaPreviewPath" 
         alt="Photo preview"
       />
@@ -90,6 +93,7 @@ const detailsExpanded = ref(false);
 const hasMediaElement = ref(false);
 const currentTimeDisplay = ref('00:00:00.0');
 const videoError = ref(false); // Track if video has unsupported codec
+const itemMissing = ref(false);
 const videoElement = ref(null);
 const audioElement = ref(null);
 let mediaElement = null;
@@ -281,10 +285,14 @@ const handleMediaDisplay = async (mediaData) => {
   
   // Get media path via IPC (same as Media Manager)
   if (itemType.value && itemLink.value) {
-    mediaPreviewPath.value = await window.electronAPI.getMediaPath(itemType.value, itemLink.value);
+    itemMissing.value = !(await window.electronAPI.mediaFileExists(itemType.value, itemLink.value));
+    mediaPreviewPath.value = itemMissing.value
+      ? null
+      : await window.electronAPI.getMediaPath(itemType.value, itemLink.value);
     videoError.value = false; // Reset error state for new media
   } else {
     mediaPreviewPath.value = null;
+    itemMissing.value = false;
   }
   
   // Check if this was opened from a playlist reference

@@ -446,7 +446,6 @@ const createWindow = () => {
       (value) => { accessionClass = value; },
       verifyAccessions,
       resetAccessions,
-      () => windowRefs.createAccessions.value,
       nconf,
       shell
     );

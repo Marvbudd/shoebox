@@ -678,7 +678,7 @@ export function chooseAccessionsPath(dialog, mainWindow, resetAccessions, nconf,
   dialog.showOpenDialog(mainWindow, {
     filters: [{ name: 'json', extensions: 'json' }],
     title: 'Select accessions.json file with "audio", "video", "photo" folders in the same folder.',
-    defaultPath: nconf.get('db.accessionsPath'),
+    defaultPath: nconf.get('db:accessionsPath'),
     properties: ['openFile']
   }).then(mediaDirectory => {
     if (!mediaDirectory.canceled) {
