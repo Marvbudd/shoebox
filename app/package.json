@@ -2,7 +2,7 @@
   "name": "shoebox",
   "productName": "shoebox",
   "desktopName": "com.gmail.marvbudd.shoebox.desktop",
-  "version": "4.0.6",
+  "version": "4.1.0",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",
@@ -19,13 +19,13 @@
     "electron-updater": "^6.8.9",
     "exifr": "^7.1.3",
     "face-api.js": "^0.22.2",
-    "handlebars": "^4.7.9",
+    "handlebars": "^4.7.10",
     "nconf": "^0.13.0"
   },
   "resolutions": {
-    "minimatch": "^10.2.5"
+    "node-fetch": "^2.7.0"
   },
   "devDependencies": {
-    "electron": "^41.10.3"
+    "electron": "^44.7.2"
   }
 }
