@@ -16,6 +16,7 @@
 | **Architecture patterns** | [docs/guide/architecture.md](docs/guide/architecture.md) |
 | **Data structure (`accessions.json`)** | [docs/guide/data-structure.md](docs/guide/data-structure.md) |
 | **Collections** | [docs/features/collections.md](docs/features/collections.md) |
+| **Dependency updates, audits, resolutions** | [DEPENDENCIES.md](DEPENDENCIES.md) |
 | **Archive mutation ownership** | [app/main/utils/AccessionClass.js](app/main/utils/AccessionClass.js) (class header) |
 | **Single collection lifecycle** | [app/main/utils/CollectionClass.js](app/main/utils/CollectionClass.js) (class header) |
 | **Collection set lifecycle** | [app/main/utils/CollectionsClass.js](app/main/utils/CollectionsClass.js) (class header) |
@@ -40,6 +41,7 @@
 **Adding IPC or OS behavior?** → Check [docs/guide/architecture.md](docs/guide/architecture.md) for the canonical implementation first  
 **Adding data fields or JSON structure?** → Update [docs/guide/data-structure.md](docs/guide/data-structure.md)  
 **Adding shared Vue logic?** → Place it in `app/render/vue/shared/` if more than one component needs it
-**Need an operator review queue?** → Model it as a collection, ideally a maintenance collection populated by deterministic rules
+**Need an operator review queue?** → Model it as a collection, ideally a maintenance collection populated by deterministic rules  
+**Updating dependencies or fixing audit findings?** → Read [DEPENDENCIES.md](DEPENDENCIES.md) first; a plain `yarn install` or `yarn up` can delete the `canvas` binary on this machine
 
 

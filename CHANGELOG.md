@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-10-14
+
+### Added
+- **Media Player missing-item message**: Media Player now checks that an item's media file exists and shows "This item is missing from the archive's media folders." instead of trying to load it.
+
+### Changed
+- **Electron 44**: Upgraded from Electron 41.10.7 to 44.7.2 (Chromium 152, Node.js 24.21). Electron 41 was outside Electron's support window and no longer received security fixes.
+- **macOS 13 (Ventura) or later is now required.** Electron 44 dropped macOS 12 support. Existing installs on macOS 12 or earlier keep working with the version they have but cannot update to this release.
+- **Release builds use Node.js 24**: The release workflow moved from Node.js 20 to 24, which Electron 44 and its build tooling require (Node.js 22.12 or newer).
+
+### Security
+- Updated `handlebars` to 4.7.10 (fixes three advisories, two critical), `undici` to 7.30.0, `http-cache-semantics` to 4.3.0, `source-map-js` to 1.2.2 and `node-fetch` to 2.7.0, plus in-range updates to Vue, Vite and Algolia packages.
+- Removed the unused `electron-builder-squirrel-windows` dev dependency (the Windows target is NSIS).
+
+### Fixed
+- **Choose Accessions.json dialog start folder**: The file picker read its start folder from a config key written with the wrong separator, so it never opened in the current archive's folder. It now does. This also keeps it from opening in Downloads, which is the new default for dialogs without a start folder in Electron 43 and later.
+- **Add Media Metadata completion status**: Kept the window open long enough to show the success result and report the number of newly added items when updating an existing archive.
+- **Media Manager deletion queue continuity**: After deleting an item, Media Manager now navigates to a remaining queue entry even when removing duplicate links shifts the current index. When the queue is empty, it stays open and shows a completion message instead of closing unexpectedly.
+
 ## [4.0.6] - 2026-09-25
 
 ### Fixed

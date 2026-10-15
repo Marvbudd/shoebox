@@ -10,9 +10,9 @@ Download and install Shoebox for your operating system.
 
 ## System Requirements
 
-- **macOS**: 10.13 (High Sierra) or later
-- **Windows**: Windows 10 or later
-- **Linux**: Modern distributions with AppImage support
+- **macOS**: 13 (Ventura) or later
+- **Windows**: Windows 10 or later (64-bit)
+- **Linux**: Modern 64-bit distributions with AppImage support
 
 ## Important: Unsigned App Security Warnings
 
