@@ -1,7 +1,7 @@
 {
   "name": "shoebox",
   "productName": "shoebox",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "description": "Multimedia browser",
   "main": "main/main.js",
   "type": "module",
@@ -71,7 +71,7 @@
     }
   },
   "scripts": {
-    "start": "./app/node_modules/.bin/electron app/main/main.js",
+    "start": "./app/node_modules/.bin/electron --ozone-platform=x11 app/main/main.js",
     "start:face-debug": "SHOEBOX_FACE_DEBUG=1 yarn start",
     "dev": "vite",
     "docs:dev": "vitepress dev docs",

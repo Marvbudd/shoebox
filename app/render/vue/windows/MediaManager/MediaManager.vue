@@ -2268,15 +2268,16 @@ const handleDetectFaces = async () => {
   clearFaceHoverState();
   facesLoadedFromBioData.value = false; // Mark as newly detected, not loaded
 
-  // Flush UI so operator immediately sees that processing has started.
-  await nextTick();
-  
   // Clear all existing face assignments from people since regions will be regenerated
   item.value.person.forEach(person => {
     if (person.faceTag) {
       delete person.faceTag;
     }
   });
+
+  // nextTick only waits for the DOM patch; two animation frames let the browser paint the busy state.
+  await nextTick();
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   
   try {
     // Step 1: Detect faces with selected models

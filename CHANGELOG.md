@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.1] - 2026-10-16
+
+### Changed
+- **Larger first-open size for Main Window and Media Player**: With no saved size, these windows now open at 800x600 instead of 400x300. A saved size is still used once one exists.
+
+### Fixed
+- **Linux window position persistence**: On Wayland sessions Electron cannot read or set window positions, so every window was saved at the same fake position and reopened wherever the compositor chose. Shoebox now runs through XWayland on Linux Wayland sessions so positions are saved and restored. Set `SHOEBOX_NATIVE_WAYLAND=1` to opt out.
+- **Person Manager window size persistence**: Person Manager could be resized below its 800x600 minimum, and the saved smaller size was then enlarged on the next open. The window now enforces that minimum, so the size you leave it at is the size it reopens with.
+- **Detect Faces button busy state**: The Media Manager **Detect Faces (This Photo)** button now shows "Detecting Faces..." as soon as it is clicked, instead of only flashing it after detection finished.
+
 ## [4.1.0] - 2026-10-14
 
 ### Changed

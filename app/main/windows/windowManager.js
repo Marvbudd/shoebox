@@ -197,8 +197,8 @@ export function saveWindowState(window, confname, nconf) {
  */
 export function newWindow(confname, preload, parentWindow, show, nconf) {
   return createPersistedWindow(confname, nconf, {
-    width: 400,
-    height: 300,
+    width: 800,
+    height: 600,
     minWidth: 300,
     minHeight: 200
   }, {
@@ -252,6 +252,8 @@ export function createPersonManagerWindow(windowRef, nconf) {
       minHeight: 600
     }, {
       show: false,
+      minWidth: 800,
+      minHeight: 600,
       webPreferences: {
         preload: path.resolve(__dirname, '../../render/vue/windows/PersonManager/preload.js'),
         nodeIntegration: false,

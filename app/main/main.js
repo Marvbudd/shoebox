@@ -147,6 +147,14 @@ protocol.registerSchemesAsPrivileged([
 // Forces software decoding which is more reliable across different systems
 app.commandLine.appendSwitch('disable-accelerated-video-decode');
 
+// Wayland hides window position from apps, so saved positions can't be restored; use XWayland when available.
+// The switch must be on the real command line: appending it at runtime crashes the GPU process.
+if (process.platform === 'linux' && process.env.WAYLAND_DISPLAY && process.env.DISPLAY &&
+    !process.env.SHOEBOX_NATIVE_WAYLAND && !process.argv.some(arg => arg.startsWith('--ozone-platform'))) {
+  app.relaunch({ args: process.argv.slice(1).concat('--ozone-platform=x11') });
+  app.exit(0);
+}
+
 // Slideshow display sleep blocker
 let slideshowBlockerId = null;
 
