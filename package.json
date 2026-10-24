@@ -71,6 +71,7 @@
     }
   },
   "scripts": {
+    "setup": "./scripts/setup.sh",
     "start": "./app/node_modules/.bin/electron --ozone-platform=x11 app/main/main.js",
     "start:face-debug": "SHOEBOX_FACE_DEBUG=1 yarn start",
     "dev": "vite",
@@ -128,7 +129,7 @@
     "vitepress": "^2.0.0-alpha.20",
     "vue": "^3.5.44"
   },
-  "packageManager": "yarn@4.17.1",
+  "packageManager": "yarn@4.18.1",
   "resolutions": {
     "minimatch": "^10.2.5",
     "node-abi": "4.35.0",

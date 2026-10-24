@@ -8,7 +8,7 @@ Verified 2026-10-14 with Yarn 4.17.1 and Electron 44.7.2 on Ubuntu (Linux x64). 
   - Root (`package.json`, `yarn.lock`): build tooling, Vite/Vue, VitePress, electron-builder.
   - `app/` (`app/package.json`, `app/yarn.lock`): runtime dependencies that ship in the packaged app.
 - Update both. `resolutions` apply per manifest, so add one in whichever workspace needs it.
-- Yarn is pinned by `.yarnrc.yml` (`yarnPath: .yarn/releases/yarn-4.17.1.cjs`) with `nodeLinker: node-modules`. The download cache is `~/.yarn/berry/cache`.
+- Yarn is pinned by `.yarnrc.yml` (`yarnPath: .yarn/releases/yarn-4.18.1.cjs`) with `nodeLinker: node-modules`. The download cache is `~/.yarn/berry/cache`.
 
 ## Do not let install scripts run on this machine
 
@@ -18,6 +18,8 @@ Any `yarn install` or `yarn up` that changes the dependency tree triggers the ro
 - Compiling needs the pixman, Cairo, Pango and librsvg development packages, which are not installed here. CI installs them in `releaseBuild.yml`, so CI is unaffected.
 
 Safe workflow:
+
+**Shortcut:** run `yarn setup` from the repo root. It does steps 2 and 3 below and repairs `canvas` if needed (`scripts/setup.sh`). Installing the development packages once (`sudo apt install libcairo2-dev libpango1.0-dev librsvg2-dev libpixman-1-dev`) also lets a plain `yarn install` succeed.
 
 1. Edit versions in the manifest(s) by hand. `yarn up` also runs the scripts, and it rewrote `"electron": "^41.10.3"` to `"^41"`.
 2. Run `yarn install --mode=skip-build` in `app/`, then in the root.
