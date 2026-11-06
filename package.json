@@ -137,7 +137,7 @@
     "undici": "7.30.0"
   },
   "devDependencies": {
-    "@algolia/client-search": "^5.60.0",
+    "@algolia/client-search": "^5.61.0",
     "@vitejs/plugin-vue": "^6.0.10",
     "algoliasearch": "^5.60.0",
     "electron": "^44.9.3",
