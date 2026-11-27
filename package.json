@@ -140,7 +140,7 @@
     "@algolia/client-search": "^5.63.0",
     "@vitejs/plugin-vue": "^6.0.11",
     "algoliasearch": "^5.64.0",
-    "electron": "^44.10.2",
+    "electron": "^44.11.5",
     "search-insights": "^2.17.3"
   }
 }
